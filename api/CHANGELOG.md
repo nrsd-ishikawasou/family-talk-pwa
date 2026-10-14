@@ -45,3 +45,5 @@
 - 0.1.0：`DELETE /me/devices/{id}` の再認証を conditional にした（自分の端末の取り消しは要しない。基本設計書 第3章 4.5）。
 - 0.1.0：`POST /me/devices/{id}/approve` の認可に `device_self` を足し、再認証を conditional にした。未承認の端末が自分を承認できなかった（自己承認。基本設計書 第12章 5.5 の 2）。
 - 0.1.0：`GET /family/disclosure` の応答を、文の鍵から、サーバーが値を埋めた文（`notice`）と外へ送る情報の表（`outbound`）にした。版は 16 進 16 文字の文字列（基本設計書 第12章 7.1）。`POST /me/disclosure-ack` の version も同じ形にし、`Session` に `disclosure_ack_version` を足した。
+- 0.1.0：`User` と `/me` の応答・要求から `avatar`、`background`、`bio` を外した。写真、背景、ひとことは家族全員のトークの暗号文で、サーバーは持たない（基本設計書 第3章 6、第2章 5.3）。
+- 0.1.0：`POST /me/devices/{id}/approve` のタグを keys にした（承認の確かめは鍵の部品が行う。タグは実装するブロックと 1 対 1）。

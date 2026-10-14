@@ -44,7 +44,7 @@
   - 登録する側：srv-keys（鍵の失効）、srv-push（購読の削除、知らせ）、srv-rooms（leaf の削除待ち、削除済みの印）、srv-admin（監査）
 - 依存の逆転（interface を本ブロックが定め、上のブロックが実装して渡す）：
   - `Audit`（srv-admin）
-  - `DeviceKeyReader`（srv-keys。端末の署名鍵の公開部で `device_sig` を確かめる。第12章 5.3）
+  - `DeviceKeyReader`（srv-keys。端末の署名鍵の公開部で `device_sig` を確かめる。第12章 5.3。/users の鍵の読み出し）
 - 上：srv-boundary（`SessionVerifier` 等の実装を渡す）、srv-admin（管理者の操作は本ブロックの関数を呼ぶ）。
 
 ## クラス図
@@ -179,6 +179,8 @@ classDiagram
   class DeviceKeyReader {
     <<interface>>
     +VerifyProof(ctx, deviceId, message, sig) Result~bool~
+    +SigningKeys(ctx, userIds) Result~Map~
+    +DevicesOf(ctx, userId) Result~[Fdev]~
   }
   class Credential {
     +Id []byte
@@ -314,8 +316,8 @@ classDiagram
 |UserPrivate|`+MutedUsers Fenv`|[user_id]|
 |UserPrivate|`+Settings Fenv`|ft.settings.user/1 のうちエンベロープに置く項目（プライバシー）|
 |Users|`+Create(tx, name, role, child, guardians) User`|DEK を生成し KEK で包む（Envelope）|
-|Users|`+List(ctx) [UserSummary]`|/users（識別子、表示名、アイコン、役割、状態、本人の署名鍵の公開部は srv-keys から）|
-|Users|`+UpdateProfile(tx, id, patch)`|/me PATCH。平文の欄は user.changed、暗号の欄は本人の端末が家族全員のトークへ|
+|Users|`+List(ctx) [UserSummary]`|/users（識別子、表示名、役割、状態、子ども区分。本人の署名鍵の公開部は DeviceKeyReader.SigningKeys から）。写真はサーバーに無い（第3章 6）|
+|Users|`+UpdateProfile(tx, id, patch)`|/me PATCH。欄は表示名（平文。user.changed）と誕生日（エンベロープ）だけ。写真、背景、ひとことは端末が家族全員のトークへ（web-sync Users.publishProfile）|
 |Users|`+Settings(ctx, userId) UserSettings`|/me/settings。エンベロープを開く（srv-push の規則の判定もこれを呼ぶ）|
 |Users|`+Suspend(tx, id, by, reason)`|状態を suspended にする。Sessions.RevokeAllOfUser(suspended)、Devices.UnapproveAllOfUser（第3章 8.1）、hook OnUserSuspended、SystemEvent、notice|
 |Users|`+Unsuspend(tx, id, by)`|状態を normal にする。端末は未承認のまま（本人がコピー (a) で承認し直す。第12章 5.4）|
@@ -350,6 +352,8 @@ classDiagram
 |Passkeys|`+LoginOptions(ctx) RequestOptions`|allowCredentials は空（条件付き UI）|
 |Passkeys|`+LoginVerify(tx, challengeId, response, proof Option~DeviceProof~) Result~LoginResult, Event~`|AUTH-003。失敗の回数（DD-3-9）を超えたら AUTH-004。停止・削除は MEM-002。proof があり、端末が同じ構成員の物で取り消し・期限切れでなく、DeviceKeyReader.VerifyProof が通れば同じ端末。それ以外は新しい端末（未承認。第3章 4.2）|
 |DeviceKeyReader|`+VerifyProof(ctx, deviceId, message, sig) Result~bool~`|srv-keys が実装。message は第12章 5.3 の連結。公開鍵が無ければ false|
+|DeviceKeyReader|`+SigningKeys(ctx, userIds) Result~Map~`|user_id から fusr/1。/users の user_sig_pub（srv-keys UserSigningKeys.Get）|
+|DeviceKeyReader|`+DevicesOf(ctx, userId) Result~[Fdev]~`|/users/{id} の端末の公開鍵の一覧（srv-keys DeviceKeys.ListOfUser。承認済みだけ）|
 |Passkeys|`+List(ctx, userId) [Credential]`|`GET /me/passkeys`（第2章 5.2）|
 |Passkeys|`+Delete(tx, userId, credId)`|`DELETE /me/passkeys/{id}`。最後の 1 つは AUTH-008|
 |Sessions|`+Issue(tx, userId, deviceId) cookieValue`|256 ビット。ハッシュを置く。絶対 90 日・無操作 30 日。UV のあるパスキーの登録・ログインの直後に出す時は reauth_at = 今（第3章 4.5）|
