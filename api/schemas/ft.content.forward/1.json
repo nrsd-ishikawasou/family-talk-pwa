@@ -1,0 +1,57 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://family-talk.invalid/schemas/ft.content.forward/1",
+  "title": "ft.content.forward/1",
+  "description": "第4章 3.1。転送の印",
+  "type": "object",
+  "properties": {
+    "replaces": {
+      "$ref": "../common/uuidv7/1.json"
+    },
+    "inReplyTo": {
+      "$ref": "../common/uuidv7/1.json"
+    },
+    "expires": {
+      "$ref": "../common/rfc3339/1.json"
+    },
+    "inner": {
+      "type": "object"
+    },
+    "inner_schema": {
+      "type": "string",
+      "pattern": "^ft\\.content\\.[a-z_]+/\\d+$"
+    },
+    "forwarded_from": {
+      "type": "object",
+      "properties": {
+        "sender_id": {
+          "$ref": "../common/uuidv7/1.json"
+        },
+        "ts": {
+          "$ref": "../common/rfc3339/1.json"
+        },
+        "room_kind": {
+          "type": "string",
+          "enum": [
+            "dm",
+            "group",
+            "self",
+            "family"
+          ]
+        }
+      },
+      "required": [
+        "sender_id",
+        "ts",
+        "room_kind"
+      ],
+      "additionalProperties": false
+    }
+  },
+  "required": [
+    "inner",
+    "inner_schema",
+    "forwarded_from"
+  ],
+  "additionalProperties": false
+}

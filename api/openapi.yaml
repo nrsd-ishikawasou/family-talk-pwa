@@ -1,0 +1,6370 @@
+# 境界の正本（OpenAPI 3.1）。中身は基本設計書 第2章 5 と 10。属性の値と規則の名前は第2章 10 の表。
+# 直す時は基本設計書の該当の節を先に直し、tools/tests/test_api.py を通す。
+openapi: 3.1.0
+info:
+  title: family-talk
+  version: 0.1.0
+  description: 家族専用の通信アプリの境界（HTTP の API）。イベントは asyncapi.yaml。中身は基本設計書 第2章 5 と 10。
+  contact:
+    name: 株式会社流山ソフトウェア開発（NRSD）
+    url: https://github.com/nrsd-ishikawasou/family-talk-pwa
+  license:
+    name: Apache-2.0
+    identifier: Apache-2.0
+servers:
+- url: /api/v1
+tags:
+- name: setup
+  description: 初回の設置（第2章 5.1）
+- name: invites
+  description: 招待（第2章 5.1）
+- name: auth
+  description: 認証（第2章 5.2）
+- name: me
+  description: 本人の資源（第2章 5.2、5.3）
+- name: family
+  description: 家族（第2章 5.3）
+- name: users
+  description: 構成員（第2章 5.3）
+- name: devices
+  description: 端末（第2章 5.4）
+- name: keys
+  description: 鍵の運搬（第2章 5.4）
+- name: rooms
+  description: トーク（第2章 5.5）
+- name: media
+  description: メディア（第2章 5.6）
+- name: calls
+  description: 通話（第2章 5.7）
+- name: push
+  description: 通知（第2章 5.8）
+- name: shell
+  description: Android のシェルの経路（第2章 5.8）
+- name: sync
+  description: 同期（第2章 5.9）
+- name: admin
+  description: 管理者（第2章 5.10）
+- name: server
+  description: サーバー（第2章 5.11）
+- name: static
+  description: caddy が配る静的な経路（第2章 5.11）
+- name: internal
+  description: 内部の経路（第2章 10）
+paths:
+  /setup/status:
+    get:
+      operationId: getSetupStatus
+      tags:
+      - setup
+      description: 第2章 5.1
+      x-authz:
+      - none
+      x-idempotency: none
+      responses:
+        '200':
+          description: 成功
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/GetSetupStatusResponse'
+        default:
+          $ref: '#/components/responses/Problem'
+  /setup/admin/{token}:
+    parameters:
+    - name: token
+      in: path
+      required: true
+      schema:
+        type: string
+    get:
+      operationId: getSetupAdmin
+      tags:
+      - setup
+      description: 第2章 5.1
+      x-authz:
+      - setup_token
+      x-idempotency: none
+      x-errors:
+      - AUTH-007
+      responses:
+        '200':
+          description: 成功
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/GetSetupAdminResponse'
+        default:
+          $ref: '#/components/responses/Problem'
+    post:
+      operationId: createSetupAdmin
+      tags:
+      - setup
+      description: 第2章 5.1
+      x-authz:
+      - setup_token
+      x-idempotency: natural
+      x-idempotency-natural: token
+      x-errors:
+      - AUTH-003
+      - AUTH-007
+      - MEM-005
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CreateSetupAdminRequest'
+      responses:
+        '200':
+          description: 成功
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/LoginResult'
+        default:
+          $ref: '#/components/responses/Problem'
+  /invites:
+    get:
+      operationId: listInvites
+      tags:
+      - invites
+      description: 第2章 5.1
+      x-authz:
+      - approved
+      x-authz-rule: invite_issue
+      x-idempotency: none
+      x-errors:
+      - MEM-007
+      parameters:
+      - $ref: '#/components/parameters/Limit'
+      - $ref: '#/components/parameters/Before'
+      - $ref: '#/components/parameters/After'
+      responses:
+        '200':
+          description: 成功
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/InvitePage'
+        default:
+          $ref: '#/components/responses/Problem'
+    post:
+      operationId: createInvite
+      tags:
+      - invites
+      description: 第2章 5.1
+      x-authz:
+      - approved
+      x-authz-rule: invite_issue
+      x-idempotency: key
+      x-errors:
+      - MEM-004
+      - MEM-007
+      parameters:
+      - $ref: '#/components/parameters/IdempotencyKey'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CreateInviteRequest'
+      responses:
+        '200':
+          description: 成功
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CreateInviteResponse'
+        default:
+          $ref: '#/components/responses/Problem'
+  /invites/{id}:
+    parameters:
+    - name: id
+      in: path
+      required: true
+      schema:
+        $ref: ./schemas/common/uuidv7/1.json
+    delete:
+      operationId: deleteInvite
+      tags:
+      - invites
+      description: 第2章 5.1
+      x-authz:
+      - approved
+      x-authz-rule: invite_issuer_or_admin
+      x-idempotency: none
+      x-errors:
+      - MEM-001
+      responses:
+        '200':
+          description: 成功
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/DeleteInviteResponse'
+        default:
+          $ref: '#/components/responses/Problem'
+  /invite-tokens/{token}:
+    parameters:
+    - name: token
+      in: path
+      required: true
+      schema:
+        type: string
+    get:
+      operationId: getInviteToken
+      tags:
+      - invites
+      description: 第2章 5.1
+      x-authz:
+      - none
+      x-idempotency: none
+      x-ratelimit:
+      - invite_token
+      x-errors:
+      - AUTH-007
+      responses:
+        '200':
+          description: 成功
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/GetInviteTokenResponse'
+        default:
+          $ref: '#/components/responses/Problem'
+  /invite-tokens/{token}/accept:
+    parameters:
+    - name: token
+      in: path
+      required: true
+      schema:
+        type: string
+    post:
+      operationId: acceptInviteToken
+      tags:
+      - invites
+      description: 第2章 5.1
+      x-authz:
+      - invite_token
+      x-idempotency: natural
+      x-idempotency-natural: token
+      x-ratelimit:
+      - invite_token
+      x-errors:
+      - AUTH-003
+      - AUTH-007
+      - MEM-005
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/AcceptInviteTokenRequest'
+      responses:
+        '200':
+          description: 成功
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/LoginResult'
+        default:
+          $ref: '#/components/responses/Problem'
+  /auth/passkey/register/options:
+    post:
+      operationId: createPasskeyRegisterOptions
+      tags:
+      - auth
+      description: 第2章 5.2
+      x-authz:
+      - approved
+      - invite_token
+      x-reauth: conditional
+      x-idempotency: natural
+      x-idempotency-natural: challenge
+      x-errors:
+      - AUTH-007
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CreatePasskeyRegisterOptionsRequest'
+      responses:
+        '200':
+          description: 成功
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/WebAuthnChallenge'
+        default:
+          $ref: '#/components/responses/Problem'
+  /auth/passkey/register/verify:
+    post:
+      operationId: verifyPasskeyRegister
+      tags:
+      - auth
+      description: 第2章 5.2
+      x-authz:
+      - approved
+      - invite_token
+      x-reauth: conditional
+      x-idempotency: natural
+      x-idempotency-natural: challenge
+      x-errors:
+      - AUTH-003
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/VerifyPasskeyRegisterRequest'
+      responses:
+        '200':
+          description: 成功
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/VerifyPasskeyRegisterResponse'
+        default:
+          $ref: '#/components/responses/Problem'
+  /auth/passkey/login/options:
+    post:
+      operationId: createPasskeyLoginOptions
+      tags:
+      - auth
+      description: 第2章 5.2
+      x-authz:
+      - none
+      x-idempotency: natural
+      x-idempotency-natural: challenge
+      x-readonly: allow
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CreatePasskeyLoginOptionsRequest'
+      responses:
+        '200':
+          description: 成功
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/WebAuthnChallenge'
+        default:
+          $ref: '#/components/responses/Problem'
+  /auth/passkey/login/verify:
+    post:
+      operationId: verifyPasskeyLogin
+      tags:
+      - auth
+      description: 第2章 5.2
+      x-authz:
+      - none
+      x-idempotency: natural
+      x-idempotency-natural: challenge
+      x-ratelimit:
+      - login
+      x-readonly: allow
+      x-errors:
+      - AUTH-003
+      - AUTH-004
+      - MEM-002
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/VerifyPasskeyLoginRequest'
+      responses:
+        '200':
+          description: 成功
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/LoginResult'
+        default:
+          $ref: '#/components/responses/Problem'
+  /auth/qr/start:
+    post:
+      operationId: startQrLogin
+      tags:
+      - auth
+      description: 第2章 5.2
+      x-authz:
+      - none
+      x-idempotency: natural
+      x-idempotency-natural: repeat_safe
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/StartQrLoginRequest'
+      responses:
+        '200':
+          description: 成功
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/StartQrLoginResponse'
+        default:
+          $ref: '#/components/responses/Problem'
+  /auth/qr/poll:
+    post:
+      operationId: pollQrLogin
+      tags:
+      - auth
+      description: 第2章 5.2
+      x-authz:
+      - device_code
+      x-idempotency: natural
+      x-idempotency-natural: device_code
+      x-ratelimit:
+      - login
+      x-errors:
+      - AUTH-005
+      - AUTH-007
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/PollQrLoginRequest'
+      responses:
+        '200':
+          description: 成功
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/LoginResult'
+        default:
+          $ref: '#/components/responses/Problem'
+  /auth/qr/approve:
+    post:
+      operationId: approveQrLogin
+      tags:
+      - auth
+      description: 第2章 5.2
+      x-authz:
+      - approved
+      x-reauth: true
+      x-idempotency: natural
+      x-idempotency-natural: user_code
+      x-errors:
+      - AUTH-005
+      - AUTH-006
+      - AUTH-007
+      - KEY-003
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ApproveQrLoginRequest'
+      responses:
+        '200':
+          description: 成功
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApproveQrLoginResponse'
+        default:
+          $ref: '#/components/responses/Problem'
+  /auth/qr/{user_code}:
+    parameters:
+    - name: user_code
+      in: path
+      required: true
+      schema:
+        type: string
+    get:
+      operationId: getQrLogin
+      tags:
+      - auth
+      description: 第2章 5.2
+      x-authz:
+      - approved
+      x-idempotency: none
+      x-errors:
+      - AUTH-007
+      responses:
+        '200':
+          description: 成功
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/GetQrLoginResponse'
+        default:
+          $ref: '#/components/responses/Problem'
+  /auth/reset/{token}:
+    parameters:
+    - name: token
+      in: path
+      required: true
+      schema:
+        type: string
+    get:
+      operationId: getPasskeyReset
+      tags:
+      - auth
+      description: 第2章 5.2
+      x-authz:
+      - reset_token
+      x-idempotency: none
+      x-errors:
+      - AUTH-007
+      responses:
+        '200':
+          description: 成功
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/GetPasskeyResetResponse'
+        default:
+          $ref: '#/components/responses/Problem'
+    post:
+      operationId: resetPasskey
+      tags:
+      - auth
+      description: 第2章 5.2
+      x-authz:
+      - reset_token
+      x-idempotency: natural
+      x-idempotency-natural: token
+      x-ratelimit:
+      - login
+      x-errors:
+      - AUTH-003
+      - AUTH-007
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ResetPasskeyRequest'
+      responses:
+        '200':
+          description: 成功
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/LoginResult'
+        default:
+          $ref: '#/components/responses/Problem'
+  /me/passkeys:
+    get:
+      operationId: listMyPasskeys
+      tags:
+      - auth
+      description: 第2章 5.2
+      x-authz:
+      - approved
+      x-idempotency: none
+      parameters:
+      - $ref: '#/components/parameters/Limit'
+      - $ref: '#/components/parameters/Before'
+      - $ref: '#/components/parameters/After'
+      responses:
+        '200':
+          description: 成功
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ListMyPasskeysResponse'
+        default:
+          $ref: '#/components/responses/Problem'
+  /me/passkeys/{id}:
+    parameters:
+    - name: id
+      in: path
+      required: true
+      schema:
+        $ref: ./schemas/common/uuidv7/1.json
+    delete:
+      operationId: deleteMyPasskey
+      tags:
+      - auth
+      description: 第2章 5.2
+      x-authz:
+      - approved
+      x-reauth: true
+      x-idempotency: none
+      x-errors:
+      - AUTH-006
+      - AUTH-008
+      responses:
+        '200':
+          description: 成功
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/DeleteMyPasskeyResponse'
+        default:
+          $ref: '#/components/responses/Problem'
+  /auth/ws-token:
+    post:
+      operationId: createWsToken
+      tags:
+      - auth
+      description: 第2章 5.2
+      x-authz:
+      - session
+      x-idempotency: natural
+      x-idempotency-natural: repeat_safe
+      x-readonly: allow
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CreateWsTokenRequest'
+      responses:
+        '200':
+          description: 成功
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/TokenGrant'
+        default:
+          $ref: '#/components/responses/Problem'
+  /auth/shell-token:
+    post:
+      operationId: createShellToken
+      tags:
+      - auth
+      description: 第2章 5.2
+      x-authz:
+      - session
+      x-idempotency: natural
+      x-idempotency-natural: repeat_safe
+      x-readonly: allow
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CreateShellTokenRequest'
+      responses:
+        '200':
+          description: 成功
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/TokenGrant'
+        default:
+          $ref: '#/components/responses/Problem'
+  /auth/logout:
+    post:
+      operationId: logout
+      tags:
+      - auth
+      description: 第2章 5.2
+      x-authz:
+      - session
+      x-idempotency: natural
+      x-idempotency-natural: repeat_safe
+      x-readonly: allow
+      responses:
+        '200':
+          description: 成功
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/LogoutResponse'
+        default:
+          $ref: '#/components/responses/Problem'
+  /me/session:
+    get:
+      operationId: getMySession
+      tags:
+      - me
+      description: 第2章 5.2
+      x-authz:
+      - session
+      x-idempotency: none
+      responses:
+        '200':
+          description: 成功
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Session'
+        default:
+          $ref: '#/components/responses/Problem'
+  /me/disclosure-ack:
+    post:
+      operationId: ackDisclosure
+      tags:
+      - me
+      description: 第2章 5.2
+      x-authz:
+      - session
+      x-idempotency: natural
+      x-idempotency-natural: version
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/AckDisclosureRequest'
+      responses:
+        '200':
+          description: 成功
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AckDisclosureResponse'
+        default:
+          $ref: '#/components/responses/Problem'
+  /family:
+    get:
+      operationId: getFamily
+      tags:
+      - family
+      description: 第2章 5.3
+      x-authz:
+      - none
+      x-authz-rule: family_fields
+      x-idempotency: none
+      responses:
+        '200':
+          description: 成功
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Family'
+        default:
+          $ref: '#/components/responses/Problem'
+  /family/disclosure:
+    get:
+      operationId: getFamilyDisclosure
+      tags:
+      - family
+      description: 第2章 5.3
+      x-authz:
+      - session
+      x-idempotency: none
+      responses:
+        '200':
+          description: 成功
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/GetFamilyDisclosureResponse'
+        default:
+          $ref: '#/components/responses/Problem'
+  /me:
+    get:
+      operationId: getMe
+      tags:
+      - me
+      description: 第2章 5.3
+      x-authz:
+      - approved
+      x-idempotency: none
+      responses:
+        '200':
+          description: 成功
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/GetMeResponse'
+        default:
+          $ref: '#/components/responses/Problem'
+    patch:
+      operationId: updateMe
+      tags:
+      - me
+      description: 第2章 5.3
+      x-authz:
+      - approved
+      x-idempotency: none
+      x-errors:
+      - MEM-005
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/UpdateMeRequest'
+      responses:
+        '200':
+          description: 成功
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/User'
+        default:
+          $ref: '#/components/responses/Problem'
+  /users:
+    get:
+      operationId: listUsers
+      tags:
+      - users
+      description: 第2章 5.3
+      x-authz:
+      - approved
+      x-idempotency: none
+      parameters:
+      - $ref: '#/components/parameters/Limit'
+      - $ref: '#/components/parameters/Before'
+      - $ref: '#/components/parameters/After'
+      responses:
+        '200':
+          description: 成功
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ListUsersResponse'
+        default:
+          $ref: '#/components/responses/Problem'
+  /users/{id}:
+    parameters:
+    - name: id
+      in: path
+      required: true
+      schema:
+        $ref: ./schemas/common/uuidv7/1.json
+    get:
+      operationId: getUser
+      tags:
+      - users
+      description: 第2章 5.3
+      x-authz:
+      - approved
+      x-idempotency: none
+      x-errors:
+      - MEM-001
+      responses:
+        '200':
+          description: 成功
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/UserDetail'
+        default:
+          $ref: '#/components/responses/Problem'
+  /me/aliases/{user_id}:
+    parameters:
+    - name: user_id
+      in: path
+      required: true
+      schema:
+        $ref: ./schemas/common/uuidv7/1.json
+    put:
+      operationId: putMyAlias
+      tags:
+      - me
+      description: 第2章 5.3
+      x-authz:
+      - approved
+      x-idempotency: none
+      x-errors:
+      - MEM-001
+      - MEM-005
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/PutMyAliasRequest'
+      responses:
+        '200':
+          description: 成功
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PutMyAliasResponse'
+        default:
+          $ref: '#/components/responses/Problem'
+    delete:
+      operationId: deleteMyAlias
+      tags:
+      - me
+      description: 第2章 5.3
+      x-authz:
+      - approved
+      x-idempotency: none
+      responses:
+        '200':
+          description: 成功
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/DeleteMyAliasResponse'
+        default:
+          $ref: '#/components/responses/Problem'
+  /me/settings:
+    get:
+      operationId: getMySettings
+      tags:
+      - me
+      description: 第2章 5.3
+      x-authz:
+      - approved
+      x-idempotency: none
+      responses:
+        '200':
+          description: 成功
+          content:
+            application/json:
+              schema:
+                $ref: ./schemas/ft.settings.user/1.json
+        default:
+          $ref: '#/components/responses/Problem'
+    put:
+      operationId: putMySettings
+      tags:
+      - me
+      description: 第2章 5.3
+      x-authz:
+      - approved
+      x-idempotency: none
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: ./schemas/ft.settings.user/1.json
+      responses:
+        '200':
+          description: 成功
+          content:
+            application/json:
+              schema:
+                $ref: ./schemas/ft.settings.user/1.json
+        default:
+          $ref: '#/components/responses/Problem'
+  /me/erase:
+    post:
+      operationId: eraseMe
+      tags:
+      - me
+      description: 第2章 5.3
+      x-authz:
+      - approved
+      x-reauth: true
+      x-idempotency: key
+      x-errors:
+      - AUTH-006
+      - MEM-003
+      - MEM-006
+      parameters:
+      - $ref: '#/components/parameters/IdempotencyKey'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/EraseMeRequest'
+      responses:
+        '200':
+          description: 成功
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/EraseMeResponse'
+        default:
+          $ref: '#/components/responses/Problem'
+    delete:
+      operationId: cancelEraseMe
+      tags:
+      - me
+      description: 第2章 5.3
+      x-authz:
+      - approved
+      x-idempotency: none
+      responses:
+        '200':
+          description: 成功
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CancelEraseMeResponse'
+        default:
+          $ref: '#/components/responses/Problem'
+  /me/guardian/approvals/{id}:
+    parameters:
+    - name: id
+      in: path
+      required: true
+      schema:
+        $ref: ./schemas/common/uuidv7/1.json
+    post:
+      operationId: approveAsGuardian
+      tags:
+      - me
+      description: 第2章 5.3
+      x-authz:
+      - approved
+      x-authz-rule: guardian
+      x-idempotency: natural
+      x-idempotency-natural: id
+      x-errors:
+      - MEM-001
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ApproveAsGuardianRequest'
+      responses:
+        '200':
+          description: 成功
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApproveAsGuardianResponse'
+        default:
+          $ref: '#/components/responses/Problem'
+  /me/guardian/children/{id}/controls:
+    parameters:
+    - name: id
+      in: path
+      required: true
+      schema:
+        $ref: ./schemas/common/uuidv7/1.json
+    get:
+      operationId: getChildControls
+      tags:
+      - me
+      description: 第2章 5.3
+      x-authz:
+      - approved
+      x-authz-rule: guardian
+      x-idempotency: none
+      x-errors:
+      - MEM-001
+      responses:
+        '200':
+          description: 成功
+          content:
+            application/json:
+              schema:
+                $ref: ./schemas/ft.settings.guardian/1.json
+        default:
+          $ref: '#/components/responses/Problem'
+    put:
+      operationId: putChildControls
+      tags:
+      - me
+      description: 第2章 5.3
+      x-authz:
+      - approved
+      x-authz-rule: guardian
+      x-reauth: true
+      x-idempotency: none
+      x-errors:
+      - AUTH-006
+      - MEM-001
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: ./schemas/ft.settings.guardian/1.json
+      responses:
+        '200':
+          description: 成功
+          content:
+            application/json:
+              schema:
+                $ref: ./schemas/ft.settings.guardian/1.json
+        default:
+          $ref: '#/components/responses/Problem'
+  /me/report:
+    post:
+      operationId: createReport
+      tags:
+      - me
+      description: 第2章 5.3
+      x-authz:
+      - approved
+      - shell
+      x-idempotency: key
+      parameters:
+      - $ref: '#/components/parameters/IdempotencyKey'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CreateReportRequest'
+      responses:
+        '200':
+          description: 成功
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CreateReportResponse'
+        default:
+          $ref: '#/components/responses/Problem'
+  /me/devices:
+    get:
+      operationId: listMyDevices
+      tags:
+      - devices
+      description: 第2章 5.4
+      x-authz:
+      - session
+      x-idempotency: none
+      parameters:
+      - $ref: '#/components/parameters/Limit'
+      - $ref: '#/components/parameters/Before'
+      - $ref: '#/components/parameters/After'
+      responses:
+        '200':
+          description: 成功
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ListMyDevicesResponse'
+        default:
+          $ref: '#/components/responses/Problem'
+  /me/devices/{id}:
+    parameters:
+    - name: id
+      in: path
+      required: true
+      schema:
+        $ref: ./schemas/common/uuidv7/1.json
+    patch:
+      operationId: updateMyDevice
+      tags:
+      - devices
+      description: 第2章 5.4
+      x-authz:
+      - approved
+      x-idempotency: none
+      x-errors:
+      - KEY-001
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/UpdateMyDeviceRequest'
+      responses:
+        '200':
+          description: 成功
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Device'
+        default:
+          $ref: '#/components/responses/Problem'
+    delete:
+      operationId: deleteMyDevice
+      tags:
+      - devices
+      description: 第2章 5.4
+      x-authz:
+      - approved
+      x-reauth: true
+      x-idempotency: none
+      x-errors:
+      - AUTH-006
+      - KEY-001
+      responses:
+        '200':
+          description: 成功
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/DeleteMyDeviceResponse'
+        default:
+          $ref: '#/components/responses/Problem'
+  /me/devices/{id}/keys:
+    parameters:
+    - name: id
+      in: path
+      required: true
+      schema:
+        $ref: ./schemas/common/uuidv7/1.json
+    put:
+      operationId: putMyDeviceKeys
+      tags:
+      - keys
+      description: 第2章 5.4
+      x-authz:
+      - device_self
+      - shell
+      x-idempotency: none
+      x-errors:
+      - KEY-001
+      - KEY-009
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: ./schemas/fdev/1.json
+      responses:
+        '200':
+          description: 成功
+          content:
+            application/json:
+              schema:
+                $ref: ./schemas/fdev/1.json
+        default:
+          $ref: '#/components/responses/Problem'
+  /me/devices/{id}/approve:
+    parameters:
+    - name: id
+      in: path
+      required: true
+      schema:
+        $ref: ./schemas/common/uuidv7/1.json
+    post:
+      operationId: approveMyDevice
+      tags:
+      - devices
+      description: 第2章 5.4
+      x-authz:
+      - approved
+      x-reauth: true
+      x-idempotency: natural
+      x-idempotency-natural: id
+      x-errors:
+      - AUTH-006
+      - KEY-001
+      - KEY-002
+      - KEY-003
+      - MEM-006
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ApproveMyDeviceRequest'
+      responses:
+        '200':
+          description: 成功
+          content:
+            application/json:
+              schema:
+                $ref: ./schemas/fdev/1.json
+        default:
+          $ref: '#/components/responses/Problem'
+  /me/devices/{id}/keypackages:
+    parameters:
+    - name: id
+      in: path
+      required: true
+      schema:
+        $ref: ./schemas/common/uuidv7/1.json
+    post:
+      operationId: createMyKeyPackages
+      tags:
+      - keys
+      description: 第2章 5.4
+      x-authz:
+      - device_self
+      x-idempotency: natural
+      x-idempotency-natural: ref
+      x-errors:
+      - KEY-009
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CreateMyKeyPackagesRequest'
+      responses:
+        '200':
+          description: 成功
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CreateMyKeyPackagesResponse'
+        default:
+          $ref: '#/components/responses/Problem'
+    get:
+      operationId: getMyKeyPackages
+      tags:
+      - keys
+      description: 第2章 5.4
+      x-authz:
+      - device_self
+      x-idempotency: none
+      responses:
+        '200':
+          description: 成功
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/GetMyKeyPackagesResponse'
+        default:
+          $ref: '#/components/responses/Problem'
+  /users/{uid}/devices/{did}/keypackage:
+    parameters:
+    - name: uid
+      in: path
+      required: true
+      schema:
+        $ref: ./schemas/common/uuidv7/1.json
+    - name: did
+      in: path
+      required: true
+      schema:
+        $ref: ./schemas/common/uuidv7/1.json
+    post:
+      operationId: claimKeyPackage
+      tags:
+      - keys
+      description: 第2章 5.4
+      x-authz:
+      - approved
+      x-idempotency: natural
+      x-idempotency-natural: repeat_consumes
+      x-errors:
+      - KEY-001
+      - MEM-001
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ClaimKeyPackageRequest'
+      responses:
+        '200':
+          description: 成功
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ClaimKeyPackageResponse'
+        default:
+          $ref: '#/components/responses/Problem'
+  /me/keybundle:
+    get:
+      operationId: listMyKeyBundle
+      tags:
+      - keys
+      description: 第2章 5.4
+      x-authz:
+      - session
+      x-idempotency: none
+      responses:
+        '200':
+          description: 成功
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ListMyKeyBundleResponse'
+        default:
+          $ref: '#/components/responses/Problem'
+  /me/keybundle/{kind}/{target}:
+    parameters:
+    - name: kind
+      in: path
+      required: true
+      schema:
+        type: string
+    - name: target
+      in: path
+      required: true
+      schema:
+        type: string
+    get:
+      operationId: getMyKeyBundle
+      tags:
+      - keys
+      description: 第2章 5.4
+      x-authz:
+      - session
+      x-authz-rule: prf_or_approved
+      x-idempotency: none
+      x-errors:
+      - KEY-004
+      - KEY-005
+      responses:
+        '200':
+          description: 成功
+          content:
+            application/json:
+              schema:
+                $ref: ./schemas/fkb/1.json
+        default:
+          $ref: '#/components/responses/Problem'
+    put:
+      operationId: putMyKeyBundle
+      tags:
+      - keys
+      description: 第2章 5.4
+      x-authz:
+      - approved
+      x-reauth: conditional
+      x-idempotency: none
+      x-errors:
+      - AUTH-006
+      - KEY-009
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: ./schemas/fkb/1.json
+      responses:
+        '200':
+          description: 成功
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PutMyKeyBundleResponse'
+        default:
+          $ref: '#/components/responses/Problem'
+    delete:
+      operationId: deleteMyKeyBundle
+      tags:
+      - keys
+      description: 第2章 5.4
+      x-authz:
+      - approved
+      x-reauth: conditional
+      x-idempotency: none
+      x-errors:
+      - AUTH-006
+      - KEY-005
+      responses:
+        '200':
+          description: 成功
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/DeleteMyKeyBundleResponse'
+        default:
+          $ref: '#/components/responses/Problem'
+  /me/keybundle/recovery-code/verify:
+    post:
+      operationId: verifyRecoveryCode
+      tags:
+      - keys
+      description: 第2章 5.4
+      x-authz:
+      - session
+      x-idempotency: natural
+      x-idempotency-natural: repeat_safe
+      x-ratelimit:
+      - recovery
+      x-errors:
+      - KEY-005
+      - KEY-008
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/VerifyRecoveryCodeRequest'
+      responses:
+        '200':
+          description: 成功
+          content:
+            application/json:
+              schema:
+                $ref: ./schemas/fkb/1.json
+        default:
+          $ref: '#/components/responses/Problem'
+  /me/recovery-code:
+    put:
+      operationId: putMyRecoveryCode
+      tags:
+      - keys
+      description: 第2章 5.4
+      x-authz:
+      - session
+      x-authz-rule: first_or_approved
+      x-reauth: conditional
+      x-idempotency: none
+      x-errors:
+      - AUTH-006
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/PutMyRecoveryCodeRequest'
+      responses:
+        '200':
+          description: 成功
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PutMyRecoveryCodeResponse'
+        default:
+          $ref: '#/components/responses/Problem'
+  /me/signing-key:
+    put:
+      operationId: putMySigningKey
+      tags:
+      - keys
+      description: 第2章 5.4
+      x-authz:
+      - session
+      x-authz-rule: first_or_approved
+      x-idempotency: none
+      x-errors:
+      - AUTH-006
+      - KEY-009
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: ./schemas/fusr/1.json
+      responses:
+        '200':
+          description: 成功
+          content:
+            application/json:
+              schema:
+                $ref: ./schemas/fusr/1.json
+        default:
+          $ref: '#/components/responses/Problem'
+  /me/recovery/request:
+    post:
+      operationId: requestRecovery
+      tags:
+      - keys
+      description: 第2章 5.4
+      x-authz:
+      - session
+      x-idempotency: key
+      x-errors:
+      - KEY-004
+      parameters:
+      - $ref: '#/components/parameters/IdempotencyKey'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/RequestRecoveryRequest'
+      responses:
+        '200':
+          description: 成功
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/RequestRecoveryResponse'
+        default:
+          $ref: '#/components/responses/Problem'
+  /recovery/{request_id}/approve:
+    parameters:
+    - name: request_id
+      in: path
+      required: true
+      schema:
+        $ref: ./schemas/common/uuidv7/1.json
+    post:
+      operationId: approveRecovery
+      tags:
+      - keys
+      description: 第2章 5.4
+      x-authz:
+      - approved
+      x-authz-rule: share_holder
+      x-reauth: true
+      x-idempotency: natural
+      x-idempotency-natural: id
+      x-errors:
+      - AUTH-006
+      - AUTH-007
+      - KEY-009
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ApproveRecoveryRequest'
+      responses:
+        '200':
+          description: 成功
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApproveRecoveryResponse'
+        default:
+          $ref: '#/components/responses/Problem'
+  /family/recovery-key/public:
+    get:
+      operationId: getFamilyRecoveryKeyPublic
+      tags:
+      - keys
+      description: 第2章 5.4
+      x-authz:
+      - approved
+      x-idempotency: none
+      responses:
+        '200':
+          description: 成功
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/GetFamilyRecoveryKeyPublicResponse'
+        default:
+          $ref: '#/components/responses/Problem'
+  /family/recovery-key/use:
+    post:
+      operationId: useFamilyRecoveryKey
+      tags:
+      - keys
+      description: 第2章 5.4
+      x-authz:
+      - session
+      x-idempotency: key
+      x-ratelimit:
+      - recovery
+      x-errors:
+      - KEY-008
+      parameters:
+      - $ref: '#/components/parameters/IdempotencyKey'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/UseFamilyRecoveryKeyRequest'
+      responses:
+        '200':
+          description: 成功
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/UseFamilyRecoveryKeyResponse'
+        default:
+          $ref: '#/components/responses/Problem'
+  /me/keybackup:
+    get:
+      operationId: listMyKeyBackup
+      tags:
+      - keys
+      description: 第2章 5.4
+      x-authz:
+      - approved
+      x-idempotency: none
+      parameters:
+      - $ref: '#/components/parameters/Since'
+      - $ref: '#/components/parameters/Limit'
+      responses:
+        '200':
+          description: 成功
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ListMyKeyBackupResponse'
+        default:
+          $ref: '#/components/responses/Problem'
+  /me/keybackup/{group_id}/{epoch}:
+    parameters:
+    - name: group_id
+      in: path
+      required: true
+      schema:
+        type: string
+    - name: epoch
+      in: path
+      required: true
+      schema:
+        type: integer
+        minimum: 0
+    put:
+      operationId: putMyKeyBackup
+      tags:
+      - keys
+      description: 第2章 5.4
+      x-authz:
+      - approved
+      x-reauth: conditional
+      x-idempotency: none
+      x-errors:
+      - AUTH-006
+      - KEY-009
+      parameters:
+      - name: rewrap
+        in: query
+        required: false
+        description: 鍵バンドルの作り直しの後に置き換える（第2章 5.4。G-19）
+        schema:
+          type: boolean
+          default: false
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: ./schemas/fkb-history/1.json
+      responses:
+        '201':
+          description: 成功
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PutMyKeyBackupResponse'
+        '204':
+          description: 本文なし
+        default:
+          $ref: '#/components/responses/Problem'
+  /devices/{did}/inbox:
+    parameters:
+    - name: did
+      in: path
+      required: true
+      schema:
+        $ref: ./schemas/common/uuidv7/1.json
+    post:
+      operationId: putDeviceInbox
+      tags:
+      - keys
+      description: 第2章 5.4
+      x-authz:
+      - approved
+      x-idempotency: key
+      x-ratelimit:
+      - inbox
+      x-errors:
+      - KEY-001
+      - KEY-010
+      parameters:
+      - $ref: '#/components/parameters/IdempotencyKey'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/PutDeviceInboxRequest'
+      responses:
+        '200':
+          description: 成功
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PutDeviceInboxResponse'
+        default:
+          $ref: '#/components/responses/Problem'
+  /me/inbox:
+    get:
+      operationId: listMyInbox
+      tags:
+      - keys
+      description: 第2章 5.4
+      x-authz:
+      - session
+      x-idempotency: none
+      parameters:
+      - $ref: '#/components/parameters/Since'
+      - $ref: '#/components/parameters/Limit'
+      responses:
+        '200':
+          description: 成功
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ListMyInboxResponse'
+        default:
+          $ref: '#/components/responses/Problem'
+  /me/inbox/{id}:
+    parameters:
+    - name: id
+      in: path
+      required: true
+      schema:
+        $ref: ./schemas/common/uuidv7/1.json
+    delete:
+      operationId: deleteMyInboxItem
+      tags:
+      - keys
+      description: 第2章 5.4
+      x-authz:
+      - session
+      x-idempotency: none
+      responses:
+        '200':
+          description: 成功
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/DeleteMyInboxItemResponse'
+        default:
+          $ref: '#/components/responses/Problem'
+  /rooms:
+    get:
+      operationId: listRooms
+      tags:
+      - rooms
+      description: 第2章 5.5
+      x-authz:
+      - approved
+      x-idempotency: none
+      parameters:
+      - $ref: '#/components/parameters/Limit'
+      - $ref: '#/components/parameters/Before'
+      - $ref: '#/components/parameters/After'
+      responses:
+        '200':
+          description: 成功
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ListRoomsResponse'
+        default:
+          $ref: '#/components/responses/Problem'
+    post:
+      operationId: createRoom
+      tags:
+      - rooms
+      description: 第2章 5.5
+      x-authz:
+      - approved
+      x-idempotency: key
+      x-errors:
+      - MEM-001
+      - ROOM-004
+      parameters:
+      - $ref: '#/components/parameters/IdempotencyKey'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CreateRoomRequest'
+      responses:
+        '200':
+          description: 成功
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/RoomSummary'
+        default:
+          $ref: '#/components/responses/Problem'
+  /rooms/{id}:
+    parameters:
+    - name: id
+      in: path
+      required: true
+      schema:
+        $ref: ./schemas/common/uuidv7/1.json
+    get:
+      operationId: getRoom
+      tags:
+      - rooms
+      description: 第2章 5.5
+      x-authz:
+      - room_member
+      x-idempotency: none
+      x-errors:
+      - ROOM-001
+      responses:
+        '200':
+          description: 成功
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/RoomSummary'
+        default:
+          $ref: '#/components/responses/Problem'
+  /rooms/{id}/members:
+    parameters:
+    - name: id
+      in: path
+      required: true
+      schema:
+        $ref: ./schemas/common/uuidv7/1.json
+    get:
+      operationId: listRoomMembers
+      tags:
+      - rooms
+      description: 第2章 5.5
+      x-authz:
+      - room_member
+      x-idempotency: none
+      x-errors:
+      - ROOM-001
+      parameters:
+      - $ref: '#/components/parameters/Limit'
+      - $ref: '#/components/parameters/Before'
+      - $ref: '#/components/parameters/After'
+      responses:
+        '200':
+          description: 成功
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ListRoomMembersResponse'
+        default:
+          $ref: '#/components/responses/Problem'
+    post:
+      operationId: addRoomMember
+      tags:
+      - rooms
+      description: 第2章 5.5
+      x-authz:
+      - room_member
+      x-authz-rule: not_dm
+      x-idempotency: natural
+      x-idempotency-natural: user_id
+      x-errors:
+      - MEM-001
+      - MEM-002
+      - ROOM-001
+      - ROOM-003
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/AddRoomMemberRequest'
+      responses:
+        '200':
+          description: 成功
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Member'
+        default:
+          $ref: '#/components/responses/Problem'
+  /rooms/{id}/members/{uid}:
+    parameters:
+    - name: id
+      in: path
+      required: true
+      schema:
+        $ref: ./schemas/common/uuidv7/1.json
+    - name: uid
+      in: path
+      required: true
+      schema:
+        $ref: ./schemas/common/uuidv7/1.json
+    delete:
+      operationId: removeRoomMember
+      tags:
+      - rooms
+      description: 第2章 5.5
+      x-authz:
+      - room_member
+      x-authz-rule: room_member_remove
+      x-idempotency: none
+      x-errors:
+      - ROOM-001
+      - ROOM-003
+      - ROOM-011
+      - MEM-001
+      responses:
+        '200':
+          description: 成功
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/RemoveRoomMemberResponse'
+        default:
+          $ref: '#/components/responses/Problem'
+  /rooms/{id}/me:
+    parameters:
+    - name: id
+      in: path
+      required: true
+      schema:
+        $ref: ./schemas/common/uuidv7/1.json
+    put:
+      operationId: putMyRoomSettings
+      tags:
+      - rooms
+      description: 第2章 5.5
+      x-authz:
+      - room_member
+      x-idempotency: none
+      x-errors:
+      - ROOM-001
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: ./schemas/ft.settings.room_me/1.json
+      responses:
+        '200':
+          description: 成功
+          content:
+            application/json:
+              schema:
+                $ref: ./schemas/ft.settings.room_me/1.json
+        default:
+          $ref: '#/components/responses/Problem'
+  /rooms/{id}/events:
+    parameters:
+    - name: id
+      in: path
+      required: true
+      schema:
+        $ref: ./schemas/common/uuidv7/1.json
+    get:
+      operationId: listRoomEvents
+      tags:
+      - rooms
+      description: 第2章 5.5
+      x-authz:
+      - room_member
+      x-idempotency: none
+      x-errors:
+      - ROOM-001
+      parameters:
+      - $ref: '#/components/parameters/Limit'
+      - $ref: '#/components/parameters/Before'
+      - $ref: '#/components/parameters/After'
+      - name: types
+        in: query
+        required: false
+        style: form
+        explode: false
+        description: イベントの種類で絞る（ft.room_event/1 の schema の値をカンマで並べる。第2章 5.5）
+        schema:
+          type: array
+          minItems: 1
+          uniqueItems: true
+          items:
+            type: string
+            enum:
+            - ft.event.mls/1
+            - ft.event.system/1
+            - ft.event.call/1
+            - ft.event.redaction/1
+      responses:
+        '200':
+          description: 成功
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/RoomEventPage'
+        default:
+          $ref: '#/components/responses/Problem'
+    post:
+      operationId: createRoomEvent
+      tags:
+      - rooms
+      description: 第2章 5.5
+      x-authz:
+      - room_member
+      x-idempotency: key
+      x-ratelimit:
+      - send
+      x-errors:
+      - ROOM-001
+      - ROOM-005
+      - ROOM-006
+      - ROOM-012
+      - MEDIA-002
+      parameters:
+      - $ref: '#/components/parameters/IdempotencyKey'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CreateRoomEventRequest'
+      responses:
+        '200':
+          description: 成功
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Posted'
+        default:
+          $ref: '#/components/responses/Problem'
+  /rooms/{id}/events/{eid}:
+    parameters:
+    - name: id
+      in: path
+      required: true
+      schema:
+        $ref: ./schemas/common/uuidv7/1.json
+    - name: eid
+      in: path
+      required: true
+      schema:
+        $ref: ./schemas/common/uuidv7/1.json
+    get:
+      operationId: getRoomEvent
+      tags:
+      - rooms
+      description: 第2章 5.5
+      x-authz:
+      - room_member
+      x-idempotency: none
+      x-errors:
+      - ROOM-001
+      - ROOM-007
+      responses:
+        '200':
+          description: 成功
+          content:
+            application/json:
+              schema:
+                $ref: ./schemas/ft.room_event/1.json
+        default:
+          $ref: '#/components/responses/Problem'
+  /rooms/{id}/events/{eid}/redact:
+    parameters:
+    - name: id
+      in: path
+      required: true
+      schema:
+        $ref: ./schemas/common/uuidv7/1.json
+    - name: eid
+      in: path
+      required: true
+      schema:
+        $ref: ./schemas/common/uuidv7/1.json
+    post:
+      operationId: redactRoomEvent
+      tags:
+      - rooms
+      description: 第2章 5.5
+      x-authz:
+      - room_member
+      x-authz-rule: redact
+      x-idempotency: natural
+      x-idempotency-natural: eid
+      x-errors:
+      - ROOM-001
+      - ROOM-003
+      - ROOM-007
+      - ROOM-008
+      - ROOM-009
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/Reason'
+      responses:
+        '200':
+          description: 成功
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/RedactRoomEventResponse'
+        default:
+          $ref: '#/components/responses/Problem'
+  /rooms/{id}/events/{eid}/relations:
+    parameters:
+    - name: id
+      in: path
+      required: true
+      schema:
+        $ref: ./schemas/common/uuidv7/1.json
+    - name: eid
+      in: path
+      required: true
+      schema:
+        $ref: ./schemas/common/uuidv7/1.json
+    get:
+      operationId: listRoomEventRelations
+      tags:
+      - rooms
+      description: 第2章 5.5
+      x-authz:
+      - room_member
+      x-idempotency: none
+      x-errors:
+      - ROOM-001
+      - ROOM-007
+      parameters:
+      - $ref: '#/components/parameters/Limit'
+      - $ref: '#/components/parameters/Before'
+      - $ref: '#/components/parameters/After'
+      - name: rel_type
+        in: query
+        required: false
+        description: 関係の種類で絞る（ft.event.mls/1 の relates_to.rel_type。省略は全部。第4章 3.2）
+        schema:
+          type: string
+          enum:
+          - replace
+          - annotation
+          - reply
+          - thread
+      responses:
+        '200':
+          description: 成功
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/RoomEventPage'
+        default:
+          $ref: '#/components/responses/Problem'
+  /rooms/{id}/receipts:
+    parameters:
+    - name: id
+      in: path
+      required: true
+      schema:
+        $ref: ./schemas/common/uuidv7/1.json
+    post:
+      operationId: createRoomReceipts
+      tags:
+      - rooms
+      description: 第2章 5.5
+      x-authz:
+      - room_member
+      x-idempotency: natural
+      x-idempotency-natural: monotonic
+      x-errors:
+      - ROOM-001
+      - ROOM-007
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: ./schemas/ft.receipt/1.json
+      responses:
+        '200':
+          description: 成功
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CreateRoomReceiptsResponse'
+        default:
+          $ref: '#/components/responses/Problem'
+  /rooms/{id}/typing:
+    parameters:
+    - name: id
+      in: path
+      required: true
+      schema:
+        $ref: ./schemas/common/uuidv7/1.json
+    put:
+      operationId: putRoomTyping
+      tags:
+      - rooms
+      description: 第2章 5.5
+      x-authz:
+      - room_member
+      x-idempotency: natural
+      x-idempotency-natural: repeat_safe
+      x-errors:
+      - ROOM-001
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/PutRoomTypingRequest'
+      responses:
+        '200':
+          description: 成功
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PutRoomTypingResponse'
+        default:
+          $ref: '#/components/responses/Problem'
+  /rooms/{id}/scheduled:
+    parameters:
+    - name: id
+      in: path
+      required: true
+      schema:
+        $ref: ./schemas/common/uuidv7/1.json
+    get:
+      operationId: listRoomScheduled
+      tags:
+      - rooms
+      description: 第2章 5.5
+      x-authz:
+      - room_member
+      x-idempotency: none
+      x-errors:
+      - ROOM-001
+      parameters:
+      - $ref: '#/components/parameters/Limit'
+      - $ref: '#/components/parameters/Before'
+      - $ref: '#/components/parameters/After'
+      responses:
+        '200':
+          description: 成功
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ListRoomScheduledResponse'
+        default:
+          $ref: '#/components/responses/Problem'
+    post:
+      operationId: createRoomScheduled
+      tags:
+      - rooms
+      description: 第2章 5.5
+      x-authz:
+      - room_member
+      x-idempotency: key
+      x-errors:
+      - ROOM-001
+      - ROOM-005
+      - ROOM-010
+      parameters:
+      - $ref: '#/components/parameters/IdempotencyKey'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CreateRoomScheduledRequest'
+      responses:
+        '200':
+          description: 成功
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Scheduled'
+        default:
+          $ref: '#/components/responses/Problem'
+  /rooms/{id}/scheduled/{sid}:
+    parameters:
+    - name: id
+      in: path
+      required: true
+      schema:
+        $ref: ./schemas/common/uuidv7/1.json
+    - name: sid
+      in: path
+      required: true
+      schema:
+        $ref: ./schemas/common/uuidv7/1.json
+    delete:
+      operationId: deleteRoomScheduled
+      tags:
+      - rooms
+      description: 第2章 5.5
+      x-authz:
+      - room_member
+      x-authz-rule: own_scheduled
+      x-idempotency: none
+      x-errors:
+      - ROOM-001
+      - ROOM-007
+      responses:
+        '200':
+          description: 成功
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/DeleteRoomScheduledResponse'
+        default:
+          $ref: '#/components/responses/Problem'
+  /rooms/{id}/export:
+    parameters:
+    - name: id
+      in: path
+      required: true
+      schema:
+        $ref: ./schemas/common/uuidv7/1.json
+    get:
+      operationId: exportRoom
+      tags:
+      - rooms
+      description: 第2章 5.5
+      x-authz:
+      - room_member
+      x-idempotency: none
+      x-errors:
+      - ROOM-001
+      parameters:
+      - $ref: '#/components/parameters/Limit'
+      - $ref: '#/components/parameters/Before'
+      - $ref: '#/components/parameters/After'
+      responses:
+        '200':
+          description: 成功
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/RoomEventPage'
+        default:
+          $ref: '#/components/responses/Problem'
+  /rooms/{id}/mls/epoch:
+    parameters:
+    - name: id
+      in: path
+      required: true
+      schema:
+        $ref: ./schemas/common/uuidv7/1.json
+    get:
+      operationId: getRoomMlsEpoch
+      tags:
+      - rooms
+      description: 第2章 5.5
+      x-authz:
+      - room_member
+      x-idempotency: none
+      x-errors:
+      - ROOM-001
+      responses:
+        '200':
+          description: 成功
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/GetRoomMlsEpochResponse'
+        default:
+          $ref: '#/components/responses/Problem'
+  /rooms/{id}/mls/commits:
+    parameters:
+    - name: id
+      in: path
+      required: true
+      schema:
+        $ref: ./schemas/common/uuidv7/1.json
+    get:
+      operationId: listRoomMlsCommits
+      tags:
+      - rooms
+      description: 第2章 5.5
+      x-authz:
+      - room_member
+      x-idempotency: none
+      x-errors:
+      - ROOM-001
+      parameters:
+      - name: since_epoch
+        in: query
+        required: false
+        description: この epoch より後の Commit。省略は最初から（第2章 5.5）
+        schema:
+          type: integer
+          minimum: 0
+          default: 0
+      - $ref: '#/components/parameters/Limit'
+      responses:
+        '200':
+          description: 成功
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ListRoomMlsCommitsResponse'
+        default:
+          $ref: '#/components/responses/Problem'
+  /rooms/{id}/mls/commit:
+    parameters:
+    - name: id
+      in: path
+      required: true
+      schema:
+        $ref: ./schemas/common/uuidv7/1.json
+    post:
+      operationId: createRoomMlsCommit
+      tags:
+      - rooms
+      description: 第2章 5.5
+      x-authz:
+      - room_member
+      x-idempotency: natural
+      x-idempotency-natural: epoch
+      x-ratelimit:
+      - commit
+      x-errors:
+      - ROOM-001
+      - KEY-007
+      - KEY-009
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CreateRoomMlsCommitRequest'
+      responses:
+        '200':
+          description: 成功
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CreateRoomMlsCommitResponse'
+        default:
+          $ref: '#/components/responses/Problem'
+  /rooms/{id}/mls/proposals:
+    parameters:
+    - name: id
+      in: path
+      required: true
+      schema:
+        $ref: ./schemas/common/uuidv7/1.json
+    post:
+      operationId: createRoomMlsProposal
+      tags:
+      - rooms
+      description: 第2章 5.5
+      x-authz:
+      - room_member
+      x-idempotency: natural
+      x-idempotency-natural: proposal_ref
+      x-errors:
+      - ROOM-001
+      - KEY-009
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CreateRoomMlsProposalRequest'
+      responses:
+        '200':
+          description: 成功
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CreateRoomMlsProposalResponse'
+        default:
+          $ref: '#/components/responses/Problem'
+  /media/config:
+    get:
+      operationId: getMediaConfig
+      tags:
+      - media
+      description: 第2章 5.6
+      x-authz:
+      - approved
+      x-idempotency: none
+      responses:
+        '200':
+          description: 成功
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/GetMediaConfigResponse'
+        default:
+          $ref: '#/components/responses/Problem'
+  /media/slots:
+    post:
+      operationId: createMediaSlots
+      tags:
+      - media
+      description: 第2章 5.6
+      x-authz:
+      - approved
+      x-idempotency: key
+      x-ratelimit:
+      - media_slots
+      x-errors:
+      - MEDIA-001
+      - SRV-002
+      parameters:
+      - $ref: '#/components/parameters/IdempotencyKey'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CreateMediaSlotsRequest'
+      responses:
+        '200':
+          description: 成功
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CreateMediaSlotsResponse'
+        default:
+          $ref: '#/components/responses/Problem'
+  /media/{id}:
+    parameters:
+    - name: id
+      in: path
+      required: true
+      schema:
+        $ref: ./schemas/common/uuidv7/1.json
+    head:
+      operationId: headMedia
+      tags:
+      - media
+      description: 第2章 5.6
+      x-authz:
+      - approved
+      x-authz-rule: slot_owner
+      x-idempotency: none
+      x-errors:
+      - MEDIA-002
+      responses:
+        '200':
+          description: 本文なし
+        default:
+          $ref: '#/components/responses/Problem'
+    patch:
+      operationId: appendMedia
+      tags:
+      - media
+      description: 第2章 5.6
+      x-authz:
+      - approved
+      x-authz-rule: slot_owner
+      x-idempotency: natural
+      x-idempotency-natural: offset
+      x-ratelimit:
+      - media_append
+      x-errors:
+      - MEDIA-002
+      - MEDIA-003
+      - MEDIA-004
+      - MEDIA-001
+      - SRV-002
+      requestBody:
+        required: true
+        content:
+          application/offset+octet-stream:
+            schema:
+              type: string
+              format: binary
+      responses:
+        '200':
+          description: 成功
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AppendMediaResponse'
+        default:
+          $ref: '#/components/responses/Problem'
+    get:
+      operationId: getMedia
+      tags:
+      - media
+      description: 第2章 5.6
+      x-authz:
+      - approved
+      x-authz-rule: media_read
+      x-idempotency: none
+      x-errors:
+      - MEDIA-002
+      - MEDIA-005
+      - MEDIA-006
+      responses:
+        '200':
+          description: 成功
+          content:
+            application/octet-stream:
+              schema:
+                $ref: '#/components/schemas/Binary'
+        default:
+          $ref: '#/components/responses/Problem'
+    delete:
+      operationId: deleteMedia
+      tags:
+      - media
+      description: 第2章 5.6
+      x-authz:
+      - approved
+      x-authz-rule: slot_owner
+      x-idempotency: none
+      x-errors:
+      - MEDIA-002
+      responses:
+        '200':
+          description: 成功
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/DeleteMediaResponse'
+        default:
+          $ref: '#/components/responses/Problem'
+  /preview:
+    post:
+      operationId: createPreview
+      tags:
+      - media
+      description: 第2章 5.6
+      x-authz:
+      - approved
+      x-idempotency: natural
+      x-idempotency-natural: url
+      x-ratelimit:
+      - preview
+      x-errors:
+      - MEDIA-010
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CreatePreviewRequest'
+      responses:
+        '200':
+          description: 成功
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CreatePreviewResponse'
+        default:
+          $ref: '#/components/responses/Problem'
+  /media/preview/{staged_id}:
+    parameters:
+    - name: staged_id
+      in: path
+      required: true
+      schema:
+        $ref: ./schemas/common/uuidv7/1.json
+    get:
+      operationId: getPreviewImage
+      tags:
+      - media
+      description: 第2章 5.6
+      x-authz:
+      - approved
+      x-authz-rule: preview_owner
+      x-idempotency: none
+      x-errors:
+      - MEDIA-002
+      responses:
+        '200':
+          description: 成功
+          content:
+            application/octet-stream:
+              schema:
+                $ref: '#/components/schemas/Binary'
+        default:
+          $ref: '#/components/responses/Problem'
+  /maps/{version}/{file}:
+    servers:
+    - url: /
+    parameters:
+    - name: version
+      in: path
+      required: true
+      schema:
+        type: string
+    - name: file
+      in: path
+      required: true
+      schema:
+        type: string
+    get:
+      operationId: getMapTile
+      tags:
+      - static
+      description: 第2章 5.6
+      x-authz:
+      - approved
+      x-idempotency: none
+      x-served-by: caddy
+      responses:
+        '200':
+          description: 成功
+          content:
+            application/octet-stream:
+              schema:
+                $ref: '#/components/schemas/Binary'
+        default:
+          $ref: '#/components/responses/Problem'
+  /rooms/{id}/calls:
+    parameters:
+    - name: id
+      in: path
+      required: true
+      schema:
+        $ref: ./schemas/common/uuidv7/1.json
+    post:
+      operationId: startCall
+      tags:
+      - calls
+      description: 第2章 5.7
+      x-authz:
+      - room_member
+      x-idempotency: key
+      x-errors:
+      - ROOM-001
+      - CALL-002
+      - CALL-003
+      - CALL-004
+      - CALL-005
+      parameters:
+      - $ref: '#/components/parameters/IdempotencyKey'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CallVideo'
+      responses:
+        '200':
+          description: 成功
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/StartCallResponse'
+        default:
+          $ref: '#/components/responses/Problem'
+  /calls/{id}:
+    parameters:
+    - name: id
+      in: path
+      required: true
+      schema:
+        $ref: ./schemas/common/uuidv7/1.json
+    get:
+      operationId: getCall
+      tags:
+      - calls
+      description: 第2章 5.7
+      x-authz:
+      - approved
+      x-authz-rule: call_room_member
+      x-idempotency: none
+      x-errors:
+      - CALL-001
+      responses:
+        '200':
+          description: 成功
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Call'
+        default:
+          $ref: '#/components/responses/Problem'
+  /calls/{id}/join:
+    parameters:
+    - name: id
+      in: path
+      required: true
+      schema:
+        $ref: ./schemas/common/uuidv7/1.json
+    post:
+      operationId: joinCall
+      tags:
+      - calls
+      description: 第2章 5.7
+      x-authz:
+      - approved
+      x-authz-rule: call_room_member
+      x-idempotency: natural
+      x-idempotency-natural: id
+      x-errors:
+      - CALL-001
+      - CALL-002
+      - CALL-004
+      - CALL-006
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CallVideo'
+      responses:
+        '200':
+          description: 成功
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/JoinCallResponse'
+        default:
+          $ref: '#/components/responses/Problem'
+  /calls/{id}/decline:
+    parameters:
+    - name: id
+      in: path
+      required: true
+      schema:
+        $ref: ./schemas/common/uuidv7/1.json
+    post:
+      operationId: declineCall
+      tags:
+      - calls
+      description: 第2章 5.7
+      x-authz:
+      - approved
+      x-authz-rule: call_callee
+      x-idempotency: natural
+      x-idempotency-natural: id
+      x-errors:
+      - CALL-001
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/DeclineCallRequest'
+      responses:
+        '200':
+          description: 成功
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/DeclineCallResponse'
+        default:
+          $ref: '#/components/responses/Problem'
+  /calls/{id}/leave:
+    parameters:
+    - name: id
+      in: path
+      required: true
+      schema:
+        $ref: ./schemas/common/uuidv7/1.json
+    post:
+      operationId: leaveCall
+      tags:
+      - calls
+      description: 第2章 5.7
+      x-authz:
+      - approved
+      x-authz-rule: call_participant
+      x-idempotency: natural
+      x-idempotency-natural: id
+      x-errors:
+      - CALL-001
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/LeaveCallRequest'
+      responses:
+        '200':
+          description: 成功
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/LeaveCallResponse'
+        default:
+          $ref: '#/components/responses/Problem'
+  /calls/{id}/end:
+    parameters:
+    - name: id
+      in: path
+      required: true
+      schema:
+        $ref: ./schemas/common/uuidv7/1.json
+    post:
+      operationId: endCall
+      tags:
+      - calls
+      description: 第2章 5.7
+      x-authz:
+      - approved
+      x-authz-rule: call_caller_or_participant
+      x-idempotency: natural
+      x-idempotency-natural: id
+      x-errors:
+      - CALL-001
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/EndCallRequest'
+      responses:
+        '200':
+          description: 成功
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/EndCallResponse'
+        default:
+          $ref: '#/components/responses/Problem'
+  /calls/{id}/turn:
+    parameters:
+    - name: id
+      in: path
+      required: true
+      schema:
+        $ref: ./schemas/common/uuidv7/1.json
+    get:
+      operationId: getCallTurn
+      tags:
+      - calls
+      description: 第2章 5.7
+      x-authz:
+      - approved
+      x-authz-rule: call_participant
+      x-idempotency: none
+      x-errors:
+      - CALL-001
+      responses:
+        '200':
+          description: 成功
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/GetCallTurnResponse'
+        default:
+          $ref: '#/components/responses/Problem'
+  /me/calls:
+    get:
+      operationId: listMyCalls
+      tags:
+      - calls
+      description: 第2章 5.7
+      x-authz:
+      - approved
+      x-idempotency: none
+      parameters:
+      - $ref: '#/components/parameters/Limit'
+      - $ref: '#/components/parameters/Before'
+      - $ref: '#/components/parameters/After'
+      responses:
+        '200':
+          description: 成功
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ListMyCallsResponse'
+        default:
+          $ref: '#/components/responses/Problem'
+  /me/devices/{id}/push:
+    parameters:
+    - name: id
+      in: path
+      required: true
+      schema:
+        $ref: ./schemas/common/uuidv7/1.json
+    put:
+      operationId: putMyDevicePush
+      tags:
+      - push
+      description: 第2章 5.8
+      x-authz:
+      - device_self
+      x-idempotency: none
+      x-errors:
+      - PUSH-001
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/PushSubscription'
+      responses:
+        '200':
+          description: 成功
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PutMyDevicePushResponse'
+        default:
+          $ref: '#/components/responses/Problem'
+    delete:
+      operationId: deleteMyDevicePush
+      tags:
+      - push
+      description: 第2章 5.8
+      x-authz:
+      - device_self
+      x-idempotency: none
+      responses:
+        '200':
+          description: 成功
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/DeleteMyDevicePushResponse'
+        default:
+          $ref: '#/components/responses/Problem'
+  /me/devices/{id}/push/test:
+    parameters:
+    - name: id
+      in: path
+      required: true
+      schema:
+        $ref: ./schemas/common/uuidv7/1.json
+    post:
+      operationId: testMyDevicePush
+      tags:
+      - push
+      description: 第2章 5.8
+      x-authz:
+      - device_self
+      x-idempotency: natural
+      x-idempotency-natural: repeat_safe
+      x-errors:
+      - PUSH-002
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/TestMyDevicePushRequest'
+      responses:
+        '200':
+          description: 成功
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/TestMyDevicePushResponse'
+        default:
+          $ref: '#/components/responses/Problem'
+  /me/push/vapid:
+    get:
+      operationId: getVapid
+      tags:
+      - push
+      description: 第2章 5.8
+      x-authz:
+      - session
+      x-idempotency: none
+      responses:
+        '200':
+          description: 成功
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/GetVapidResponse'
+        default:
+          $ref: '#/components/responses/Problem'
+  /me/notifications/pause:
+    put:
+      operationId: putNotificationPause
+      tags:
+      - push
+      description: 第2章 5.8
+      x-authz:
+      - approved
+      x-idempotency: none
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/PutNotificationPauseRequest'
+      responses:
+        '200':
+          description: 成功
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PutNotificationPauseResponse'
+        default:
+          $ref: '#/components/responses/Problem'
+  /up/register:
+    post:
+      operationId: registerUp
+      tags:
+      - shell
+      description: 第2章 5.8
+      x-authz:
+      - shell
+      x-idempotency: natural
+      x-idempotency-natural: repeat_safe
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/RegisterUpRequest'
+      responses:
+        '200':
+          description: 成功
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/RegisterUpResponse'
+        default:
+          $ref: '#/components/responses/Problem'
+  /up/{token}:
+    servers:
+    - url: /
+    parameters:
+    - name: token
+      in: path
+      required: true
+      schema:
+        type: string
+    post:
+      operationId: receiveUp
+      tags:
+      - shell
+      description: 第2章 5.8
+      x-authz:
+      - none
+      x-idempotency: natural
+      x-idempotency-natural: repeat_safe
+      x-errors:
+      - PUSH-003
+      requestBody:
+        required: true
+        content:
+          application/octet-stream:
+            schema:
+              type: string
+              format: binary
+      responses:
+        '201':
+          description: 成功
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ReceiveUpResponse'
+        default:
+          $ref: '#/components/responses/Problem'
+  /up/ws:
+    get:
+      operationId: connectUpWs
+      tags:
+      - shell
+      description: 第2章 5.8
+      x-authz:
+      - shell
+      x-idempotency: none
+      x-websocket: upWs
+      x-errors:
+      - AUTH-002
+      responses:
+        '101':
+          description: WebSocket に切り替える（メッセージは asyncapi.yaml）
+        default:
+          $ref: '#/components/responses/Problem'
+  /sync:
+    get:
+      operationId: getSync
+      tags:
+      - sync
+      description: 第2章 5.9
+      x-authz:
+      - session
+      x-idempotency: none
+      x-errors:
+      - NET-005
+      parameters:
+      - name: since
+        in: query
+        required: false
+        description: この pos より後のイベント。省略は初回（snapshot を返す。第2章 5.9）
+        schema:
+          $ref: ./schemas/common/pos/1.json
+      - name: timeout
+        in: query
+        required: false
+        description: イベントが来るまで待つ秒（ロングポール。第2章 5.9）
+        schema:
+          type: integer
+          minimum: 0
+          maximum: 30
+          default: 0
+      - $ref: '#/components/parameters/Limit'
+      responses:
+        '200':
+          description: 成功
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/GetSyncResponse'
+        default:
+          $ref: '#/components/responses/Problem'
+  /ws:
+    get:
+      operationId: connectWs
+      tags:
+      - sync
+      description: 第2章 5.9
+      x-authz:
+      - ws_token
+      x-idempotency: none
+      x-ratelimit:
+      - ws_messages
+      x-websocket: ws
+      responses:
+        '101':
+          description: WebSocket に切り替える（メッセージは asyncapi.yaml）
+        default:
+          $ref: '#/components/responses/Problem'
+  /admin/settings:
+    get:
+      operationId: getAdminSettings
+      tags:
+      - admin
+      description: 第2章 5.10
+      x-authz:
+      - admin
+      x-idempotency: none
+      x-ratelimit:
+      - admin
+      responses:
+        '200':
+          description: 成功
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AdminSettingsView'
+        default:
+          $ref: '#/components/responses/Problem'
+    put:
+      operationId: putAdminSettings
+      tags:
+      - admin
+      description: 第2章 5.10
+      x-authz:
+      - admin
+      x-reauth: true
+      x-idempotency: none
+      x-ratelimit:
+      - admin
+      x-readonly: allow
+      x-errors:
+      - ADM-002
+      - ADM-004
+      - AUTH-006
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: ./schemas/ft.settings.server/1.json
+      responses:
+        '200':
+          description: 成功
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AdminSettingsView'
+        default:
+          $ref: '#/components/responses/Problem'
+  /admin/users:
+    get:
+      operationId: listAdminUsers
+      tags:
+      - admin
+      description: 第2章 5.10
+      x-authz:
+      - admin
+      x-idempotency: none
+      x-ratelimit:
+      - admin
+      parameters:
+      - $ref: '#/components/parameters/Limit'
+      - $ref: '#/components/parameters/Before'
+      - $ref: '#/components/parameters/After'
+      responses:
+        '200':
+          description: 成功
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ListAdminUsersResponse'
+        default:
+          $ref: '#/components/responses/Problem'
+  /admin/users/{id}/suspend:
+    parameters:
+    - name: id
+      in: path
+      required: true
+      schema:
+        $ref: ./schemas/common/uuidv7/1.json
+    post:
+      operationId: suspendUser
+      tags:
+      - admin
+      description: 第2章 5.10
+      x-authz:
+      - admin
+      x-authz-rule: last_admin
+      x-reauth: true
+      x-idempotency: natural
+      x-idempotency-natural: id
+      x-ratelimit:
+      - admin
+      x-errors:
+      - AUTH-006
+      - MEM-001
+      - MEM-002
+      - MEM-003
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/Reason'
+      responses:
+        '200':
+          description: 成功
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SuspendUserResponse'
+        default:
+          $ref: '#/components/responses/Problem'
+  /admin/users/{id}/unsuspend:
+    parameters:
+    - name: id
+      in: path
+      required: true
+      schema:
+        $ref: ./schemas/common/uuidv7/1.json
+    post:
+      operationId: unsuspendUser
+      tags:
+      - admin
+      description: 第2章 5.10
+      x-authz:
+      - admin
+      x-reauth: true
+      x-idempotency: natural
+      x-idempotency-natural: id
+      x-ratelimit:
+      - admin
+      x-errors:
+      - AUTH-006
+      - MEM-001
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/UnsuspendUserRequest'
+      responses:
+        '200':
+          description: 成功
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/UnsuspendUserResponse'
+        default:
+          $ref: '#/components/responses/Problem'
+  /admin/users/{id}:
+    parameters:
+    - name: id
+      in: path
+      required: true
+      schema:
+        $ref: ./schemas/common/uuidv7/1.json
+    delete:
+      operationId: deleteUser
+      tags:
+      - admin
+      description: 第2章 5.10
+      x-authz:
+      - admin
+      x-authz-rule: last_admin
+      x-reauth: true
+      x-idempotency: key
+      x-ratelimit:
+      - admin
+      x-errors:
+      - AUTH-006
+      - MEM-001
+      - MEM-003
+      parameters:
+      - $ref: '#/components/parameters/IdempotencyKey'
+      - name: erase_content
+        in: query
+        required: false
+        description: 投稿の中身も消す（第2章 5.10）
+        schema:
+          type: boolean
+          default: false
+      responses:
+        '200':
+          description: 成功
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/DeleteUserResponse'
+        default:
+          $ref: '#/components/responses/Problem'
+  /admin/users/{id}/devices/{did}:
+    parameters:
+    - name: id
+      in: path
+      required: true
+      schema:
+        $ref: ./schemas/common/uuidv7/1.json
+    - name: did
+      in: path
+      required: true
+      schema:
+        $ref: ./schemas/common/uuidv7/1.json
+    delete:
+      operationId: deleteUserDevice
+      tags:
+      - admin
+      description: 第2章 5.10
+      x-authz:
+      - admin
+      x-idempotency: none
+      x-ratelimit:
+      - admin
+      x-errors:
+      - MEM-001
+      - KEY-001
+      responses:
+        '200':
+          description: 成功
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/DeleteUserDeviceResponse'
+        default:
+          $ref: '#/components/responses/Problem'
+  /admin/users/{id}/reset-link:
+    parameters:
+    - name: id
+      in: path
+      required: true
+      schema:
+        $ref: ./schemas/common/uuidv7/1.json
+    post:
+      operationId: createResetLink
+      tags:
+      - admin
+      description: 第2章 5.10
+      x-authz:
+      - admin
+      x-idempotency: key
+      x-ratelimit:
+      - admin
+      x-errors:
+      - MEM-001
+      - MEM-002
+      parameters:
+      - $ref: '#/components/parameters/IdempotencyKey'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CreateResetLinkRequest'
+      responses:
+        '200':
+          description: 成功
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CreateResetLinkResponse'
+        default:
+          $ref: '#/components/responses/Problem'
+  /admin/users/{id}/role:
+    parameters:
+    - name: id
+      in: path
+      required: true
+      schema:
+        $ref: ./schemas/common/uuidv7/1.json
+    put:
+      operationId: putUserRole
+      tags:
+      - admin
+      description: 第2章 5.10
+      x-authz:
+      - admin
+      x-authz-rule: last_admin
+      x-reauth: true
+      x-idempotency: none
+      x-ratelimit:
+      - admin
+      x-errors:
+      - AUTH-006
+      - MEM-001
+      - MEM-003
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/PutUserRoleRequest'
+      responses:
+        '200':
+          description: 成功
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/User'
+        default:
+          $ref: '#/components/responses/Problem'
+  /admin/users/{id}/guardians:
+    parameters:
+    - name: id
+      in: path
+      required: true
+      schema:
+        $ref: ./schemas/common/uuidv7/1.json
+    put:
+      operationId: putUserGuardians
+      tags:
+      - admin
+      description: 第2章 5.10
+      x-authz:
+      - admin
+      x-reauth: true
+      x-idempotency: none
+      x-ratelimit:
+      - admin
+      x-errors:
+      - AUTH-006
+      - MEM-001
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/PutUserGuardiansRequest'
+      responses:
+        '200':
+          description: 成功
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PutUserGuardiansResponse'
+        default:
+          $ref: '#/components/responses/Problem'
+  /admin/users/{id}/child:
+    parameters:
+    - name: id
+      in: path
+      required: true
+      schema:
+        $ref: ./schemas/common/uuidv7/1.json
+    put:
+      operationId: putUserChild
+      tags:
+      - admin
+      description: 第2章 5.10
+      x-authz:
+      - admin
+      x-reauth: true
+      x-idempotency: none
+      x-ratelimit:
+      - admin
+      x-errors:
+      - AUTH-006
+      - MEM-001
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/PutUserChildRequest'
+      responses:
+        '200':
+          description: 成功
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PutUserChildResponse'
+        default:
+          $ref: '#/components/responses/Problem'
+  /admin/rooms:
+    get:
+      operationId: listAdminRooms
+      tags:
+      - admin
+      description: 第2章 5.10
+      x-authz:
+      - admin
+      x-idempotency: none
+      x-ratelimit:
+      - admin
+      parameters:
+      - $ref: '#/components/parameters/Limit'
+      - $ref: '#/components/parameters/Before'
+      - $ref: '#/components/parameters/After'
+      responses:
+        '200':
+          description: 成功
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ListAdminRoomsResponse'
+        default:
+          $ref: '#/components/responses/Problem'
+  /admin/rooms/{id}:
+    parameters:
+    - name: id
+      in: path
+      required: true
+      schema:
+        $ref: ./schemas/common/uuidv7/1.json
+    delete:
+      operationId: deleteAdminRoom
+      tags:
+      - admin
+      description: 第2章 5.10
+      x-authz:
+      - admin
+      x-authz-rule: empty_group
+      x-idempotency: none
+      x-ratelimit:
+      - admin
+      x-errors:
+      - ROOM-001
+      - ROOM-003
+      - ROOM-011
+      responses:
+        '200':
+          description: 成功
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/DeleteAdminRoomResponse'
+        default:
+          $ref: '#/components/responses/Problem'
+  /admin/backup/keys:
+    post:
+      operationId: showBackupKeys
+      tags:
+      - admin
+      description: 第2章 5.10
+      x-authz:
+      - admin
+      x-reauth: true
+      x-idempotency: natural
+      x-idempotency-natural: repeat_safe
+      x-ratelimit:
+      - admin
+      x-readonly: allow
+      x-errors:
+      - AUTH-006
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ShowBackupKeysRequest'
+      responses:
+        '200':
+          description: 成功
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ShowBackupKeysResponse'
+        default:
+          $ref: '#/components/responses/Problem'
+  /admin/update/rollback:
+    post:
+      operationId: rollbackUpdate
+      tags:
+      - admin
+      description: 第2章 5.10
+      x-authz:
+      - admin
+      x-reauth: true
+      x-idempotency: key
+      x-ratelimit:
+      - admin
+      x-readonly: allow
+      x-errors:
+      - ADM-003
+      - AUTH-006
+      parameters:
+      - $ref: '#/components/parameters/IdempotencyKey'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/RollbackUpdateRequest'
+      responses:
+        '200':
+          description: 成功
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Job'
+        default:
+          $ref: '#/components/responses/Problem'
+  /admin/invites:
+    get:
+      operationId: listAdminInvites
+      tags:
+      - admin
+      description: 第2章 5.10
+      x-authz:
+      - admin
+      x-idempotency: none
+      x-ratelimit:
+      - admin
+      parameters:
+      - $ref: '#/components/parameters/Limit'
+      - $ref: '#/components/parameters/Before'
+      - $ref: '#/components/parameters/After'
+      responses:
+        '200':
+          description: 成功
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/InvitePage'
+        default:
+          $ref: '#/components/responses/Problem'
+  /admin/audit:
+    get:
+      operationId: listAdminAudit
+      tags:
+      - admin
+      description: 第2章 5.10
+      x-authz:
+      - admin
+      x-idempotency: none
+      x-ratelimit:
+      - admin
+      parameters:
+      - $ref: '#/components/parameters/Limit'
+      - $ref: '#/components/parameters/Before'
+      - $ref: '#/components/parameters/After'
+      responses:
+        '200':
+          description: 成功
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ListAdminAuditResponse'
+        default:
+          $ref: '#/components/responses/Problem'
+  /admin/storage:
+    get:
+      operationId: getAdminStorage
+      tags:
+      - admin
+      description: 第2章 5.10
+      x-authz:
+      - admin
+      x-idempotency: none
+      x-ratelimit:
+      - admin
+      responses:
+        '200':
+          description: 成功
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/GetAdminStorageResponse'
+        default:
+          $ref: '#/components/responses/Problem'
+  /admin/retention:
+    get:
+      operationId: getAdminRetention
+      tags:
+      - admin
+      description: 第2章 5.10
+      x-authz:
+      - admin
+      x-idempotency: none
+      x-ratelimit:
+      - admin
+      responses:
+        '200':
+          description: 成功
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/GetAdminRetentionResponse'
+        default:
+          $ref: '#/components/responses/Problem'
+    put:
+      operationId: putAdminRetention
+      tags:
+      - admin
+      description: 第2章 5.10
+      x-authz:
+      - admin
+      x-reauth: true
+      x-idempotency: none
+      x-ratelimit:
+      - admin
+      x-readonly: allow
+      x-errors:
+      - ADM-004
+      - AUTH-006
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/PutAdminRetentionRequest'
+      responses:
+        '200':
+          description: 成功
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PutAdminRetentionResponse'
+        default:
+          $ref: '#/components/responses/Problem'
+  /admin/backup:
+    get:
+      operationId: getAdminBackup
+      tags:
+      - admin
+      description: 第2章 5.10
+      x-authz:
+      - admin
+      x-idempotency: none
+      x-ratelimit:
+      - admin
+      responses:
+        '200':
+          description: 成功
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/GetAdminBackupResponse'
+        default:
+          $ref: '#/components/responses/Problem'
+    post:
+      operationId: runAdminBackup
+      tags:
+      - admin
+      description: 第2章 5.10
+      x-authz:
+      - admin
+      x-idempotency: key
+      x-ratelimit:
+      - admin
+      x-readonly: allow
+      x-errors:
+      - ADM-003
+      parameters:
+      - $ref: '#/components/parameters/IdempotencyKey'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/RunAdminBackupRequest'
+      responses:
+        '200':
+          description: 成功
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Job'
+        default:
+          $ref: '#/components/responses/Problem'
+  /admin/backup/restore-test:
+    post:
+      operationId: runRestoreTest
+      tags:
+      - admin
+      description: 第2章 5.10
+      x-authz:
+      - admin
+      x-idempotency: key
+      x-ratelimit:
+      - admin
+      x-readonly: allow
+      x-errors:
+      - ADM-003
+      parameters:
+      - $ref: '#/components/parameters/IdempotencyKey'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/RunRestoreTestRequest'
+      responses:
+        '200':
+          description: 成功
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Job'
+        default:
+          $ref: '#/components/responses/Problem'
+  /admin/update:
+    get:
+      operationId: getAdminUpdate
+      tags:
+      - admin
+      description: 第2章 5.10
+      x-authz:
+      - admin
+      x-idempotency: none
+      x-ratelimit:
+      - admin
+      responses:
+        '200':
+          description: 成功
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/GetAdminUpdateResponse'
+        default:
+          $ref: '#/components/responses/Problem'
+    post:
+      operationId: applyAdminUpdate
+      tags:
+      - admin
+      description: 第2章 5.10
+      x-authz:
+      - admin
+      x-reauth: true
+      x-idempotency: key
+      x-ratelimit:
+      - admin
+      x-readonly: allow
+      x-errors:
+      - ADM-003
+      - AUTH-006
+      parameters:
+      - $ref: '#/components/parameters/IdempotencyKey'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ApplyAdminUpdateRequest'
+      responses:
+        '200':
+          description: 成功
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Job'
+        default:
+          $ref: '#/components/responses/Problem'
+  /admin/health:
+    get:
+      operationId: getAdminHealth
+      tags:
+      - admin
+      description: 第2章 5.10
+      x-authz:
+      - admin
+      x-idempotency: none
+      x-ratelimit:
+      - admin
+      responses:
+        '200':
+          description: 成功
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/GetAdminHealthResponse'
+        default:
+          $ref: '#/components/responses/Problem'
+  /admin/maps:
+    get:
+      operationId: getAdminMaps
+      tags:
+      - admin
+      description: 第2章 5.10
+      x-authz:
+      - admin
+      x-idempotency: none
+      x-ratelimit:
+      - admin
+      responses:
+        '200':
+          description: 成功
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/GetAdminMapsResponse'
+        default:
+          $ref: '#/components/responses/Problem'
+    post:
+      operationId: updateAdminMaps
+      tags:
+      - admin
+      description: 第2章 5.10
+      x-authz:
+      - admin
+      x-idempotency: key
+      x-ratelimit:
+      - admin
+      x-errors:
+      - ADM-003
+      parameters:
+      - $ref: '#/components/parameters/IdempotencyKey'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/UpdateAdminMapsRequest'
+      responses:
+        '200':
+          description: 成功
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Job'
+        default:
+          $ref: '#/components/responses/Problem'
+  /admin/transfer:
+    post:
+      operationId: createAdminTransfer
+      tags:
+      - admin
+      description: 第2章 5.10
+      x-authz:
+      - admin
+      x-reauth: true
+      x-idempotency: key
+      x-ratelimit:
+      - admin
+      x-errors:
+      - AUTH-006
+      - MEM-001
+      - MEM-002
+      parameters:
+      - $ref: '#/components/parameters/IdempotencyKey'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CreateAdminTransferRequest'
+      responses:
+        '200':
+          description: 成功
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CreateAdminTransferResponse'
+        default:
+          $ref: '#/components/responses/Problem'
+  /me/transfer/{id}/accept:
+    parameters:
+    - name: id
+      in: path
+      required: true
+      schema:
+        $ref: ./schemas/common/uuidv7/1.json
+    post:
+      operationId: acceptAdminTransfer
+      tags:
+      - me
+      description: 第2章 5.10
+      x-authz:
+      - approved
+      x-authz-rule: transfer_target
+      x-idempotency: natural
+      x-idempotency-natural: id
+      x-errors:
+      - AUTH-007
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/AcceptAdminTransferRequest'
+      responses:
+        '200':
+          description: 成功
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AcceptAdminTransferResponse'
+        default:
+          $ref: '#/components/responses/Problem'
+  /admin/family:
+    patch:
+      operationId: updateAdminFamily
+      tags:
+      - admin
+      description: 第2章 5.10
+      x-authz:
+      - admin
+      x-idempotency: none
+      x-ratelimit:
+      - admin
+      x-errors:
+      - MEM-005
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/UpdateAdminFamilyRequest'
+      responses:
+        '200':
+          description: 成功
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Family'
+        default:
+          $ref: '#/components/responses/Problem'
+  /admin/family/recovery-key/rotate:
+    post:
+      operationId: rotateFamilyRecoveryKey
+      tags:
+      - admin
+      description: 第2章 5.10
+      x-authz:
+      - admin
+      x-reauth: true
+      x-idempotency: key
+      x-ratelimit:
+      - admin
+      x-errors:
+      - AUTH-006
+      parameters:
+      - $ref: '#/components/parameters/IdempotencyKey'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/RotateFamilyRecoveryKeyRequest'
+      responses:
+        '200':
+          description: 成功
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/RotateFamilyRecoveryKeyResponse'
+        default:
+          $ref: '#/components/responses/Problem'
+  /admin/disk/dispose:
+    get:
+      operationId: getDiskDisposeGuide
+      tags:
+      - admin
+      description: 第2章 5.10
+      x-authz:
+      - admin
+      x-idempotency: none
+      x-ratelimit:
+      - admin
+      responses:
+        '200':
+          description: 成功
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/GetDiskDisposeGuideResponse'
+        default:
+          $ref: '#/components/responses/Problem'
+  /admin/logs/summary:
+    get:
+      operationId: getAdminLogsSummary
+      tags:
+      - admin
+      description: 第2章 5.10
+      x-authz:
+      - admin
+      x-idempotency: none
+      x-ratelimit:
+      - admin
+      responses:
+        '200':
+          description: 成功
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/GetAdminLogsSummaryResponse'
+        default:
+          $ref: '#/components/responses/Problem'
+  /health:
+    servers:
+    - url: /
+    get:
+      operationId: getHealth
+      tags:
+      - server
+      description: 第2章 5.11
+      x-authz:
+      - none
+      x-idempotency: none
+      x-ratelimit:
+      - public
+      responses:
+        '200':
+          description: 成功
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/GetHealthResponse'
+        '503':
+          description: 第2章 5
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/GetHealthResponse'
+        default:
+          $ref: '#/components/responses/Problem'
+  /version:
+    servers:
+    - url: /
+    get:
+      operationId: getVersion
+      tags:
+      - server
+      description: 第2章 5.11
+      x-authz:
+      - none
+      x-idempotency: none
+      x-ratelimit:
+      - public
+      responses:
+        '200':
+          description: 成功
+          content:
+            application/json:
+              schema:
+                $ref: ./schemas/ft.version/1.json
+        default:
+          $ref: '#/components/responses/Problem'
+  /.well-known/security.txt:
+    servers:
+    - url: /
+    get:
+      operationId: getSecurityTxt
+      tags:
+      - static
+      description: 第2章 5.11
+      x-authz:
+      - none
+      x-idempotency: none
+      x-served-by: caddy
+      responses:
+        '200':
+          description: 成功
+          content:
+            text/plain:
+              schema:
+                $ref: '#/components/schemas/Text'
+        default:
+          $ref: '#/components/responses/Problem'
+  /.well-known/assetlinks.json:
+    servers:
+    - url: /
+    get:
+      operationId: getAssetLinks
+      tags:
+      - static
+      description: 第2章 5.11
+      x-authz:
+      - none
+      x-idempotency: none
+      x-served-by: caddy
+      responses:
+        '200':
+          description: 成功
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/GetAssetLinksResponse'
+        default:
+          $ref: '#/components/responses/Problem'
+  /dl/app.apk:
+    servers:
+    - url: /
+    get:
+      operationId: getApk
+      tags:
+      - static
+      description: 第2章 5.11
+      x-authz:
+      - none
+      x-idempotency: none
+      x-served-by: caddy
+      responses:
+        '200':
+          description: 成功
+          content:
+            application/vnd.android.package-archive:
+              schema:
+                $ref: '#/components/schemas/Binary'
+        default:
+          $ref: '#/components/responses/Problem'
+  /dl/version.json:
+    servers:
+    - url: /
+    get:
+      operationId: getRelease
+      tags:
+      - static
+      description: 第2章 5.11
+      x-authz:
+      - none
+      x-idempotency: none
+      x-served-by: caddy
+      responses:
+        '200':
+          description: 成功
+          content:
+            application/json:
+              schema:
+                $ref: ./schemas/ft.release/1.json
+        default:
+          $ref: '#/components/responses/Problem'
+  /dl/{file}:
+    servers:
+    - url: /
+    parameters:
+    - name: file
+      in: path
+      required: true
+      schema:
+        type: string
+    get:
+      operationId: getDistFile
+      tags:
+      - static
+      description: 第2章 5.11
+      x-authz:
+      - none
+      x-idempotency: none
+      x-served-by: caddy
+      responses:
+        '200':
+          description: 成功
+          content:
+            application/octet-stream:
+              schema:
+                $ref: '#/components/schemas/Binary'
+        default:
+          $ref: '#/components/responses/Problem'
+  /dl/manual/{path}:
+    servers:
+    - url: /
+    parameters:
+    - name: path
+      in: path
+      required: true
+      schema:
+        type: string
+    get:
+      operationId: getManual
+      tags:
+      - static
+      description: 第2章 5.11
+      x-authz:
+      - none
+      x-idempotency: none
+      x-served-by: caddy
+      responses:
+        '200':
+          description: 成功
+          content:
+            text/html:
+              schema:
+                $ref: '#/components/schemas/Text'
+        default:
+          $ref: '#/components/responses/Problem'
+  /manifest.webmanifest:
+    servers:
+    - url: /
+    get:
+      operationId: getManifest
+      tags:
+      - family
+      description: 第2章 5.11
+      x-authz:
+      - none
+      x-idempotency: none
+      responses:
+        '200':
+          description: 成功
+          content:
+            application/manifest+json:
+              schema:
+                $ref: '#/components/schemas/GetManifestResponse'
+        default:
+          $ref: '#/components/responses/Problem'
+  /family/icon:
+    get:
+      operationId: getFamilyIcon
+      tags:
+      - family
+      description: 第2章 5.11
+      x-authz:
+      - none
+      x-idempotency: none
+      responses:
+        '200':
+          description: 成功
+          content:
+            image/png:
+              schema:
+                $ref: '#/components/schemas/Binary'
+        default:
+          $ref: '#/components/responses/Problem'
+  /notify.html:
+    servers:
+    - url: /
+    get:
+      operationId: getNotifyPage
+      tags:
+      - static
+      description: 第2章 5.11
+      x-authz:
+      - none
+      x-idempotency: none
+      x-served-by: caddy
+      responses:
+        '200':
+          description: 成功
+          content:
+            text/html:
+              schema:
+                $ref: '#/components/schemas/Text'
+        default:
+          $ref: '#/components/responses/Problem'
+  /metrics:
+    servers:
+    - url: /
+    get:
+      operationId: getMetrics
+      tags:
+      - server
+      description: 第2章 5.11
+      x-authz:
+      - none
+      x-authz-rule: localhost
+      x-idempotency: none
+      responses:
+        '200':
+          description: 成功
+          content:
+            text/plain:
+              schema:
+                $ref: '#/components/schemas/Text'
+        default:
+          $ref: '#/components/responses/Problem'
+  /internal/auth:
+    servers:
+    - url: /
+    get:
+      operationId: checkForwardAuth
+      tags:
+      - internal
+      description: 第2章 10
+      x-authz:
+      - internal
+      x-idempotency: none
+      x-internal: true
+      x-errors:
+      - AUTH-001
+      responses:
+        '200':
+          description: 本文なし
+          headers:
+            X-User-Id:
+              description: セッションの構成員の識別子（caddy が copy_headers で上流へ渡す）
+              schema:
+                $ref: ./schemas/common/uuidv7/1.json
+        '401':
+          description: 本文なし
+        default:
+          $ref: '#/components/responses/Problem'
+  /internal/sfu/webhook:
+    servers:
+    - url: /
+    post:
+      operationId: receiveSfuWebhook
+      tags:
+      - calls
+      description: 第2章 10
+      x-authz:
+      - internal
+      x-idempotency: natural
+      x-idempotency-natural: event_id
+      x-internal: true
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ReceiveSfuWebhookRequest'
+      responses:
+        '200':
+          description: 成功
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ReceiveSfuWebhookResponse'
+        default:
+          $ref: '#/components/responses/Problem'
+components:
+  parameters:
+    IdempotencyKey:
+      name: Idempotency-Key
+      in: header
+      required: true
+      description: 端末が発行する UUIDv7（第2章 DD-2-5）
+      schema:
+        $ref: ./schemas/common/uuidv7/1.json
+    Limit:
+      name: limit
+      in: query
+      required: false
+      description: 件数。範囲の外は NET-001（第2章 3）
+      schema:
+        type: integer
+        minimum: 1
+        maximum: 100
+        default: 50
+    Before:
+      name: before
+      in: query
+      required: false
+      description: この要素の直前までの最後の limit 件（第2章 3）
+      schema:
+        $ref: ./schemas/common/uuidv7/1.json
+    After:
+      name: after
+      in: query
+      required: false
+      description: この要素の直後から limit 件（第2章 3）
+      schema:
+        $ref: ./schemas/common/uuidv7/1.json
+    Since:
+      name: since
+      in: query
+      required: false
+      description: この pos より後。省略は最初から（第2章 3）
+      schema:
+        $ref: ./schemas/common/pos/1.json
+  responses:
+    Problem:
+      description: RFC 9457 の problem に code、retryable、params（第2章 9.1）
+      content:
+        application/problem+json:
+          schema:
+            $ref: ./schemas/problem/1.json
+  schemas:
+    Family:
+      type: object
+      properties:
+        name: &id001
+          type: string
+        icon_url: *id001
+        admin_names:
+          type: array
+          items: *id001
+        member_count: &id006
+          type: integer
+          minimum: 0
+        created_at: &id003
+          $ref: ./schemas/common/rfc3339/1.json
+      required:
+      - name
+      - icon_url
+      additionalProperties: false
+    User:
+      type: object
+      properties:
+        id: &id002
+          $ref: ./schemas/common/uuidv7/1.json
+        display_name: *id001
+        avatar: *id002
+        role: &id005
+          type: string
+          enum:
+          - admin
+          - member
+        state:
+          type: string
+          enum:
+          - normal
+          - suspended
+          - erase_pending
+          - deleted
+          - erased
+        child: &id004
+          type: boolean
+        user_sig_pub:
+          $ref: ./schemas/fusr/1.json
+      required:
+      - id
+      - display_name
+      - role
+      - state
+      additionalProperties: false
+    UserDetail:
+      type: object
+      properties:
+        user:
+          $ref: '#/components/schemas/User'
+        devices:
+          type: array
+          items:
+            $ref: ./schemas/fdev/1.json
+      required:
+      - user
+      - devices
+      additionalProperties: false
+    Device:
+      type: object
+      properties:
+        id: *id002
+        name: *id001
+        platform:
+          type: string
+          enum:
+          - iphone
+          - android
+          - pc
+        last_seen_at: *id003
+        last_ip: *id001
+        state:
+          type: string
+          enum:
+          - unapproved
+          - approved
+          - revoked
+          - dormant
+        push: *id004
+        this_device: *id004
+      required:
+      - id
+      - name
+      - platform
+      - state
+      - push
+      - this_device
+      additionalProperties: false
+    Session:
+      type: object
+      properties:
+        user_id: *id002
+        device_id: *id002
+        role: *id005
+        approved: *id004
+        expires_at: *id003
+        idle_expires_at: *id003
+      required:
+      - user_id
+      - device_id
+      - role
+      - approved
+      - expires_at
+      - idle_expires_at
+      additionalProperties: false
+    Invite:
+      type: object
+      properties:
+        id: *id002
+        expires_at: *id003
+        uses_left: *id006
+        role: *id005
+        display_hint: *id001
+        child:
+          type: object
+          properties:
+            is_child: *id004
+            guardians:
+              type: array
+              items: *id002
+          required:
+          - is_child
+          additionalProperties: false
+        issuer: *id002
+        created_at: *id003
+        used_by: *id002
+        used_at: *id003
+        revoked_at: *id003
+      required:
+      - id
+      - expires_at
+      - uses_left
+      - role
+      - issuer
+      - created_at
+      additionalProperties: false
+    Passkey:
+      type: object
+      properties:
+        id: &id007
+          $ref: ./schemas/common/base64url/1.json
+        name: *id001
+        created_at: *id003
+        last_used_at: *id003
+        backed_up: *id004
+        prf: *id004
+      required:
+      - id
+      - created_at
+      - backed_up
+      - prf
+      additionalProperties: false
+    WebAuthnOptions:
+      type: object
+      description: WebAuthn Level 3 の PublicKeyCredentialCreationOptions・RequestOptions の JSON 形（第3章 4.1、4.2）
+    WebAuthnResponse:
+      type: object
+      description: WebAuthn Level 3 の PublicKeyCredential の JSON 形（toJSON）
+    LoginResult:
+      type: object
+      properties:
+        session:
+          $ref: '#/components/schemas/Session'
+        new_device: *id004
+      required:
+      - session
+      - new_device
+      additionalProperties: false
+    InboxItem:
+      type: object
+      properties:
+        id: *id002
+        kind:
+          type: string
+          enum:
+          - welcome
+          - keybundle
+          - key_backup
+          - key_request
+          - share
+          - call_key_request
+          - call_key
+          - sticker_remove_request
+        from_device: *id002
+        ciphertext: *id007
+        sig: *id007
+        pos: &id008
+          $ref: ./schemas/common/pos/1.json
+        created_at: *id003
+      required:
+      - id
+      - kind
+      - from_device
+      - ciphertext
+      - sig
+      - pos
+      - created_at
+      additionalProperties: false
+    KeyBundleCopy:
+      type: object
+      properties:
+        kind:
+          type: string
+          enum:
+          - device
+          - recovery-code
+          - share
+          - family
+          - prf
+        target: *id001
+        created_at: *id003
+      required:
+      - kind
+      - target
+      - created_at
+      additionalProperties: false
+    RoomSummary:
+      type: object
+      properties:
+        id: *id002
+        kind: &id009
+          type: string
+          enum:
+          - dm
+          - group
+          - self
+          - family
+        members:
+          type: array
+          items: *id002
+        me:
+          $ref: ./schemas/ft.settings.room_me/1.json
+        unread: *id006
+        last_pos: *id008
+        epoch: *id006
+        creator_id: *id002
+      required:
+      - id
+      - kind
+      - members
+      - me
+      - unread
+      - epoch
+      additionalProperties: false
+    Member:
+      type: object
+      properties:
+        user_id: *id002
+        state:
+          type: string
+          enum:
+          - member
+          - pending_add
+          - pending_remove
+        joined_at: *id003
+      required:
+      - user_id
+      - state
+      additionalProperties: false
+    Scheduled:
+      type: object
+      properties:
+        id: *id002
+        send_at: *id003
+        state:
+          type: string
+          enum:
+          - pending
+          - sent
+          - cancelled
+        body:
+          $ref: ./schemas/ft.event.mls/1.json
+      required:
+      - id
+      - send_at
+      - state
+      - body
+      additionalProperties: false
+    Posted:
+      type: object
+      properties:
+        event_id: *id002
+        pos: *id008
+        ts: *id003
+        transaction_id: *id002
+      required:
+      - event_id
+      - pos
+      - ts
+      additionalProperties: false
+    Slot:
+      type: object
+      properties:
+        id: *id002
+        upload_path: *id001
+        expires_at: *id003
+      required:
+      - id
+      - upload_path
+      - expires_at
+      additionalProperties: false
+    Call:
+      type: object
+      properties:
+        id: *id002
+        room_id: *id002
+        state:
+          type: string
+          enum:
+          - ringing
+          - active
+          - ended
+          - missed
+          - declined
+          - cancelled
+        video: *id004
+        caller_id: *id002
+        participants:
+          type: array
+          items: *id002
+        started_at: *id003
+        ended_at: *id003
+      required:
+      - id
+      - room_id
+      - state
+      - video
+      - caller_id
+      - participants
+      additionalProperties: false
+    SfuAccess:
+      type: object
+      properties:
+        url: *id001
+        token: *id001
+      required:
+      - url
+      - token
+      additionalProperties: false
+    PushSubscription:
+      type: object
+      properties:
+        kind:
+          type: string
+          enum:
+          - webpush
+          - unifiedpush
+        endpoint: *id001
+        keys:
+          type: object
+          properties:
+            p256dh: *id007
+            auth: *id007
+          required:
+          - p256dh
+          - auth
+          additionalProperties: false
+        expiration: *id003
+        declarative: *id004
+      required:
+      - kind
+      - endpoint
+      - keys
+      additionalProperties: false
+    AdminUser:
+      type: object
+      properties:
+        user:
+          $ref: '#/components/schemas/User'
+        device_count: *id006
+        last_seen_at: *id003
+        storage_bytes: *id006
+      required:
+      - user
+      - device_count
+      - storage_bytes
+      additionalProperties: false
+    AdminRoom:
+      type: object
+      properties:
+        id: *id002
+        kind: *id009
+        member_count: *id006
+        storage_bytes: *id006
+        empty_since: *id003
+      required:
+      - id
+      - kind
+      - member_count
+      - storage_bytes
+      additionalProperties: false
+    AuditEntry:
+      type: object
+      properties:
+        id: *id002
+        actor_id: *id002
+        action: *id001
+        target_user_id: *id002
+        at: *id003
+      required:
+      - id
+      - actor_id
+      - action
+      - at
+      additionalProperties: false
+    Job:
+      type: object
+      properties:
+        id: *id002
+        kind: *id001
+        state:
+          type: string
+          enum:
+          - queued
+          - running
+          - done
+          - failed
+        started_at: *id003
+        finished_at: *id003
+        error: *id001
+      required:
+      - id
+      - kind
+      - state
+      additionalProperties: false
+    InvitePage:
+      type: object
+      properties:
+        items:
+          type: array
+          items:
+            $ref: '#/components/schemas/Invite'
+        has_more: *id004
+      required:
+      - items
+      - has_more
+      additionalProperties: false
+    RoomEventPage:
+      type: object
+      properties:
+        items:
+          type: array
+          items:
+            $ref: ./schemas/ft.room_event/1.json
+        has_more: *id004
+      required:
+      - items
+      - has_more
+      additionalProperties: false
+    WebAuthnChallenge:
+      type: object
+      properties:
+        options:
+          $ref: '#/components/schemas/WebAuthnOptions'
+        challenge_id: *id002
+      required:
+      - options
+      - challenge_id
+      additionalProperties: false
+    TokenGrant:
+      type: object
+      properties:
+        token: *id001
+        expires_at: *id003
+      required:
+      - token
+      - expires_at
+      additionalProperties: false
+    AdminSettingsView:
+      type: object
+      properties:
+        values:
+          $ref: ./schemas/ft.settings.server/1.json
+        sources:
+          type: object
+          additionalProperties:
+            type: string
+            enum:
+            - env
+            - file
+            - db
+            - default
+      required:
+      - values
+      - sources
+      additionalProperties: false
+    CallVideo:
+      type: object
+      properties:
+        video: *id004
+      required:
+      - video
+      additionalProperties: false
+    Reason:
+      type: object
+      properties:
+        reason: *id001
+      required: []
+      additionalProperties: false
+    Binary:
+      type: string
+      format: binary
+    SyncSnapshot:
+      type: object
+      properties:
+        rooms:
+          type: array
+          items:
+            $ref: '#/components/schemas/RoomSummary'
+        users:
+          type: array
+          items:
+            $ref: '#/components/schemas/User'
+        devices:
+          type: array
+          items:
+            $ref: '#/components/schemas/Device'
+      required:
+      - rooms
+      - users
+      - devices
+      additionalProperties: false
+    KeyBackupEntry:
+      type: object
+      properties:
+        pos: *id008
+        backup:
+          $ref: ./schemas/fkb-history/1.json
+      required:
+      - pos
+      - backup
+      additionalProperties: false
+    Text:
+      type: string
+    GetSetupStatusResponse:
+      type: object
+      properties:
+        state:
+          type: string
+          enum:
+          - first_run
+          - ready
+          - read_only
+      required:
+      - state
+      additionalProperties: false
+    GetSetupAdminResponse:
+      type: object
+      properties:
+        expires_at: *id003
+      required:
+      - expires_at
+      additionalProperties: false
+    CreateSetupAdminRequest:
+      type: object
+      properties:
+        family_name: *id001
+        display_name: *id001
+        avatar: *id002
+        passkey:
+          $ref: '#/components/schemas/WebAuthnResponse'
+        recovery_code_written: *id004
+        card_printed: *id004
+      required:
+      - family_name
+      - display_name
+      - passkey
+      - recovery_code_written
+      - card_printed
+      additionalProperties: false
+    CreateInviteRequest:
+      type: object
+      properties:
+        role: *id005
+        display_hint: *id001
+        child:
+          type: object
+          properties:
+            is_child: *id004
+            guardians:
+              type: array
+              items: *id002
+          required:
+          - is_child
+          additionalProperties: false
+      required:
+      - role
+      additionalProperties: false
+    CreateInviteResponse:
+      type: object
+      properties:
+        invite:
+          $ref: '#/components/schemas/Invite'
+        url: *id001
+      required:
+      - invite
+      - url
+      additionalProperties: false
+    DeleteInviteResponse: &id010
+      type: object
+      properties: {}
+      required: []
+      additionalProperties: false
+    GetInviteTokenResponse:
+      type: object
+      properties:
+        family_name: *id001
+        family_icon_url: *id001
+        inviter_name: *id001
+        expires_at: *id003
+        child:
+          type: object
+          properties:
+            guardian_names:
+              type: array
+              items: *id001
+          required:
+          - guardian_names
+          additionalProperties: false
+      required:
+      - family_name
+      - family_icon_url
+      - inviter_name
+      - expires_at
+      additionalProperties: false
+    AcceptInviteTokenRequest:
+      type: object
+      properties:
+        display_name: *id001
+        avatar: *id002
+        passkey:
+          $ref: '#/components/schemas/WebAuthnResponse'
+        device_name: *id001
+        platform:
+          type: string
+          enum:
+          - iphone
+          - android
+          - pc
+      required:
+      - display_name
+      - passkey
+      - device_name
+      - platform
+      additionalProperties: false
+    CreatePasskeyRegisterOptionsRequest:
+      type: object
+      properties:
+        invite_token: *id001
+      required: []
+      additionalProperties: false
+    VerifyPasskeyRegisterRequest:
+      type: object
+      properties:
+        challenge_id: *id002
+        response:
+          $ref: '#/components/schemas/WebAuthnResponse'
+        name: *id001
+      required:
+      - challenge_id
+      - response
+      additionalProperties: false
+    VerifyPasskeyRegisterResponse:
+      type: object
+      properties:
+        passkey:
+          $ref: '#/components/schemas/Passkey'
+      required:
+      - passkey
+      additionalProperties: false
+    CreatePasskeyLoginOptionsRequest: *id010
+    VerifyPasskeyLoginRequest:
+      type: object
+      properties:
+        challenge_id: *id002
+        response:
+          $ref: '#/components/schemas/WebAuthnResponse'
+        device_hint: *id002
+        platform:
+          type: string
+          enum:
+          - iphone
+          - android
+          - pc
+      required:
+      - challenge_id
+      - response
+      - platform
+      additionalProperties: false
+    StartQrLoginRequest:
+      type: object
+      properties:
+        platform:
+          type: string
+          enum:
+          - iphone
+          - android
+          - pc
+        device_name: *id001
+        kem_pub:
+          $ref: ./schemas/common/jwk_p256/1.json
+      required:
+      - platform
+      - device_name
+      - kem_pub
+      additionalProperties: false
+    StartQrLoginResponse:
+      type: object
+      properties:
+        device_code: *id001
+        user_code:
+          type: string
+          pattern: ^[A-HJ-NP-Z2-9]{4}-[A-HJ-NP-Z2-9]{4}$
+        url: *id001
+        expires_in: *id006
+        interval: *id006
+      required:
+      - device_code
+      - user_code
+      - url
+      - expires_in
+      - interval
+      additionalProperties: false
+    PollQrLoginRequest:
+      type: object
+      properties:
+        device_code: *id001
+      required:
+      - device_code
+      additionalProperties: false
+    ApproveQrLoginRequest:
+      type: object
+      properties:
+        user_code: *id001
+      required:
+      - user_code
+      additionalProperties: false
+    ApproveQrLoginResponse: *id010
+    GetQrLoginResponse:
+      type: object
+      properties:
+        platform: *id001
+        device_name: *id001
+        ip: *id001
+        kem_pub_fingerprint: *id001
+      required:
+      - platform
+      - device_name
+      - ip
+      - kem_pub_fingerprint
+      additionalProperties: false
+    GetPasskeyResetResponse:
+      type: object
+      properties:
+        display_name: *id001
+        expires_at: *id003
+      required:
+      - display_name
+      - expires_at
+      additionalProperties: false
+    ResetPasskeyRequest:
+      type: object
+      properties:
+        passkey:
+          $ref: '#/components/schemas/WebAuthnResponse'
+        device_name: *id001
+        platform:
+          type: string
+          enum:
+          - iphone
+          - android
+          - pc
+      required:
+      - passkey
+      - device_name
+      - platform
+      additionalProperties: false
+    ListMyPasskeysResponse:
+      type: object
+      properties:
+        items:
+          type: array
+          items:
+            $ref: '#/components/schemas/Passkey'
+        has_more: *id004
+      required:
+      - items
+      - has_more
+      additionalProperties: false
+    DeleteMyPasskeyResponse: *id010
+    CreateWsTokenRequest: *id010
+    CreateShellTokenRequest: *id010
+    LogoutResponse: *id010
+    AckDisclosureRequest:
+      type: object
+      properties:
+        version: *id006
+      required:
+      - version
+      additionalProperties: false
+    AckDisclosureResponse: *id010
+    GetFamilyDisclosureResponse:
+      type: object
+      properties:
+        version: *id006
+        text_key: *id001
+        params:
+          type: object
+      required:
+      - version
+      - text_key
+      - params
+      additionalProperties: false
+    GetMeResponse:
+      type: object
+      properties:
+        user:
+          $ref: '#/components/schemas/User'
+        background: *id002
+        bio: *id001
+        birthday:
+          type: string
+          pattern: ^(\d{4}-)?\d{2}-\d{2}$
+        lang:
+          const: ja
+      required:
+      - user
+      additionalProperties: false
+    UpdateMeRequest:
+      type: object
+      properties:
+        display_name: *id001
+        avatar: *id002
+        background: *id002
+        bio: *id001
+        birthday:
+          type:
+          - string
+          - 'null'
+      required: []
+      additionalProperties: false
+    ListUsersResponse:
+      type: object
+      properties:
+        items:
+          type: array
+          items:
+            $ref: '#/components/schemas/User'
+        has_more: *id004
+      required:
+      - items
+      - has_more
+      additionalProperties: false
+    PutMyAliasRequest:
+      type: object
+      properties:
+        alias: *id001
+      required:
+      - alias
+      additionalProperties: false
+    PutMyAliasResponse: *id010
+    DeleteMyAliasResponse: *id010
+    EraseMeRequest: *id010
+    EraseMeResponse:
+      type: object
+      properties:
+        erase_at: *id003
+      required:
+      - erase_at
+      additionalProperties: false
+    CancelEraseMeResponse: *id010
+    ApproveAsGuardianRequest:
+      type: object
+      properties:
+        approve: *id004
+      required:
+      - approve
+      additionalProperties: false
+    ApproveAsGuardianResponse: *id010
+    CreateReportRequest:
+      type: object
+      properties:
+        kind:
+          type: string
+          enum:
+          - update_failed
+        code: *id001
+      required:
+      - kind
+      additionalProperties: false
+    CreateReportResponse: *id010
+    ListMyDevicesResponse:
+      type: object
+      properties:
+        items:
+          type: array
+          items:
+            $ref: '#/components/schemas/Device'
+        has_more: *id004
+      required:
+      - items
+      - has_more
+      additionalProperties: false
+    UpdateMyDeviceRequest:
+      type: object
+      properties:
+        name: *id001
+      required:
+      - name
+      additionalProperties: false
+    DeleteMyDeviceResponse: *id010
+    ApproveMyDeviceRequest:
+      type: object
+      properties:
+        user_sig: *id007
+      required:
+      - user_sig
+      additionalProperties: false
+    CreateMyKeyPackagesRequest:
+      type: object
+      properties:
+        key_packages:
+          type: array
+          items: *id007
+          minItems: 1
+          maxItems: 21
+        last_resort: *id007
+      required:
+      - key_packages
+      additionalProperties: false
+    CreateMyKeyPackagesResponse:
+      type: object
+      properties:
+        count: *id006
+      required:
+      - count
+      additionalProperties: false
+    GetMyKeyPackagesResponse:
+      type: object
+      properties:
+        count: *id006
+        last_resort: *id004
+      required:
+      - count
+      - last_resort
+      additionalProperties: false
+    ClaimKeyPackageRequest: *id010
+    ClaimKeyPackageResponse:
+      type: object
+      properties:
+        key_package: *id007
+        warnings:
+          type: array
+          items:
+            type: object
+            properties:
+              code:
+                const: KEY-006
+            required:
+            - code
+            additionalProperties: false
+      required:
+      - key_package
+      additionalProperties: false
+    ListMyKeyBundleResponse:
+      type: object
+      properties:
+        items:
+          type: array
+          items:
+            $ref: '#/components/schemas/KeyBundleCopy'
+      required:
+      - items
+      additionalProperties: false
+    PutMyKeyBundleResponse: *id010
+    DeleteMyKeyBundleResponse: *id010
+    VerifyRecoveryCodeRequest:
+      type: object
+      properties:
+        code_hash: *id007
+      required:
+      - code_hash
+      additionalProperties: false
+    PutMyRecoveryCodeRequest:
+      type: object
+      properties:
+        hash: *id007
+        params:
+          type: object
+          properties:
+            alg:
+              const: argon2id
+            m: *id006
+            t: *id006
+            p: *id006
+            salt: *id007
+          required:
+          - alg
+          - m
+          - t
+          - p
+          - salt
+          additionalProperties: false
+      required:
+      - hash
+      - params
+      additionalProperties: false
+    PutMyRecoveryCodeResponse: *id010
+    RequestRecoveryRequest: *id010
+    RequestRecoveryResponse:
+      type: object
+      properties:
+        request_id: *id002
+        expires_at: *id003
+      required:
+      - request_id
+      - expires_at
+      additionalProperties: false
+    ApproveRecoveryRequest:
+      type: object
+      properties:
+        item:
+          $ref: '#/components/schemas/InboxItem'
+      required:
+      - item
+      additionalProperties: false
+    ApproveRecoveryResponse: *id010
+    GetFamilyRecoveryKeyPublicResponse:
+      type: object
+      properties:
+        public_key:
+          $ref: ./schemas/common/jwk_p256/1.json
+        version: *id006
+      required:
+      - public_key
+      - version
+      additionalProperties: false
+    UseFamilyRecoveryKeyRequest:
+      type: object
+      properties:
+        result:
+          type: string
+          enum:
+          - success
+          - failure
+      required:
+      - result
+      additionalProperties: false
+    UseFamilyRecoveryKeyResponse: *id010
+    ListMyKeyBackupResponse:
+      type: object
+      properties:
+        items:
+          type: array
+          items:
+            $ref: '#/components/schemas/KeyBackupEntry'
+        has_more: *id004
+      required:
+      - items
+      - has_more
+      additionalProperties: false
+    PutMyKeyBackupResponse: *id010
+    PutDeviceInboxRequest:
+      type: object
+      properties:
+        kind:
+          type: string
+          enum:
+          - welcome
+          - keybundle
+          - key_backup
+          - key_request
+          - share
+          - call_key_request
+          - call_key
+          - sticker_remove_request
+        ciphertext: *id007
+        sig: *id007
+      required:
+      - kind
+      - ciphertext
+      - sig
+      additionalProperties: false
+    PutDeviceInboxResponse:
+      type: object
+      properties:
+        id: *id002
+      required:
+      - id
+      additionalProperties: false
+    ListMyInboxResponse:
+      type: object
+      properties:
+        items:
+          type: array
+          items:
+            $ref: '#/components/schemas/InboxItem'
+        has_more: *id004
+      required:
+      - items
+      - has_more
+      additionalProperties: false
+    DeleteMyInboxItemResponse: *id010
+    ListRoomsResponse:
+      type: object
+      properties:
+        items:
+          type: array
+          items:
+            $ref: '#/components/schemas/RoomSummary'
+        has_more: *id004
+      required:
+      - items
+      - has_more
+      additionalProperties: false
+    CreateRoomRequest:
+      type: object
+      properties:
+        kind:
+          type: string
+          enum:
+          - dm
+          - group
+        members:
+          type: array
+          items: *id002
+          minItems: 1
+      required:
+      - kind
+      - members
+      additionalProperties: false
+    ListRoomMembersResponse:
+      type: object
+      properties:
+        items:
+          type: array
+          items:
+            $ref: '#/components/schemas/Member'
+        has_more: *id004
+      required:
+      - items
+      - has_more
+      additionalProperties: false
+    AddRoomMemberRequest:
+      type: object
+      properties:
+        user_id: *id002
+      required:
+      - user_id
+      additionalProperties: false
+    RemoveRoomMemberResponse: *id010
+    CreateRoomEventRequest:
+      type: object
+      properties:
+        body:
+          $ref: ./schemas/ft.event.mls/1.json
+        silent: *id004
+      required:
+      - body
+      additionalProperties: false
+    RedactRoomEventResponse: *id010
+    CreateRoomReceiptsResponse: *id010
+    PutRoomTypingRequest:
+      type: object
+      properties:
+        typing: *id004
+        timeout:
+          type: integer
+          minimum: 5
+          maximum: 30
+      required:
+      - typing
+      additionalProperties: false
+    PutRoomTypingResponse: *id010
+    ListRoomScheduledResponse:
+      type: object
+      properties:
+        items:
+          type: array
+          items:
+            $ref: '#/components/schemas/Scheduled'
+        has_more: *id004
+      required:
+      - items
+      - has_more
+      additionalProperties: false
+    CreateRoomScheduledRequest:
+      type: object
+      properties:
+        send_at: *id003
+        body:
+          $ref: ./schemas/ft.event.mls/1.json
+      required:
+      - send_at
+      - body
+      additionalProperties: false
+    DeleteRoomScheduledResponse: *id010
+    GetRoomMlsEpochResponse:
+      type: object
+      properties:
+        epoch: *id006
+        tree_hash: *id007
+      required:
+      - epoch
+      - tree_hash
+      additionalProperties: false
+    ListRoomMlsCommitsResponse:
+      type: object
+      properties:
+        items:
+          type: array
+          items:
+            type: object
+            properties:
+              epoch: *id006
+              commit: *id007
+              group_info: *id007
+            required:
+            - epoch
+            - commit
+            additionalProperties: false
+        has_more: *id004
+      required:
+      - items
+      - has_more
+      additionalProperties: false
+    CreateRoomMlsCommitRequest:
+      type: object
+      properties:
+        epoch: *id006
+        commit: *id007
+        welcome: *id007
+        group_info: *id007
+      required:
+      - epoch
+      - commit
+      additionalProperties: false
+    CreateRoomMlsCommitResponse:
+      type: object
+      properties:
+        epoch: *id006
+      required:
+      - epoch
+      additionalProperties: false
+    CreateRoomMlsProposalRequest:
+      type: object
+      properties:
+        proposal: *id007
+      required:
+      - proposal
+      additionalProperties: false
+    CreateRoomMlsProposalResponse: *id010
+    GetMediaConfigResponse:
+      type: object
+      properties:
+        item_max: *id006
+        items_per_send: *id006
+        daily_total_max: *id006
+        append_max: *id006
+        maps_version:
+          type:
+          - string
+          - 'null'
+      required:
+      - item_max
+      - items_per_send
+      - append_max
+      - maps_version
+      additionalProperties: false
+    CreateMediaSlotsRequest:
+      type: object
+      properties:
+        slots:
+          type: array
+          items:
+            type: object
+            properties:
+              size: *id006
+              kind:
+                type: string
+                enum:
+                - attachment
+                - thumbnail
+                - avatar
+                - sticker
+            required:
+            - size
+            - kind
+            additionalProperties: false
+          minItems: 1
+          maxItems: 50
+      required:
+      - slots
+      additionalProperties: false
+    CreateMediaSlotsResponse:
+      type: object
+      properties:
+        slots:
+          type: array
+          items:
+            $ref: '#/components/schemas/Slot'
+      required:
+      - slots
+      additionalProperties: false
+    AppendMediaResponse: *id010
+    DeleteMediaResponse: *id010
+    CreatePreviewRequest:
+      type: object
+      properties:
+        url: *id001
+      required:
+      - url
+      additionalProperties: false
+    CreatePreviewResponse:
+      type: object
+      properties:
+        title: *id001
+        description: *id001
+        image:
+          type: object
+          properties:
+            staged_id: *id002
+          required:
+          - staged_id
+          additionalProperties: false
+        site_name: *id001
+        canonical: *id001
+      required: []
+      additionalProperties: false
+    StartCallResponse:
+      type: object
+      properties:
+        call_id: *id002
+        sfu:
+          $ref: '#/components/schemas/SfuAccess'
+        started_at: *id003
+      required:
+      - call_id
+      - sfu
+      - started_at
+      additionalProperties: false
+    JoinCallResponse:
+      type: object
+      properties:
+        sfu:
+          $ref: '#/components/schemas/SfuAccess'
+      required:
+      - sfu
+      additionalProperties: false
+    DeclineCallRequest: *id010
+    DeclineCallResponse: *id010
+    LeaveCallRequest: *id010
+    LeaveCallResponse: *id010
+    EndCallRequest: *id010
+    EndCallResponse: *id010
+    GetCallTurnResponse:
+      type: object
+      properties:
+        urls:
+          type: array
+          items: *id001
+        username: *id001
+        credential: *id001
+        ttl: *id006
+      required:
+      - urls
+      - username
+      - credential
+      - ttl
+      additionalProperties: false
+    ListMyCallsResponse:
+      type: object
+      properties:
+        items:
+          type: array
+          items:
+            $ref: '#/components/schemas/Call'
+        has_more: *id004
+      required:
+      - items
+      - has_more
+      additionalProperties: false
+    PutMyDevicePushResponse: *id010
+    DeleteMyDevicePushResponse: *id010
+    TestMyDevicePushRequest: *id010
+    TestMyDevicePushResponse: *id010
+    GetVapidResponse:
+      type: object
+      properties:
+        public_key: *id007
+        version: *id006
+      required:
+      - public_key
+      - version
+      additionalProperties: false
+    PutNotificationPauseRequest:
+      type: object
+      properties:
+        until:
+          type:
+          - string
+          - 'null'
+      required:
+      - until
+      additionalProperties: false
+    PutNotificationPauseResponse: *id010
+    RegisterUpRequest: *id010
+    RegisterUpResponse:
+      type: object
+      properties:
+        endpoint: *id001
+      required:
+      - endpoint
+      additionalProperties: false
+    ReceiveUpResponse: *id010
+    GetSyncResponse:
+      type: object
+      properties:
+        pos: *id008
+        events:
+          type: array
+          items:
+            type: object
+        has_more: *id004
+        snapshot:
+          $ref: '#/components/schemas/SyncSnapshot'
+      required:
+      - pos
+      - has_more
+      additionalProperties: false
+    ListAdminUsersResponse:
+      type: object
+      properties:
+        items:
+          type: array
+          items:
+            $ref: '#/components/schemas/AdminUser'
+        has_more: *id004
+      required:
+      - items
+      - has_more
+      additionalProperties: false
+    SuspendUserResponse: *id010
+    UnsuspendUserRequest: *id010
+    UnsuspendUserResponse: *id010
+    DeleteUserResponse: *id010
+    DeleteUserDeviceResponse: *id010
+    CreateResetLinkRequest: *id010
+    CreateResetLinkResponse:
+      type: object
+      properties:
+        url: *id001
+        expires_at: *id003
+      required:
+      - url
+      - expires_at
+      additionalProperties: false
+    PutUserRoleRequest:
+      type: object
+      properties:
+        role: *id005
+      required:
+      - role
+      additionalProperties: false
+    PutUserGuardiansRequest:
+      type: object
+      properties:
+        guardians:
+          type: array
+          items: *id002
+      required:
+      - guardians
+      additionalProperties: false
+    PutUserGuardiansResponse: *id010
+    PutUserChildRequest:
+      type: object
+      properties:
+        child: *id004
+      required:
+      - child
+      additionalProperties: false
+    PutUserChildResponse: *id010
+    ListAdminRoomsResponse:
+      type: object
+      properties:
+        items:
+          type: array
+          items:
+            $ref: '#/components/schemas/AdminRoom'
+        has_more: *id004
+      required:
+      - items
+      - has_more
+      additionalProperties: false
+    DeleteAdminRoomResponse: *id010
+    ShowBackupKeysRequest: *id010
+    ShowBackupKeysResponse:
+      type: object
+      properties:
+        restic_password: *id001
+        kek: *id001
+      required:
+      - restic_password
+      - kek
+      additionalProperties: false
+    RollbackUpdateRequest: *id010
+    ListAdminAuditResponse:
+      type: object
+      properties:
+        items:
+          type: array
+          items:
+            $ref: '#/components/schemas/AuditEntry'
+        has_more: *id004
+      required:
+      - items
+      - has_more
+      additionalProperties: false
+    GetAdminStorageResponse:
+      type: object
+      properties:
+        total_bytes: *id006
+        quota_bytes: *id006
+        by_user:
+          type: object
+          additionalProperties: *id006
+        by_room:
+          type: object
+          additionalProperties: *id006
+        to_delete_bytes: *id006
+      required:
+      - total_bytes
+      - quota_bytes
+      additionalProperties: false
+    GetAdminRetentionResponse:
+      type: object
+      properties:
+        video_years:
+          type:
+          - integer
+          - 'null'
+        original_photo_years:
+          type:
+          - integer
+          - 'null'
+        include_files: *id004
+        backup_keep:
+          type: object
+          properties:
+            daily: *id006
+            weekly: *id006
+            monthly: *id006
+          required:
+          - daily
+          - weekly
+          - monthly
+          additionalProperties: false
+      required:
+      - video_years
+      - original_photo_years
+      - include_files
+      - backup_keep
+      additionalProperties: false
+    PutAdminRetentionRequest:
+      type: object
+      properties:
+        video_years:
+          type:
+          - integer
+          - 'null'
+          minimum: 1
+          maximum: 10
+        original_photo_years:
+          type:
+          - integer
+          - 'null'
+          minimum: 1
+          maximum: 10
+        include_files: *id004
+        backup_keep:
+          type: object
+          properties:
+            daily: *id006
+            weekly: *id006
+            monthly: *id006
+          required:
+          - daily
+          - weekly
+          - monthly
+          additionalProperties: false
+      required: []
+      additionalProperties: false
+    PutAdminRetentionResponse: *id010
+    GetAdminBackupResponse:
+      type: object
+      properties:
+        last:
+          $ref: '#/components/schemas/Job'
+        last_check:
+          $ref: '#/components/schemas/Job'
+        last_restore_test:
+          $ref: '#/components/schemas/Job'
+        targets:
+          type: array
+          items: *id001
+      required:
+      - targets
+      additionalProperties: false
+    RunAdminBackupRequest: *id010
+    RunRestoreTestRequest: *id010
+    GetAdminUpdateResponse:
+      type: object
+      properties:
+        current: &id011
+          $ref: ./schemas/common/semver/1.json
+        latest: *id011
+        notes_url: *id001
+        auto: *id004
+      required:
+      - current
+      additionalProperties: false
+    ApplyAdminUpdateRequest:
+      type: object
+      properties:
+        version: *id011
+      required:
+      - version
+      additionalProperties: false
+    GetAdminHealthResponse:
+      type: object
+      properties:
+        checks:
+          type: object
+        calls_active: *id006
+        cert_days: *id006
+        mode: *id001
+      required:
+      - checks
+      additionalProperties: false
+    GetAdminMapsResponse:
+      type: object
+      properties:
+        region: *id001
+        version: *id001
+        updated_at: *id003
+      required:
+      - region
+      additionalProperties: false
+    UpdateAdminMapsRequest:
+      type: object
+      properties:
+        region: *id001
+      required:
+      - region
+      additionalProperties: false
+    CreateAdminTransferRequest:
+      type: object
+      properties:
+        to_user_id: *id002
+      required:
+      - to_user_id
+      additionalProperties: false
+    CreateAdminTransferResponse:
+      type: object
+      properties:
+        transfer_id: *id002
+      required:
+      - transfer_id
+      additionalProperties: false
+    AcceptAdminTransferRequest: *id010
+    AcceptAdminTransferResponse: *id010
+    UpdateAdminFamilyRequest:
+      type: object
+      properties:
+        name: *id001
+        icon: *id002
+      required: []
+      additionalProperties: false
+    RotateFamilyRecoveryKeyRequest:
+      type: object
+      properties:
+        public_key:
+          $ref: ./schemas/common/jwk_p256/1.json
+      required:
+      - public_key
+      additionalProperties: false
+    RotateFamilyRecoveryKeyResponse:
+      type: object
+      properties:
+        version: *id006
+      required:
+      - version
+      additionalProperties: false
+    GetDiskDisposeGuideResponse:
+      type: object
+      properties:
+        text_key: *id001
+      required:
+      - text_key
+      additionalProperties: false
+    GetAdminLogsSummaryResponse:
+      type: object
+      properties:
+        since: *id003
+        by_code:
+          type: object
+          additionalProperties: *id006
+      required:
+      - since
+      - by_code
+      additionalProperties: false
+    GetHealthResponse:
+      type: object
+      properties:
+        status:
+          type: string
+          enum:
+          - ok
+          - degraded
+          - down
+        checks:
+          type: object
+      required:
+      - status
+      - checks
+      additionalProperties: false
+    GetAssetLinksResponse:
+      type: array
+      items:
+        type: object
+        properties:
+          relation:
+            type: array
+            items: *id001
+          target:
+            type: object
+            properties:
+              namespace:
+                const: android_app
+              package_name: *id001
+              sha256_cert_fingerprints:
+                type: array
+                items: *id001
+            required:
+            - namespace
+            - package_name
+            - sha256_cert_fingerprints
+            additionalProperties: false
+        required:
+        - relation
+        - target
+        additionalProperties: false
+    GetManifestResponse:
+      type: object
+    ReceiveSfuWebhookRequest:
+      type: object
+    ReceiveSfuWebhookResponse: *id010

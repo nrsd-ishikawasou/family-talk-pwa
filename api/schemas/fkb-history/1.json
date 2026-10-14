@@ -1,0 +1,45 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://family-talk.invalid/schemas/fkb-history/1",
+  "title": "fkb-history/1",
+  "description": "第12章 12、5.6。鍵のバックアップ",
+  "type": "object",
+  "properties": {
+    "v": {
+      "const": 1
+    },
+    "user_id": {
+      "$ref": "../common/uuidv7/1.json"
+    },
+    "group_id": {
+      "$ref": "../common/base64url/1.json"
+    },
+    "epoch": {
+      "type": "integer",
+      "minimum": 0
+    },
+    "alg": {
+      "const": "A256GCM"
+    },
+    "nonce": {
+      "$ref": "../common/base64url/1.json"
+    },
+    "ciphertext": {
+      "$ref": "../common/base64url/1.json"
+    },
+    "created_at": {
+      "$ref": "../common/rfc3339/1.json"
+    }
+  },
+  "required": [
+    "v",
+    "user_id",
+    "group_id",
+    "epoch",
+    "alg",
+    "nonce",
+    "ciphertext",
+    "created_at"
+  ],
+  "additionalProperties": false
+}

@@ -1,0 +1,108 @@
+# レート制限の正本（基本設計書 第2章 9.3。初期値。管理者が config.yaml の「レート制限」で変えられる）。
+# limits の key は ip、user、device、room、connection。window は秒。burst は第2章に数が無いので limit と同じ。
+policies:
+  - name: login
+    target: "ログインの検証（パスキー、QR の poll、reset）"
+    limit_note: "10 回"
+    unit_note: "IP あたり 1 分、端末あたり 1 時間 30 回"
+    note: "AUTH-004"
+    on_exceed: AUTH-004
+    limits:
+      - {key: ip, limit: 10, window: 60, burst: 10}
+      - {key: device, limit: 30, window: 3600, burst: 30}
+  - name: invite_token
+    target: "招待のトークンの GET と accept"
+    limit_note: "20 回"
+    unit_note: "IP あたり 1 時間"
+    note: "推測の対策"
+    on_exceed: NET-004
+    limits:
+      - {key: ip, limit: 20, window: 3600, burst: 20}
+  - name: recovery
+    target: "回復コードの verify、家族回復鍵の use"
+    limit_note: "10 回"
+    unit_note: "構成員あたり 1 日"
+    note: "KEY-008"
+    on_exceed: KEY-008
+    limits:
+      - {key: user, limit: 10, window: 86400, burst: 10}
+  - name: send
+    target: "送信（`/rooms/{id}/events` POST）"
+    limit_note: "60 件"
+    unit_note: "構成員あたり 1 分"
+    note: "家族の規模で十分。超えたら 429"
+    on_exceed: NET-004
+    limits:
+      - {key: user, limit: 60, window: 60, burst: 60}
+  - name: media_slots
+    target: "添付のスロット"
+    limit_note: "100 個"
+    unit_note: "構成員あたり 1 分"
+    note: "50 件の一括送信を 2 回"
+    on_exceed: NET-004
+    limits:
+      - {key: user, limit: 100, window: 60, burst: 100}
+  - name: media_append
+    target: "添付の追記"
+    limit_note: "帯域の制限なし"
+    unit_note: "—"
+    note: "回線の上りが上限"
+    on_exceed: NET-004
+    limits: []  # 制限なし（回線の上りが上限）
+  - name: preview
+    target: "プレビュー"
+    limit_note: "30 回"
+    unit_note: "構成員あたり 1 分"
+    note: ""
+    on_exceed: NET-004
+    limits:
+      - {key: user, limit: 30, window: 60, burst: 30}
+  - name: inbox
+    target: "端末宛メールボックスへの投入"
+    limit_note: "300 件"
+    unit_note: "端末あたり 1 分"
+    note: "Welcome と鍵の転送の一括"
+    on_exceed: NET-004
+    limits:
+      - {key: device, limit: 300, window: 60, burst: 300}
+  - name: commit
+    target: "Commit"
+    limit_note: "30 回"
+    unit_note: "トークあたり 1 分"
+    note: "競合の再試行"
+    on_exceed: NET-004
+    limits:
+      - {key: room, limit: 30, window: 60, burst: 30}
+  - name: ws_messages
+    target: "WebSocket のメッセージ"
+    limit_note: "100 件"
+    unit_note: "接続あたり 1 分"
+    note: "第1章 10.6"
+    on_exceed: NET-004
+    limits:
+      - {key: connection, limit: 100, window: 60, burst: 100}
+  - name: api_global
+    target: "API の全体"
+    limit_note: "600 要求"
+    unit_note: "構成員あたり 1 分、IP あたり 1 分 1,200"
+    note: ""
+    on_exceed: NET-004
+    limits:
+      - {key: user, limit: 600, window: 60, burst: 600}
+      - {key: ip, limit: 1200, window: 60, burst: 1200}
+  - name: admin
+    target: "管理者の API"
+    limit_note: "120 要求"
+    unit_note: "1 分"
+    note: ""
+    on_exceed: NET-004
+    limits:
+      - {key: user, limit: 120, window: 60, burst: 120}
+  - name: public
+    target: "`/health`、`/version`"
+    limit_note: "60 回"
+    unit_note: "IP あたり 1 分"
+    note: ""
+    on_exceed: NET-004
+    limits:
+      - {key: ip, limit: 60, window: 60, burst: 60}

@@ -1,0 +1,1956 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://family-talk.invalid/schemas/ft.bridge/1",
+  "title": "ft.bridge/1",
+  "description": "第9章 4.2。JS ブリッジの契約（命令 30、イベント 16）",
+  "$defs": {
+    "getInfo_args": {
+      "type": "object",
+      "properties": {},
+      "required": [],
+      "additionalProperties": false
+    },
+    "getInfo_result": {
+      "type": "object",
+      "properties": {
+        "shell_version": {
+          "$ref": "../common/semver/1.json"
+        },
+        "os_version": {
+          "type": "string"
+        },
+        "webview_version": {
+          "type": "string"
+        },
+        "font_scale": {
+          "type": "number",
+          "minimum": 0
+        },
+        "family_id": {
+          "$ref": "../common/uuidv7/1.json"
+        },
+        "distributor": {
+          "type": "string",
+          "enum": [
+            "family_server",
+            "os_push"
+          ]
+        }
+      },
+      "required": [
+        "shell_version",
+        "os_version",
+        "webview_version",
+        "font_scale",
+        "family_id",
+        "distributor"
+      ],
+      "additionalProperties": false
+    },
+    "requestPermission_args": {
+      "type": "object",
+      "properties": {
+        "kind": {
+          "type": "string",
+          "enum": [
+            "notifications",
+            "camera",
+            "microphone",
+            "fullScreenIntent",
+            "batteryOptimization",
+            "localNetwork"
+          ]
+        }
+      },
+      "required": [
+        "kind"
+      ],
+      "additionalProperties": false
+    },
+    "requestPermission_result": {
+      "type": "object",
+      "properties": {
+        "state": {
+          "type": "string",
+          "enum": [
+            "granted",
+            "denied"
+          ]
+        }
+      },
+      "required": [
+        "state"
+      ],
+      "additionalProperties": false
+    },
+    "setBadge_args": {
+      "type": "object",
+      "properties": {
+        "n": {
+          "type": "integer",
+          "minimum": 0
+        }
+      },
+      "required": [
+        "n"
+      ],
+      "additionalProperties": false
+    },
+    "setBadge_result": {
+      "type": "object",
+      "properties": {},
+      "required": [],
+      "additionalProperties": false
+    },
+    "callStarted_args": {
+      "type": "object",
+      "properties": {
+        "call_id": {
+          "$ref": "../common/uuidv7/1.json"
+        },
+        "room_id": {
+          "$ref": "../common/uuidv7/1.json"
+        },
+        "video": {
+          "type": "boolean"
+        },
+        "outgoing": {
+          "type": "boolean"
+        }
+      },
+      "required": [
+        "call_id",
+        "room_id",
+        "video",
+        "outgoing"
+      ],
+      "additionalProperties": false
+    },
+    "callStarted_result": {
+      "type": "object",
+      "properties": {},
+      "required": [],
+      "additionalProperties": false
+    },
+    "callEnded_args": {
+      "type": "object",
+      "properties": {
+        "call_id": {
+          "$ref": "../common/uuidv7/1.json"
+        }
+      },
+      "required": [
+        "call_id"
+      ],
+      "additionalProperties": false
+    },
+    "callEnded_result": {
+      "type": "object",
+      "properties": {},
+      "required": [],
+      "additionalProperties": false
+    },
+    "callState_args": {
+      "type": "object",
+      "properties": {
+        "muted": {
+          "type": "boolean"
+        },
+        "video_on": {
+          "type": "boolean"
+        }
+      },
+      "required": [
+        "muted",
+        "video_on"
+      ],
+      "additionalProperties": false
+    },
+    "callState_result": {
+      "type": "object",
+      "properties": {},
+      "required": [],
+      "additionalProperties": false
+    },
+    "getAudioRoutes_args": {
+      "type": "object",
+      "properties": {},
+      "required": [],
+      "additionalProperties": false
+    },
+    "getAudioRoutes_result": {
+      "type": "object",
+      "properties": {
+        "routes": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "current": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "routes",
+        "current"
+      ],
+      "additionalProperties": false
+    },
+    "setAudioRoute_args": {
+      "type": "object",
+      "properties": {
+        "route": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "route"
+      ],
+      "additionalProperties": false
+    },
+    "setAudioRoute_result": {
+      "type": "object",
+      "properties": {},
+      "required": [],
+      "additionalProperties": false
+    },
+    "enterPip_args": {
+      "type": "object",
+      "properties": {
+        "aspect": {
+          "type": "object",
+          "properties": {
+            "w": {
+              "type": "integer",
+              "minimum": 1
+            },
+            "h": {
+              "type": "integer",
+              "minimum": 1
+            }
+          },
+          "required": [
+            "w",
+            "h"
+          ],
+          "additionalProperties": false
+        }
+      },
+      "required": [
+        "aspect"
+      ],
+      "additionalProperties": false
+    },
+    "enterPip_result": {
+      "type": "object",
+      "properties": {},
+      "required": [],
+      "additionalProperties": false
+    },
+    "keepAwake_args": {
+      "type": "object",
+      "properties": {
+        "on": {
+          "type": "boolean"
+        }
+      },
+      "required": [
+        "on"
+      ],
+      "additionalProperties": false
+    },
+    "keepAwake_result": {
+      "type": "object",
+      "properties": {},
+      "required": [],
+      "additionalProperties": false
+    },
+    "pickMedia_args": {
+      "type": "object",
+      "properties": {
+        "kind": {
+          "type": "string",
+          "enum": [
+            "image",
+            "video",
+            "image_video",
+            "file"
+          ]
+        },
+        "max": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 50
+        }
+      },
+      "required": [
+        "kind",
+        "max"
+      ],
+      "additionalProperties": false
+    },
+    "pickMedia_result": {
+      "type": "object",
+      "properties": {},
+      "required": [],
+      "additionalProperties": false
+    },
+    "saveToGallery_args": {
+      "type": "object",
+      "properties": {
+        "blob_url": {
+          "type": "string"
+        },
+        "name": {
+          "type": "string"
+        },
+        "mime": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "blob_url",
+        "name",
+        "mime"
+      ],
+      "additionalProperties": false
+    },
+    "saveToGallery_result": {
+      "type": "object",
+      "properties": {},
+      "required": [],
+      "additionalProperties": false
+    },
+    "share_args": {
+      "type": "object",
+      "properties": {
+        "title": {
+          "type": "string"
+        },
+        "text": {
+          "type": "string"
+        },
+        "blob_url": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "title",
+        "text"
+      ],
+      "additionalProperties": false
+    },
+    "share_result": {
+      "type": "object",
+      "properties": {},
+      "required": [],
+      "additionalProperties": false
+    },
+    "openExternal_args": {
+      "type": "object",
+      "properties": {
+        "url": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "url"
+      ],
+      "additionalProperties": false
+    },
+    "openExternal_result": {
+      "type": "object",
+      "properties": {},
+      "required": [],
+      "additionalProperties": false
+    },
+    "getNetworkType_args": {
+      "type": "object",
+      "properties": {},
+      "required": [],
+      "additionalProperties": false
+    },
+    "getNetworkType_result": {
+      "type": "object",
+      "properties": {
+        "type": {
+          "type": "string",
+          "enum": [
+            "wifi",
+            "cellular",
+            "none"
+          ]
+        }
+      },
+      "required": [
+        "type"
+      ],
+      "additionalProperties": false
+    },
+    "wrapDeviceKey_args": {
+      "type": "object",
+      "properties": {
+        "key": {
+          "$ref": "../common/base64url/1.json"
+        }
+      },
+      "required": [
+        "key"
+      ],
+      "additionalProperties": false
+    },
+    "wrapDeviceKey_result": {
+      "type": "object",
+      "properties": {
+        "wrapped": {
+          "$ref": "../common/base64url/1.json"
+        }
+      },
+      "required": [
+        "wrapped"
+      ],
+      "additionalProperties": false
+    },
+    "unwrapDeviceKey_args": {
+      "type": "object",
+      "properties": {},
+      "required": [],
+      "additionalProperties": false
+    },
+    "unwrapDeviceKey_result": {
+      "type": "object",
+      "properties": {
+        "key": {
+          "$ref": "../common/base64url/1.json"
+        }
+      },
+      "required": [
+        "key"
+      ],
+      "additionalProperties": false
+    },
+    "biometricUnlock_args": {
+      "type": "object",
+      "properties": {
+        "reason": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "reason"
+      ],
+      "additionalProperties": false
+    },
+    "biometricUnlock_result": {
+      "type": "object",
+      "properties": {
+        "ok": {
+          "type": "boolean"
+        }
+      },
+      "required": [
+        "ok"
+      ],
+      "additionalProperties": false
+    },
+    "registerPush_args": {
+      "type": "object",
+      "properties": {
+        "vapid_pub": {
+          "$ref": "../common/base64url/1.json"
+        }
+      },
+      "required": [
+        "vapid_pub"
+      ],
+      "additionalProperties": false
+    },
+    "registerPush_result": {
+      "type": "object",
+      "properties": {
+        "endpoint": {
+          "type": "string"
+        },
+        "kind": {
+          "type": "string",
+          "enum": [
+            "family_server",
+            "os_push"
+          ]
+        }
+      },
+      "required": [
+        "endpoint",
+        "kind"
+      ],
+      "additionalProperties": false
+    },
+    "uploadInBackground_args": {
+      "type": "object",
+      "properties": {
+        "state": {
+          "type": "string",
+          "enum": [
+            "start",
+            "progress",
+            "end"
+          ]
+        },
+        "n": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "m": {
+          "type": "integer",
+          "minimum": 0
+        }
+      },
+      "required": [
+        "state",
+        "n",
+        "m"
+      ],
+      "additionalProperties": false
+    },
+    "uploadInBackground_result": {
+      "type": "object",
+      "properties": {},
+      "required": [],
+      "additionalProperties": false
+    },
+    "checkUpdate_args": {
+      "type": "object",
+      "properties": {},
+      "required": [],
+      "additionalProperties": false
+    },
+    "checkUpdate_result": {
+      "type": "object",
+      "properties": {
+        "available": {
+          "type": "boolean"
+        },
+        "version": {
+          "$ref": "../common/semver/1.json"
+        }
+      },
+      "required": [
+        "available"
+      ],
+      "additionalProperties": false
+    },
+    "listFamilies_args": {
+      "type": "object",
+      "properties": {},
+      "required": [],
+      "additionalProperties": false
+    },
+    "listFamilies_result": {
+      "type": "object",
+      "properties": {
+        "families": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "properties": {
+              "id": {
+                "$ref": "../common/uuidv7/1.json"
+              },
+              "name": {
+                "type": "string"
+              },
+              "url": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "id",
+              "name",
+              "url"
+            ],
+            "additionalProperties": false
+          }
+        },
+        "current": {
+          "$ref": "../common/uuidv7/1.json"
+        }
+      },
+      "required": [
+        "families",
+        "current"
+      ],
+      "additionalProperties": false
+    },
+    "switchFamily_args": {
+      "type": "object",
+      "properties": {
+        "id": {
+          "$ref": "../common/uuidv7/1.json"
+        }
+      },
+      "required": [
+        "id"
+      ],
+      "additionalProperties": false
+    },
+    "switchFamily_result": {
+      "type": "object",
+      "properties": {},
+      "required": [],
+      "additionalProperties": false
+    },
+    "addFamily_args": {
+      "type": "object",
+      "properties": {
+        "url": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "url"
+      ],
+      "additionalProperties": false
+    },
+    "addFamily_result": {
+      "type": "object",
+      "properties": {},
+      "required": [],
+      "additionalProperties": false
+    },
+    "removeFamily_args": {
+      "type": "object",
+      "properties": {
+        "id": {
+          "$ref": "../common/uuidv7/1.json"
+        }
+      },
+      "required": [
+        "id"
+      ],
+      "additionalProperties": false
+    },
+    "removeFamily_result": {
+      "type": "object",
+      "properties": {},
+      "required": [],
+      "additionalProperties": false
+    },
+    "log_args": {
+      "type": "object",
+      "properties": {
+        "level": {
+          "type": "string",
+          "enum": [
+            "debug",
+            "info",
+            "warn",
+            "error"
+          ]
+        },
+        "msg": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "level",
+        "msg"
+      ],
+      "additionalProperties": false
+    },
+    "log_result": {
+      "type": "object",
+      "properties": {},
+      "required": [],
+      "additionalProperties": false
+    },
+    "setShellToken_args": {
+      "type": "object",
+      "properties": {
+        "token": {
+          "type": "string"
+        },
+        "expires_at": {
+          "$ref": "../common/rfc3339/1.json"
+        }
+      },
+      "required": [
+        "token",
+        "expires_at"
+      ],
+      "additionalProperties": false
+    },
+    "setShellToken_result": {
+      "type": "object",
+      "properties": {},
+      "required": [],
+      "additionalProperties": false
+    },
+    "updateNameCache_args": {
+      "type": "object",
+      "properties": {
+        "names": {
+          "type": "object",
+          "additionalProperties": {
+            "type": "string"
+          }
+        }
+      },
+      "required": [
+        "names"
+      ],
+      "additionalProperties": false
+    },
+    "updateNameCache_result": {
+      "type": "object",
+      "properties": {},
+      "required": [],
+      "additionalProperties": false
+    },
+    "notifyResult_args": {
+      "type": "object",
+      "properties": {
+        "title": {
+          "type": "string"
+        },
+        "body": {
+          "type": "string"
+        },
+        "room_id": {
+          "$ref": "../common/uuidv7/1.json"
+        },
+        "sender_id": {
+          "$ref": "../common/uuidv7/1.json"
+        },
+        "kind": {
+          "type": "string",
+          "enum": [
+            "message",
+            "call",
+            "call_end",
+            "notice"
+          ]
+        },
+        "badge": {
+          "type": "integer",
+          "minimum": 0
+        }
+      },
+      "required": [
+        "title",
+        "body",
+        "kind"
+      ],
+      "additionalProperties": false
+    },
+    "notifyResult_result": {
+      "type": "object",
+      "properties": {},
+      "required": [],
+      "additionalProperties": false
+    },
+    "replyDone_args": {
+      "type": "object",
+      "properties": {
+        "room_id": {
+          "$ref": "../common/uuidv7/1.json"
+        },
+        "ok": {
+          "type": "boolean"
+        }
+      },
+      "required": [
+        "room_id",
+        "ok"
+      ],
+      "additionalProperties": false
+    },
+    "replyDone_result": {
+      "type": "object",
+      "properties": {},
+      "required": [],
+      "additionalProperties": false
+    },
+    "push_data": {
+      "$ref": "../ft.push/1.json"
+    },
+    "callAnswered_data": {
+      "type": "object",
+      "properties": {
+        "call_id": {
+          "$ref": "../common/uuidv7/1.json"
+        }
+      },
+      "required": [
+        "call_id"
+      ],
+      "additionalProperties": false
+    },
+    "callDeclined_data": {
+      "type": "object",
+      "properties": {
+        "call_id": {
+          "$ref": "../common/uuidv7/1.json"
+        }
+      },
+      "required": [
+        "call_id"
+      ],
+      "additionalProperties": false
+    },
+    "callEndedByOs_data": {
+      "type": "object",
+      "properties": {
+        "call_id": {
+          "$ref": "../common/uuidv7/1.json"
+        }
+      },
+      "required": [
+        "call_id"
+      ],
+      "additionalProperties": false
+    },
+    "callHeld_data": {
+      "type": "object",
+      "properties": {
+        "call_id": {
+          "$ref": "../common/uuidv7/1.json"
+        },
+        "held": {
+          "type": "boolean"
+        }
+      },
+      "required": [
+        "call_id",
+        "held"
+      ],
+      "additionalProperties": false
+    },
+    "audioRouteChanged_data": {
+      "type": "object",
+      "properties": {
+        "route": {
+          "type": "string"
+        },
+        "available": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        }
+      },
+      "required": [
+        "route",
+        "available"
+      ],
+      "additionalProperties": false
+    },
+    "pipChanged_data": {
+      "type": "object",
+      "properties": {
+        "in_pip": {
+          "type": "boolean"
+        }
+      },
+      "required": [
+        "in_pip"
+      ],
+      "additionalProperties": false
+    },
+    "networkChanged_data": {
+      "type": "object",
+      "properties": {
+        "type": {
+          "type": "string",
+          "enum": [
+            "wifi",
+            "cellular",
+            "none"
+          ]
+        }
+      },
+      "required": [
+        "type"
+      ],
+      "additionalProperties": false
+    },
+    "fontScaleChanged_data": {
+      "type": "object",
+      "properties": {
+        "scale": {
+          "type": "number",
+          "minimum": 0
+        }
+      },
+      "required": [
+        "scale"
+      ],
+      "additionalProperties": false
+    },
+    "backPressed_data": {
+      "type": "object",
+      "properties": {},
+      "required": [],
+      "additionalProperties": false
+    },
+    "familySwitched_data": {
+      "type": "object",
+      "properties": {
+        "id": {
+          "$ref": "../common/uuidv7/1.json"
+        }
+      },
+      "required": [
+        "id"
+      ],
+      "additionalProperties": false
+    },
+    "sessionNeeded_data": {
+      "type": "object",
+      "properties": {},
+      "required": [],
+      "additionalProperties": false
+    },
+    "updateAvailable_data": {
+      "type": "object",
+      "properties": {
+        "version": {
+          "$ref": "../common/semver/1.json"
+        }
+      },
+      "required": [
+        "version"
+      ],
+      "additionalProperties": false
+    },
+    "pushEndpoint_data": {
+      "type": "object",
+      "properties": {
+        "endpoint": {
+          "type": "string"
+        },
+        "kind": {
+          "type": "string",
+          "enum": [
+            "family_server",
+            "os_push"
+          ]
+        }
+      },
+      "required": [
+        "endpoint",
+        "kind"
+      ],
+      "additionalProperties": false
+    },
+    "shareReceived_data": {
+      "type": "object",
+      "properties": {
+        "items": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "properties": {
+              "blob_url": {
+                "type": "string"
+              },
+              "name": {
+                "type": "string"
+              },
+              "mime": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "blob_url",
+              "name",
+              "mime"
+            ],
+            "additionalProperties": false
+          }
+        },
+        "text": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "items"
+      ],
+      "additionalProperties": false
+    },
+    "updateFailed_data": {
+      "type": "object",
+      "properties": {
+        "code": {
+          "type": "string",
+          "pattern": "^[A-Z]{3,5}-[0-9]{3}$"
+        },
+        "reason": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "code"
+      ],
+      "additionalProperties": false
+    },
+    "reply_data": {
+      "type": "object",
+      "properties": {
+        "room_id": {
+          "$ref": "../common/uuidv7/1.json"
+        },
+        "text": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "room_id",
+        "text"
+      ],
+      "additionalProperties": false
+    },
+    "error": {
+      "type": "object",
+      "properties": {
+        "code": {
+          "type": "string",
+          "pattern": "^[A-Z]{3,5}-[0-9]{3}$"
+        },
+        "params": {
+          "type": "object"
+        }
+      },
+      "required": [
+        "code"
+      ],
+      "additionalProperties": false
+    }
+  },
+  "oneOf": [
+    {
+      "title": "command",
+      "oneOf": [
+        {
+          "type": "object",
+          "properties": {
+            "id": {
+              "type": "string"
+            },
+            "cmd": {
+              "const": "getInfo"
+            },
+            "args": {
+              "$ref": "#/$defs/getInfo_args"
+            }
+          },
+          "required": [
+            "id",
+            "cmd",
+            "args"
+          ],
+          "additionalProperties": false
+        },
+        {
+          "type": "object",
+          "properties": {
+            "id": {
+              "type": "string"
+            },
+            "cmd": {
+              "const": "requestPermission"
+            },
+            "args": {
+              "$ref": "#/$defs/requestPermission_args"
+            }
+          },
+          "required": [
+            "id",
+            "cmd",
+            "args"
+          ],
+          "additionalProperties": false
+        },
+        {
+          "type": "object",
+          "properties": {
+            "id": {
+              "type": "string"
+            },
+            "cmd": {
+              "const": "setBadge"
+            },
+            "args": {
+              "$ref": "#/$defs/setBadge_args"
+            }
+          },
+          "required": [
+            "id",
+            "cmd",
+            "args"
+          ],
+          "additionalProperties": false
+        },
+        {
+          "type": "object",
+          "properties": {
+            "id": {
+              "type": "string"
+            },
+            "cmd": {
+              "const": "callStarted"
+            },
+            "args": {
+              "$ref": "#/$defs/callStarted_args"
+            }
+          },
+          "required": [
+            "id",
+            "cmd",
+            "args"
+          ],
+          "additionalProperties": false
+        },
+        {
+          "type": "object",
+          "properties": {
+            "id": {
+              "type": "string"
+            },
+            "cmd": {
+              "const": "callEnded"
+            },
+            "args": {
+              "$ref": "#/$defs/callEnded_args"
+            }
+          },
+          "required": [
+            "id",
+            "cmd",
+            "args"
+          ],
+          "additionalProperties": false
+        },
+        {
+          "type": "object",
+          "properties": {
+            "id": {
+              "type": "string"
+            },
+            "cmd": {
+              "const": "callState"
+            },
+            "args": {
+              "$ref": "#/$defs/callState_args"
+            }
+          },
+          "required": [
+            "id",
+            "cmd",
+            "args"
+          ],
+          "additionalProperties": false
+        },
+        {
+          "type": "object",
+          "properties": {
+            "id": {
+              "type": "string"
+            },
+            "cmd": {
+              "const": "getAudioRoutes"
+            },
+            "args": {
+              "$ref": "#/$defs/getAudioRoutes_args"
+            }
+          },
+          "required": [
+            "id",
+            "cmd",
+            "args"
+          ],
+          "additionalProperties": false
+        },
+        {
+          "type": "object",
+          "properties": {
+            "id": {
+              "type": "string"
+            },
+            "cmd": {
+              "const": "setAudioRoute"
+            },
+            "args": {
+              "$ref": "#/$defs/setAudioRoute_args"
+            }
+          },
+          "required": [
+            "id",
+            "cmd",
+            "args"
+          ],
+          "additionalProperties": false
+        },
+        {
+          "type": "object",
+          "properties": {
+            "id": {
+              "type": "string"
+            },
+            "cmd": {
+              "const": "enterPip"
+            },
+            "args": {
+              "$ref": "#/$defs/enterPip_args"
+            }
+          },
+          "required": [
+            "id",
+            "cmd",
+            "args"
+          ],
+          "additionalProperties": false
+        },
+        {
+          "type": "object",
+          "properties": {
+            "id": {
+              "type": "string"
+            },
+            "cmd": {
+              "const": "keepAwake"
+            },
+            "args": {
+              "$ref": "#/$defs/keepAwake_args"
+            }
+          },
+          "required": [
+            "id",
+            "cmd",
+            "args"
+          ],
+          "additionalProperties": false
+        },
+        {
+          "type": "object",
+          "properties": {
+            "id": {
+              "type": "string"
+            },
+            "cmd": {
+              "const": "pickMedia"
+            },
+            "args": {
+              "$ref": "#/$defs/pickMedia_args"
+            }
+          },
+          "required": [
+            "id",
+            "cmd",
+            "args"
+          ],
+          "additionalProperties": false
+        },
+        {
+          "type": "object",
+          "properties": {
+            "id": {
+              "type": "string"
+            },
+            "cmd": {
+              "const": "saveToGallery"
+            },
+            "args": {
+              "$ref": "#/$defs/saveToGallery_args"
+            }
+          },
+          "required": [
+            "id",
+            "cmd",
+            "args"
+          ],
+          "additionalProperties": false
+        },
+        {
+          "type": "object",
+          "properties": {
+            "id": {
+              "type": "string"
+            },
+            "cmd": {
+              "const": "share"
+            },
+            "args": {
+              "$ref": "#/$defs/share_args"
+            }
+          },
+          "required": [
+            "id",
+            "cmd",
+            "args"
+          ],
+          "additionalProperties": false
+        },
+        {
+          "type": "object",
+          "properties": {
+            "id": {
+              "type": "string"
+            },
+            "cmd": {
+              "const": "openExternal"
+            },
+            "args": {
+              "$ref": "#/$defs/openExternal_args"
+            }
+          },
+          "required": [
+            "id",
+            "cmd",
+            "args"
+          ],
+          "additionalProperties": false
+        },
+        {
+          "type": "object",
+          "properties": {
+            "id": {
+              "type": "string"
+            },
+            "cmd": {
+              "const": "getNetworkType"
+            },
+            "args": {
+              "$ref": "#/$defs/getNetworkType_args"
+            }
+          },
+          "required": [
+            "id",
+            "cmd",
+            "args"
+          ],
+          "additionalProperties": false
+        },
+        {
+          "type": "object",
+          "properties": {
+            "id": {
+              "type": "string"
+            },
+            "cmd": {
+              "const": "wrapDeviceKey"
+            },
+            "args": {
+              "$ref": "#/$defs/wrapDeviceKey_args"
+            }
+          },
+          "required": [
+            "id",
+            "cmd",
+            "args"
+          ],
+          "additionalProperties": false
+        },
+        {
+          "type": "object",
+          "properties": {
+            "id": {
+              "type": "string"
+            },
+            "cmd": {
+              "const": "unwrapDeviceKey"
+            },
+            "args": {
+              "$ref": "#/$defs/unwrapDeviceKey_args"
+            }
+          },
+          "required": [
+            "id",
+            "cmd",
+            "args"
+          ],
+          "additionalProperties": false
+        },
+        {
+          "type": "object",
+          "properties": {
+            "id": {
+              "type": "string"
+            },
+            "cmd": {
+              "const": "biometricUnlock"
+            },
+            "args": {
+              "$ref": "#/$defs/biometricUnlock_args"
+            }
+          },
+          "required": [
+            "id",
+            "cmd",
+            "args"
+          ],
+          "additionalProperties": false
+        },
+        {
+          "type": "object",
+          "properties": {
+            "id": {
+              "type": "string"
+            },
+            "cmd": {
+              "const": "registerPush"
+            },
+            "args": {
+              "$ref": "#/$defs/registerPush_args"
+            }
+          },
+          "required": [
+            "id",
+            "cmd",
+            "args"
+          ],
+          "additionalProperties": false
+        },
+        {
+          "type": "object",
+          "properties": {
+            "id": {
+              "type": "string"
+            },
+            "cmd": {
+              "const": "uploadInBackground"
+            },
+            "args": {
+              "$ref": "#/$defs/uploadInBackground_args"
+            }
+          },
+          "required": [
+            "id",
+            "cmd",
+            "args"
+          ],
+          "additionalProperties": false
+        },
+        {
+          "type": "object",
+          "properties": {
+            "id": {
+              "type": "string"
+            },
+            "cmd": {
+              "const": "checkUpdate"
+            },
+            "args": {
+              "$ref": "#/$defs/checkUpdate_args"
+            }
+          },
+          "required": [
+            "id",
+            "cmd",
+            "args"
+          ],
+          "additionalProperties": false
+        },
+        {
+          "type": "object",
+          "properties": {
+            "id": {
+              "type": "string"
+            },
+            "cmd": {
+              "const": "listFamilies"
+            },
+            "args": {
+              "$ref": "#/$defs/listFamilies_args"
+            }
+          },
+          "required": [
+            "id",
+            "cmd",
+            "args"
+          ],
+          "additionalProperties": false
+        },
+        {
+          "type": "object",
+          "properties": {
+            "id": {
+              "type": "string"
+            },
+            "cmd": {
+              "const": "switchFamily"
+            },
+            "args": {
+              "$ref": "#/$defs/switchFamily_args"
+            }
+          },
+          "required": [
+            "id",
+            "cmd",
+            "args"
+          ],
+          "additionalProperties": false
+        },
+        {
+          "type": "object",
+          "properties": {
+            "id": {
+              "type": "string"
+            },
+            "cmd": {
+              "const": "addFamily"
+            },
+            "args": {
+              "$ref": "#/$defs/addFamily_args"
+            }
+          },
+          "required": [
+            "id",
+            "cmd",
+            "args"
+          ],
+          "additionalProperties": false
+        },
+        {
+          "type": "object",
+          "properties": {
+            "id": {
+              "type": "string"
+            },
+            "cmd": {
+              "const": "removeFamily"
+            },
+            "args": {
+              "$ref": "#/$defs/removeFamily_args"
+            }
+          },
+          "required": [
+            "id",
+            "cmd",
+            "args"
+          ],
+          "additionalProperties": false
+        },
+        {
+          "type": "object",
+          "properties": {
+            "id": {
+              "type": "string"
+            },
+            "cmd": {
+              "const": "log"
+            },
+            "args": {
+              "$ref": "#/$defs/log_args"
+            }
+          },
+          "required": [
+            "id",
+            "cmd",
+            "args"
+          ],
+          "additionalProperties": false
+        },
+        {
+          "type": "object",
+          "properties": {
+            "id": {
+              "type": "string"
+            },
+            "cmd": {
+              "const": "setShellToken"
+            },
+            "args": {
+              "$ref": "#/$defs/setShellToken_args"
+            }
+          },
+          "required": [
+            "id",
+            "cmd",
+            "args"
+          ],
+          "additionalProperties": false
+        },
+        {
+          "type": "object",
+          "properties": {
+            "id": {
+              "type": "string"
+            },
+            "cmd": {
+              "const": "updateNameCache"
+            },
+            "args": {
+              "$ref": "#/$defs/updateNameCache_args"
+            }
+          },
+          "required": [
+            "id",
+            "cmd",
+            "args"
+          ],
+          "additionalProperties": false
+        },
+        {
+          "type": "object",
+          "properties": {
+            "id": {
+              "type": "string"
+            },
+            "cmd": {
+              "const": "notifyResult"
+            },
+            "args": {
+              "$ref": "#/$defs/notifyResult_args"
+            }
+          },
+          "required": [
+            "id",
+            "cmd",
+            "args"
+          ],
+          "additionalProperties": false
+        },
+        {
+          "type": "object",
+          "properties": {
+            "id": {
+              "type": "string"
+            },
+            "cmd": {
+              "const": "replyDone"
+            },
+            "args": {
+              "$ref": "#/$defs/replyDone_args"
+            }
+          },
+          "required": [
+            "id",
+            "cmd",
+            "args"
+          ],
+          "additionalProperties": false
+        }
+      ]
+    },
+    {
+      "title": "response_ok",
+      "type": "object",
+      "properties": {
+        "id": {
+          "type": "string"
+        },
+        "ok": {
+          "const": true
+        },
+        "result": {
+          "type": "object"
+        }
+      },
+      "required": [
+        "id",
+        "ok",
+        "result"
+      ],
+      "additionalProperties": false
+    },
+    {
+      "title": "response_error",
+      "type": "object",
+      "properties": {
+        "id": {
+          "type": "string"
+        },
+        "ok": {
+          "const": false
+        },
+        "error": {
+          "$ref": "#/$defs/error"
+        }
+      },
+      "required": [
+        "id",
+        "ok",
+        "error"
+      ],
+      "additionalProperties": false
+    },
+    {
+      "title": "event",
+      "oneOf": [
+        {
+          "type": "object",
+          "properties": {
+            "event": {
+              "const": "push"
+            },
+            "data": {
+              "$ref": "#/$defs/push_data"
+            }
+          },
+          "required": [
+            "event",
+            "data"
+          ],
+          "additionalProperties": false
+        },
+        {
+          "type": "object",
+          "properties": {
+            "event": {
+              "const": "callAnswered"
+            },
+            "data": {
+              "$ref": "#/$defs/callAnswered_data"
+            }
+          },
+          "required": [
+            "event",
+            "data"
+          ],
+          "additionalProperties": false
+        },
+        {
+          "type": "object",
+          "properties": {
+            "event": {
+              "const": "callDeclined"
+            },
+            "data": {
+              "$ref": "#/$defs/callDeclined_data"
+            }
+          },
+          "required": [
+            "event",
+            "data"
+          ],
+          "additionalProperties": false
+        },
+        {
+          "type": "object",
+          "properties": {
+            "event": {
+              "const": "callEndedByOs"
+            },
+            "data": {
+              "$ref": "#/$defs/callEndedByOs_data"
+            }
+          },
+          "required": [
+            "event",
+            "data"
+          ],
+          "additionalProperties": false
+        },
+        {
+          "type": "object",
+          "properties": {
+            "event": {
+              "const": "callHeld"
+            },
+            "data": {
+              "$ref": "#/$defs/callHeld_data"
+            }
+          },
+          "required": [
+            "event",
+            "data"
+          ],
+          "additionalProperties": false
+        },
+        {
+          "type": "object",
+          "properties": {
+            "event": {
+              "const": "audioRouteChanged"
+            },
+            "data": {
+              "$ref": "#/$defs/audioRouteChanged_data"
+            }
+          },
+          "required": [
+            "event",
+            "data"
+          ],
+          "additionalProperties": false
+        },
+        {
+          "type": "object",
+          "properties": {
+            "event": {
+              "const": "pipChanged"
+            },
+            "data": {
+              "$ref": "#/$defs/pipChanged_data"
+            }
+          },
+          "required": [
+            "event",
+            "data"
+          ],
+          "additionalProperties": false
+        },
+        {
+          "type": "object",
+          "properties": {
+            "event": {
+              "const": "networkChanged"
+            },
+            "data": {
+              "$ref": "#/$defs/networkChanged_data"
+            }
+          },
+          "required": [
+            "event",
+            "data"
+          ],
+          "additionalProperties": false
+        },
+        {
+          "type": "object",
+          "properties": {
+            "event": {
+              "const": "fontScaleChanged"
+            },
+            "data": {
+              "$ref": "#/$defs/fontScaleChanged_data"
+            }
+          },
+          "required": [
+            "event",
+            "data"
+          ],
+          "additionalProperties": false
+        },
+        {
+          "type": "object",
+          "properties": {
+            "event": {
+              "const": "backPressed"
+            },
+            "data": {
+              "$ref": "#/$defs/backPressed_data"
+            }
+          },
+          "required": [
+            "event",
+            "data"
+          ],
+          "additionalProperties": false
+        },
+        {
+          "type": "object",
+          "properties": {
+            "event": {
+              "const": "familySwitched"
+            },
+            "data": {
+              "$ref": "#/$defs/familySwitched_data"
+            }
+          },
+          "required": [
+            "event",
+            "data"
+          ],
+          "additionalProperties": false
+        },
+        {
+          "type": "object",
+          "properties": {
+            "event": {
+              "const": "sessionNeeded"
+            },
+            "data": {
+              "$ref": "#/$defs/sessionNeeded_data"
+            }
+          },
+          "required": [
+            "event",
+            "data"
+          ],
+          "additionalProperties": false
+        },
+        {
+          "type": "object",
+          "properties": {
+            "event": {
+              "const": "updateAvailable"
+            },
+            "data": {
+              "$ref": "#/$defs/updateAvailable_data"
+            }
+          },
+          "required": [
+            "event",
+            "data"
+          ],
+          "additionalProperties": false
+        },
+        {
+          "type": "object",
+          "properties": {
+            "event": {
+              "const": "pushEndpoint"
+            },
+            "data": {
+              "$ref": "#/$defs/pushEndpoint_data"
+            }
+          },
+          "required": [
+            "event",
+            "data"
+          ],
+          "additionalProperties": false
+        },
+        {
+          "type": "object",
+          "properties": {
+            "event": {
+              "const": "shareReceived"
+            },
+            "data": {
+              "$ref": "#/$defs/shareReceived_data"
+            }
+          },
+          "required": [
+            "event",
+            "data"
+          ],
+          "additionalProperties": false
+        },
+        {
+          "type": "object",
+          "properties": {
+            "event": {
+              "const": "updateFailed"
+            },
+            "data": {
+              "$ref": "#/$defs/updateFailed_data"
+            }
+          },
+          "required": [
+            "event",
+            "data"
+          ],
+          "additionalProperties": false
+        },
+        {
+          "type": "object",
+          "properties": {
+            "event": {
+              "const": "reply"
+            },
+            "data": {
+              "$ref": "#/$defs/reply_data"
+            }
+          },
+          "required": [
+            "event",
+            "data"
+          ],
+          "additionalProperties": false
+        }
+      ]
+    }
+  ]
+}

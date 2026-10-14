@@ -1,0 +1,60 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://family-talk.invalid/schemas/ft.content.poll/1",
+  "title": "ft.content.poll/1",
+  "description": "第4章 3.1",
+  "type": "object",
+  "properties": {
+    "replaces": {
+      "$ref": "../common/uuidv7/1.json"
+    },
+    "inReplyTo": {
+      "$ref": "../common/uuidv7/1.json"
+    },
+    "expires": {
+      "$ref": "../common/rfc3339/1.json"
+    },
+    "question": {
+      "type": "string",
+      "x-grapheme-max": 200
+    },
+    "options": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "text": {
+            "type": "string",
+            "x-grapheme-max": 100
+          }
+        },
+        "required": [
+          "id",
+          "text"
+        ],
+        "additionalProperties": false
+      },
+      "minItems": 2,
+      "maxItems": 10
+    },
+    "multi": {
+      "type": "boolean"
+    },
+    "anonymous": {
+      "type": "boolean"
+    },
+    "closes_at": {
+      "$ref": "../common/rfc3339/1.json"
+    }
+  },
+  "required": [
+    "question",
+    "options",
+    "multi",
+    "anonymous"
+  ],
+  "additionalProperties": false
+}

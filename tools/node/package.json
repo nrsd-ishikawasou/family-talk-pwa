@@ -1,0 +1,14 @@
+{
+  "name": "family-talk-tools-node",
+  "private": true,
+  "description": "CI と開発機で使う Node の道具（版はここで固定し、package-lock.json の完全性のハッシュで推移的な依存まで固定する）",
+  "license": "Apache-2.0",
+  "devDependencies": {
+    "@asyncapi/cli": "6.2.1",
+    "@stoplight/spectral-cli": "6.17.0",
+    "markdownlint-cli2": "0.23.3",
+    "textlint": "15.8.0",
+    "textlint-filter-rule-allowlist": "4.0.0",
+    "textlint-rule-preset-ja-technical-writing": "12.0.2"
+  }
+}

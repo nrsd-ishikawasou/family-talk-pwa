@@ -1,0 +1,20 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://family-talk.invalid/schemas/ft.receipt/1",
+  "title": "ft.receipt/1",
+  "description": "第2章 12、5.5。既読の 3 種（イベントの識別子）",
+  "type": "object",
+  "properties": {
+    "read": {
+      "$ref": "../common/uuidv7/1.json"
+    },
+    "read_private": {
+      "$ref": "../common/uuidv7/1.json"
+    },
+    "fully_read": {
+      "$ref": "../common/uuidv7/1.json"
+    }
+  },
+  "required": [],
+  "additionalProperties": false
+}

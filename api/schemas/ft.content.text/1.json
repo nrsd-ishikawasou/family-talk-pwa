@@ -1,0 +1,82 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://family-talk.invalid/schemas/ft.content.text/1",
+  "title": "ft.content.text/1",
+  "description": "第4章 3.1",
+  "type": "object",
+  "properties": {
+    "replaces": {
+      "$ref": "../common/uuidv7/1.json"
+    },
+    "inReplyTo": {
+      "$ref": "../common/uuidv7/1.json"
+    },
+    "expires": {
+      "$ref": "../common/rfc3339/1.json"
+    },
+    "body": {
+      "type": "string",
+      "x-grapheme-max": 10000
+    },
+    "format": {
+      "const": "plain"
+    },
+    "mentions_local": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "properties": {
+          "user_id": {
+            "$ref": "../common/uuidv7/1.json"
+          },
+          "start": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "len": {
+            "type": "integer",
+            "minimum": 0
+          }
+        },
+        "required": [
+          "user_id",
+          "start",
+          "len"
+        ],
+        "additionalProperties": false
+      }
+    },
+    "links": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "properties": {
+          "url": {
+            "type": "string"
+          },
+          "start": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "len": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "preview": {
+            "$ref": "../ft.content.url_preview/1.json"
+          }
+        },
+        "required": [
+          "url",
+          "start",
+          "len"
+        ],
+        "additionalProperties": false
+      }
+    }
+  },
+  "required": [
+    "body"
+  ],
+  "additionalProperties": false
+}

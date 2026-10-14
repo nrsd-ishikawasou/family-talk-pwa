@@ -1,0 +1,82 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://family-talk.invalid/schemas/ft.room_event/1",
+  "title": "ft.room_event/1",
+  "description": "第2章 12。トークのイベント 1 件の外側",
+  "type": "object",
+  "properties": {
+    "id": {
+      "$ref": "../common/uuidv7/1.json"
+    },
+    "room_id": {
+      "$ref": "../common/uuidv7/1.json"
+    },
+    "ts": {
+      "$ref": "../common/rfc3339/1.json"
+    },
+    "schema": {
+      "type": "string",
+      "enum": [
+        "ft.event.mls/1",
+        "ft.event.system/1",
+        "ft.event.call/1",
+        "ft.event.redaction/1"
+      ]
+    },
+    "sender_id": {
+      "$ref": "../common/uuidv7/1.json"
+    },
+    "sender_device_id": {
+      "$ref": "../common/uuidv7/1.json"
+    },
+    "body": {
+      "oneOf": [
+        {
+          "$ref": "../ft.event.mls/1.json"
+        },
+        {
+          "$ref": "../ft.event.system/1.json"
+        },
+        {
+          "$ref": "../ft.event.call/1.json"
+        },
+        {
+          "$ref": "../ft.event.redaction/1.json"
+        }
+      ]
+    },
+    "redacted": {
+      "type": "object",
+      "properties": {
+        "at": {
+          "$ref": "../common/rfc3339/1.json"
+        },
+        "by": {
+          "$ref": "../common/uuidv7/1.json"
+        },
+        "reason": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "at",
+        "by"
+      ],
+      "additionalProperties": false
+    },
+    "transaction_id": {
+      "$ref": "../common/uuidv7/1.json"
+    },
+    "silent": {
+      "type": "boolean"
+    }
+  },
+  "required": [
+    "id",
+    "room_id",
+    "ts",
+    "schema",
+    "body"
+  ],
+  "additionalProperties": false
+}

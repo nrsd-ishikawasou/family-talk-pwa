@@ -1,0 +1,84 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://family-talk.invalid/schemas/ft.content.event/1",
+  "title": "ft.content.event/1",
+  "description": "第4章 3.1、5.8",
+  "type": "object",
+  "properties": {
+    "replaces": {
+      "$ref": "../common/uuidv7/1.json"
+    },
+    "inReplyTo": {
+      "$ref": "../common/uuidv7/1.json"
+    },
+    "expires": {
+      "$ref": "../common/rfc3339/1.json"
+    },
+    "title": {
+      "type": "string",
+      "x-grapheme-max": 100
+    },
+    "starts_at": {
+      "$ref": "../common/rfc3339/1.json"
+    },
+    "ends_at": {
+      "$ref": "../common/rfc3339/1.json"
+    },
+    "all_day": {
+      "type": "boolean"
+    },
+    "place": {
+      "type": "object",
+      "properties": {
+        "text": {
+          "type": "string"
+        },
+        "location": {
+          "$ref": "../ft.content.location/1.json"
+        }
+      },
+      "required": [],
+      "additionalProperties": false
+    },
+    "description": {
+      "type": "string",
+      "x-grapheme-max": 2000
+    },
+    "remind_before": {
+      "type": "array",
+      "items": {
+        "type": "integer",
+        "minimum": 0
+      }
+    },
+    "candidates": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "starts_at": {
+            "$ref": "../common/rfc3339/1.json"
+          },
+          "ends_at": {
+            "$ref": "../common/rfc3339/1.json"
+          }
+        },
+        "required": [
+          "id",
+          "starts_at"
+        ],
+        "additionalProperties": false
+      },
+      "maxItems": 10
+    }
+  },
+  "required": [
+    "title",
+    "starts_at",
+    "all_day"
+  ],
+  "additionalProperties": false
+}

@@ -1,0 +1,43 @@
+# Spectral の規則（基本設計書 第2章 10、第14章 8）。
+extends: ["spectral:oas", "spectral:asyncapi"]
+rules:
+  # 公開する連絡の電子メールアドレスは NRSD が決める（基本設計書 第16章 6.3 の R-4。決まるまで外す）
+  asyncapi-info-contact-properties: "off"
+  ft-x-authz-required:
+    description: 全 operation が x-authz（第2章 10 の値の配列）を持つ
+    severity: error
+    given: "$.paths[*][get,put,post,delete,patch,head]"
+    then:
+      field: x-authz
+      function: truthy
+  ft-x-authz-values:
+    description: x-authz の値は第2章 10 の表のもの
+    severity: error
+    given: "$.paths[*][get,put,post,delete,patch,head].x-authz[*]"
+    then:
+      function: enumeration
+      functionOptions:
+        values: [none, session, approved, device_self, room_member, admin, shell, setup_token, invite_token, reset_token, device_code, ws_token, internal]
+  ft-x-idempotency-values:
+    description: x-idempotency は key、natural、none
+    severity: error
+    given: "$.paths[*][get,put,post,delete,patch,head]"
+    then:
+      field: x-idempotency
+      function: enumeration
+      functionOptions:
+        values: [key, natural, none]
+  ft-x-reauth-values:
+    description: x-reauth は true か conditional（第2章 10）
+    severity: error
+    given: "$.paths[*][get,put,post,delete,patch,head].x-reauth"
+    then:
+      function: enumeration
+      functionOptions:
+        values: [true, conditional]
+overrides:
+  - files:
+      - "openapi.yaml#/paths/~1ws/get/responses"
+      - "openapi.yaml#/paths/~1up~1ws/get/responses"
+    rules:
+      operation-success-response: "off"   # WebSocket への切り替えの応答は 101（RFC 6455）

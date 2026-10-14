@@ -1,0 +1,34 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://family-talk.invalid/schemas/ft.content.call_key/1",
+  "title": "ft.content.call_key/1",
+  "description": "第12章 12、5.11。通話の鍵",
+  "type": "object",
+  "properties": {
+    "v": {
+      "const": 1
+    },
+    "call_id": {
+      "$ref": "../common/uuidv7/1.json"
+    },
+    "index": {
+      "type": "integer",
+      "minimum": 0,
+      "maximum": 255
+    },
+    "key": {
+      "$ref": "../common/base64url/1.json"
+    },
+    "issued_at": {
+      "$ref": "../common/rfc3339/1.json"
+    }
+  },
+  "required": [
+    "v",
+    "call_id",
+    "index",
+    "key",
+    "issued_at"
+  ],
+  "additionalProperties": false
+}

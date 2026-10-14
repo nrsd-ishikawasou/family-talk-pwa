@@ -1,0 +1,8 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://family-talk.invalid/schemas/common/base64url/1",
+  "title": "base64url",
+  "description": "RFC 4648 の base64url（詰め物なし。第12章 12）",
+  "type": "string",
+  "pattern": "^[A-Za-z0-9_-]*$"
+}

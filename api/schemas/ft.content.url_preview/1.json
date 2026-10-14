@@ -1,0 +1,28 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://family-talk.invalid/schemas/ft.content.url_preview/1",
+  "title": "ft.content.url_preview/1",
+  "description": "第4章 3.1。text の links[].preview の中",
+  "type": "object",
+  "properties": {
+    "url": {
+      "type": "string"
+    },
+    "title": {
+      "type": "string"
+    },
+    "description": {
+      "type": "string"
+    },
+    "image": {
+      "$ref": "../ft.content.attachment_item/1.json"
+    },
+    "site_name": {
+      "type": "string"
+    }
+  },
+  "required": [
+    "url"
+  ],
+  "additionalProperties": false
+}

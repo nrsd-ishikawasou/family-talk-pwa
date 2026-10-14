@@ -1,0 +1,8 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://family-talk.invalid/schemas/common/sha256/1",
+  "title": "SHA-256",
+  "description": "暗号文の SHA-256 の小文字の 16 進（第2章 DD-2-7 の ETag）",
+  "type": "string",
+  "pattern": "^[0-9a-f]{64}$"
+}

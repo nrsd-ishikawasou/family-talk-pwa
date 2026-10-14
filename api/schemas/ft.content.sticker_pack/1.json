@@ -1,0 +1,66 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://family-talk.invalid/schemas/ft.content.sticker_pack/1",
+  "title": "ft.content.sticker_pack/1",
+  "description": "第4章 3.1。家族全員のトーク",
+  "type": "object",
+  "properties": {
+    "replaces": {
+      "$ref": "../common/uuidv7/1.json"
+    },
+    "inReplyTo": {
+      "$ref": "../common/uuidv7/1.json"
+    },
+    "expires": {
+      "$ref": "../common/rfc3339/1.json"
+    },
+    "pack_id": {
+      "$ref": "../common/uuidv7/1.json"
+    },
+    "name": {
+      "type": "string",
+      "x-grapheme-max": 30
+    },
+    "stickers": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "$ref": "../common/uuidv7/1.json"
+          },
+          "item": {
+            "$ref": "../ft.content.attachment_item/1.json"
+          },
+          "animated": {
+            "type": "boolean"
+          },
+          "tagged_users": {
+            "type": "array",
+            "items": {
+              "$ref": "../common/uuidv7/1.json"
+            }
+          }
+        },
+        "required": [
+          "id",
+          "item",
+          "animated"
+        ],
+        "additionalProperties": false
+      },
+      "minItems": 1,
+      "maxItems": 40
+    },
+    "creator": {
+      "$ref": "../common/uuidv7/1.json"
+    }
+  },
+  "required": [
+    "pack_id",
+    "name",
+    "stickers",
+    "creator"
+  ],
+  "additionalProperties": false
+}

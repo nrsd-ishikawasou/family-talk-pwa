@@ -1,0 +1,1052 @@
+# 設定の一覧の正本（基本設計書 第11章 7。分類は 7.2、既定値は各章の数値の表）。
+# layers は置ける場所（env、file、db、user、room_me、device、guardian。空は固定）。範囲を章が定めない数は min 1（第11章 7.2）。
+# 層の優先：環境変数 > ファイル > DB > 既定値（第11章 7.1）。
+categories:
+  - name: server
+    title: サーバー
+    chapter: 第11章
+  - name: room
+    title: トーク
+    chapter: 第4章 7
+  - name: media
+    title: メディア
+    chapter: 第5章 9
+  - name: retention
+    title: 保持
+    chapter: 第2章、第12章、第3章
+  - name: ratelimit
+    title: レート制限
+    chapter: 第2章 9.3（ratelimits.yaml）
+  - name: push
+    title: 通知
+    chapter: 第7章 11
+  - name: calls
+    title: 通話
+    chapter: 第6章 8
+  - name: auth
+    title: 認証
+    chapter: 第3章、第1章 DD-1-17
+  - name: keys
+    title: 鍵
+    chapter: 第12章 10
+  - name: notices
+    title: 知らせ
+    chapter: 第7章 9
+  - name: backup
+    title: バックアップ
+    chapter: 第11章 9
+  - name: update
+    title: 更新
+    chapter: 第11章 10
+  - name: maps
+    title: 地図
+    chapter: 第5章 8
+  - name: log
+    title: ログ
+    chapter: 第1章 10.4
+  - name: user
+    title: 構成員ごと（ft.settings.user/1）
+    chapter: 第10章 8、各章
+  - name: device
+    title: 端末だけ（第10章 8）
+    chapter: 第10章 8
+  - name: guardian
+    title: 保護者が決める子の制限
+    chapter: 第3章 9.2
+  - name: room_me
+    title: トークごとの自分の設定（ft.settings.room_me/1）
+    chapter: 第2章 12、第4章
+items:
+  - key: server.domain
+    type: string
+    default: null
+    layers: [env]
+    env: FT_DOMAIN
+    chapter: "第11章 3.2"
+    locked_when_env_or_file: true
+    note: "必須"
+  - key: server.https_port
+    type: int
+    default: 443
+    range: {"min": 1, "max": 65535}
+    layers: [env]
+    env: FT_HTTPS_PORT
+    chapter: "第11章 3.2"
+    locked_when_env_or_file: true
+  - key: server.http_port
+    type: int
+    default: 80
+    range: {"min": 1, "max": 65535}
+    layers: [env]
+    env: FT_HTTP_PORT
+    chapter: "第11章 3.2"
+    locked_when_env_or_file: true
+    note: "MAP-E では使わない"
+  - key: server.tz
+    type: string
+    default: "Asia/Tokyo"
+    layers: [env]
+    env: FT_TZ
+    chapter: "第11章 3.2"
+    locked_when_env_or_file: true
+  - key: server.data_dir
+    type: string
+    default: "/data"
+    layers: [env]
+    env: FT_DATA_DIR
+    chapter: "第11章 3.2"
+    locked_when_env_or_file: true
+  - key: server.mode
+    type: enum
+    default: "A"
+    range: {"enum": ["A", "B", "C", "D"]}
+    layers: [env]
+    env: FT_MODE
+    chapter: "第11章 3.2、5"
+    locked_when_env_or_file: true
+  - key: server.sfu_udp_start
+    type: int
+    default: 50000
+    range: {"min": 1024, "max": 65535}
+    layers: [env]
+    env: FT_SFU_UDP_START
+    chapter: "第11章 3.2、第6章 8"
+    locked_when_env_or_file: true
+  - key: server.sfu_udp_end
+    type: int
+    default: 60000
+    range: {"min": 1024, "max": 65535}
+    layers: [env]
+    env: FT_SFU_UDP_END
+    chapter: "第11章 3.2、第6章 8"
+    locked_when_env_or_file: true
+  - key: server.turn_udp_port
+    type: int
+    default: 3478
+    range: {"min": 1, "max": 65535}
+    layers: [env]
+    env: FT_TURN_UDP_PORT
+    chapter: "第11章 3.2、第6章 8"
+    locked_when_env_or_file: true
+  - key: server.turn_tls_port
+    type: int
+    default: 5349
+    range: {"min": 1, "max": 65535}
+    layers: [env]
+    env: FT_TURN_TLS_PORT
+    chapter: "第11章 3.2、第6章 8"
+    locked_when_env_or_file: true
+  - key: server.external_ipv4
+    type: string
+    default: "auto"
+    layers: [env]
+    env: FT_EXTERNAL_IPV4
+    chapter: "第11章 3.2"
+    locked_when_env_or_file: true
+    note: "auto は名前の解決"
+  - key: server.external_ipv6
+    type: string
+    default: "auto"
+    layers: [env]
+    env: FT_EXTERNAL_IPV6
+    chapter: "第11章 3.2"
+    locked_when_env_or_file: true
+    note: "auto は名前の解決"
+  - key: server.dns_provider
+    type: string
+    default: null
+    layers: [env]
+    env: FT_DNS_PROVIDER
+    chapter: "第11章 3.2"
+    locked_when_env_or_file: true
+    note: "必須。caddy の DNS のモジュール名"
+  - key: server.ddns
+    type: bool
+    default: true
+    layers: [env]
+    env: FT_DDNS
+    chapter: "第11章 3.2"
+    locked_when_env_or_file: true
+  - key: server.acme_fallback
+    type: bool
+    default: false
+    layers: [env]
+    env: FT_ACME_FALLBACK
+    chapter: "第11章 3.2"
+    locked_when_env_or_file: true
+  - key: server.relay_turn_host
+    type: string
+    default: ""
+    layers: [env]
+    env: FT_RELAY_TURN_HOST
+    chapter: "第11章 3.2"
+    locked_when_env_or_file: true
+    note: "形 C の時"
+  - key: server.admin_bind
+    type: string
+    default: "127.0.0.1"
+    layers: [env]
+    env: FT_ADMIN_BIND
+    chapter: "第11章 3.2"
+    locked_when_env_or_file: true
+    note: "/metrics の bind"
+  - key: server.metrics
+    type: bool
+    default: false
+    layers: [env]
+    env: FT_METRICS
+    chapter: "第11章 3.2、11"
+    locked_when_env_or_file: true
+    note: "opt-in"
+  - key: room.text_max
+    type: int
+    default: 10000
+    range: {"min": 10000}
+    layers: [db]
+    chapter: "第4章 7"
+    locked_when_env_or_file: false
+    note: "書記素"
+  - key: room.edit_window
+    type: duration
+    default: 900
+    range: {"min": 900}
+    layers: [db]
+    chapter: "第4章 7"
+    locked_when_env_or_file: false
+    note: "15 分"
+  - key: room.retract_window
+    type: duration
+    default: 604800
+    range: {"min": 604800, "null_means": "無期限"}
+    layers: [db]
+    chapter: "第4章 7"
+    locked_when_env_or_file: false
+    note: "送信者。null は無期限"
+  - key: room.announcements_max
+    type: int
+    default: 5
+    range: {"min": 5}
+    layers: [db]
+    chapter: "第4章 7"
+    locked_when_env_or_file: false
+  - key: room.poll_options_max
+    type: int
+    default: 10
+    range: {"min": 10}
+    layers: []
+    chapter: "第4章 7"
+    locked_when_env_or_file: false
+    note: "固定（変更：—）"
+  - key: room.poll_close_max
+    type: duration
+    default: 2592000
+    range: {"min": 2592000}
+    layers: []
+    chapter: "第4章 7"
+    locked_when_env_or_file: false
+    note: "固定（変更：—）"
+  - key: room.note_attachments_max
+    type: int
+    default: 20
+    range: {"min": 20}
+    layers: []
+    chapter: "第4章 7"
+    locked_when_env_or_file: false
+    note: "固定（変更：—）"
+  - key: room.schedule_horizon
+    type: duration
+    default: 2592000
+    range: {"min": 2592000}
+    layers: [db]
+    chapter: "第4章 7"
+    locked_when_env_or_file: false
+  - key: room.typing_timeout
+    type: duration
+    default: 10
+    range: {"min": 5, "max": 30}
+    layers: []
+    chapter: "第4章 7"
+    locked_when_env_or_file: false
+    note: "固定（変更：—）"
+  - key: room.empty_group_delete_after
+    type: duration
+    default: 2592000
+    range: {"min": 604800, "max": 31536000}
+    layers: [db]
+    chapter: "第4章 7"
+    locked_when_env_or_file: false
+  - key: room.sticker_packs_max
+    type: int
+    default: 100
+    range: {"min": 1}
+    layers: [db]
+    chapter: "第4章 7"
+    locked_when_env_or_file: false
+  - key: room.stickers_per_pack
+    type: int
+    default: 40
+    range: {"min": 1}
+    layers: [db]
+    chapter: "第4章 7"
+    locked_when_env_or_file: false
+  - key: room.group_members_max
+    type: enum
+    default: "family_size"
+    range: {"enum": ["family_size"]}
+    layers: []
+    chapter: "第4章 7"
+    locked_when_env_or_file: false
+    note: "家族の人数"
+  - key: media.items_per_send
+    type: int
+    default: 50
+    range: {"min": 50}
+    layers: [db]
+    chapter: "第5章 9"
+    locked_when_env_or_file: false
+    note: "第4章 7 も参照"
+  - key: media.photo_original_max
+    type: bytes
+    default: 20971520
+    range: {"min": 20971520}
+    layers: [db]
+    chapter: "第5章 9"
+    locked_when_env_or_file: false
+    note: "超えたら高画質"
+  - key: media.photo_long_edge_standard
+    type: int
+    default: 1600
+    range: {"min": 1}
+    layers: []
+    chapter: "第5章 9"
+    locked_when_env_or_file: false
+    note: "固定"
+  - key: media.photo_long_edge_high
+    type: int
+    default: 2560
+    range: {"min": 1}
+    layers: []
+    chapter: "第5章 9"
+    locked_when_env_or_file: false
+    note: "固定"
+  - key: media.pixels_max
+    type: int
+    default: 100000000
+    range: {"min": 1}
+    layers: []
+    chapter: "第5章 9"
+    locked_when_env_or_file: false
+    note: "固定"
+  - key: media.video_duration_max
+    type: duration
+    default: 300
+    range: {"min": 300}
+    layers: [db]
+    chapter: "第5章 9"
+    locked_when_env_or_file: false
+  - key: media.video_size_max
+    type: bytes
+    default: 1073741824
+    range: {"min": 1073741824}
+    layers: [db]
+    chapter: "第5章 9"
+    locked_when_env_or_file: false
+  - key: media.file_size_max
+    type: bytes
+    default: 1073741824
+    range: {"min": 1073741824}
+    layers: [db]
+    chapter: "第5章 9"
+    locked_when_env_or_file: false
+  - key: media.audio_duration_max
+    type: duration
+    default: 1800
+    range: {"min": 1800}
+    layers: [db]
+    chapter: "第5章 9"
+    locked_when_env_or_file: false
+  - key: media.albums_per_room
+    type: int
+    default: 100
+    range: {"min": 1}
+    layers: []
+    chapter: "第5章 9"
+    locked_when_env_or_file: false
+    note: "固定"
+  - key: media.album_items_max
+    type: int
+    default: 1000
+    range: {"min": 1}
+    layers: []
+    chapter: "第5章 9"
+    locked_when_env_or_file: false
+    note: "固定"
+  - key: media.album_items_per_add
+    type: int
+    default: 300
+    range: {"min": 1}
+    layers: []
+    chapter: "第5章 9"
+    locked_when_env_or_file: false
+    note: "固定"
+  - key: media.device_cache
+    type: percent
+    default: 20
+    range: {"min": 5, "max": 50}
+    layers: [device]
+    chapter: "第5章 9、5.2"
+    locked_when_env_or_file: false
+    note: "端末の空きの割合"
+  - key: media.map_cache
+    type: bytes
+    default: 209715200
+    range: {"min": 52428800, "max": 1048576000}
+    layers: [device]
+    chapter: "第5章 9、8.2"
+    locked_when_env_or_file: false
+  - key: media.server_quota
+    type: percent
+    default: 80
+    range: {"min": 1}
+    layers: [db]
+    chapter: "第5章 9、7"
+    locked_when_env_or_file: false
+    note: "設置時のディスクの空きの割合"
+  - key: media.retention_video_years
+    type: int
+    default: null
+    range: {"min": 1, "max": 10, "null_means": "消さない"}
+    layers: [db]
+    chapter: "第5章 7、9"
+    locked_when_env_or_file: false
+    note: "N 年より古い動画の原本"
+  - key: media.retention_original_photo_years
+    type: int
+    default: null
+    range: {"min": 1, "max": 10, "null_means": "消さない"}
+    layers: [db]
+    chapter: "第5章 7、9"
+    locked_when_env_or_file: false
+    note: "N 年より古いオリジナルの写真の原本"
+  - key: media.retention_include_files
+    type: bool
+    default: false
+    layers: [db]
+    chapter: "第5章 7"
+    locked_when_env_or_file: false
+    note: "ファイルも含める"
+  - key: retention.sync_index
+    type: duration
+    default: 7776000
+    range: {"min": 1}
+    layers: [db]
+    chapter: "第2章 DD-2-4、6.2"
+    locked_when_env_or_file: false
+  - key: retention.ip
+    type: duration
+    default: 2419200
+    range: {"min": 1}
+    layers: [db]
+    chapter: "第3章 5.3、第12章 11"
+    locked_when_env_or_file: false
+  - key: retention.redaction_grace
+    type: duration
+    default: 604800
+    range: {"min": 1}
+    layers: [db]
+    chapter: "第12章 9"
+    locked_when_env_or_file: false
+    note: "暗号文の物理削除までの猶予"
+  - key: retention.unapproved_device
+    type: duration
+    default: 604800
+    range: {"min": 1}
+    layers: [db]
+    chapter: "第12章 5.5"
+    locked_when_env_or_file: false
+  - key: retention.dormant_leaf
+    type: duration
+    default: 7776000
+    range: {"min": 1}
+    layers: [db]
+    chapter: "第12章 5.2"
+    locked_when_env_or_file: false
+  - key: retention.invite_records
+    type: duration
+    default: 31536000
+    range: {"min": 1}
+    layers: [db]
+    chapter: "第3章 3.2"
+    locked_when_env_or_file: false
+  - key: ratelimit.overrides
+    type: object
+    default: {}
+    layers: [db]
+    chapter: "第2章 9.3"
+    locked_when_env_or_file: false
+    note: "ratelimits.yaml の limits の上書き（policy と key ごと）"
+  - key: push.message_ttl
+    type: duration
+    default: 86400
+    range: {"min": 3600, "max": 604800}
+    layers: [db]
+    chapter: "第7章 11"
+    locked_when_env_or_file: false
+  - key: push.call_ttl
+    type: duration
+    default: 60
+    range: {"min": 30, "max": 120}
+    layers: [db]
+    chapter: "第7章 11"
+    locked_when_env_or_file: false
+  - key: push.call_repeat
+    type: string
+    default: "15s x 4"
+    layers: []
+    chapter: "第7章 11"
+    locked_when_env_or_file: false
+    note: "固定（iPhone）"
+  - key: push.retry_backoff
+    type: list
+    default: [1, 4, 16]
+    layers: []
+    chapter: "第7章 11"
+    locked_when_env_or_file: false
+    note: "固定（秒）"
+  - key: push.up_box_max
+    type: int
+    default: 1000
+    range: {"min": 100, "max": 10000}
+    layers: [db]
+    chapter: "第7章 11"
+    locked_when_env_or_file: false
+    note: "受け口の保管（1 端末）"
+  - key: push.up_ping
+    type: duration
+    default: 60
+    range: {"min": 30, "max": 300}
+    layers: [db]
+    chapter: "第7章 11"
+    locked_when_env_or_file: false
+    note: "常時接続の ping"
+  - key: push.mute_durations
+    type: list
+    default: ["1h", "8h", "1w", "always"]
+    layers: []
+    chapter: "第7章 11"
+    locked_when_env_or_file: false
+    note: "固定"
+  - key: push.pause_options
+    type: list
+    default: ["1h", "next_morning_8", "until"]
+    layers: []
+    chapter: "第7章 11"
+    locked_when_env_or_file: false
+    note: "固定"
+  - key: push.decrypt_timeout
+    type: duration
+    default: 10
+    range: {"min": 5, "max": 30}
+    layers: [db]
+    chapter: "第7章 11"
+    locked_when_env_or_file: false
+    note: "SW、シェル"
+  - key: push.preview_chars
+    type: int
+    default: 100
+    range: {"min": 1}
+    layers: []
+    chapter: "第7章 11"
+    locked_when_env_or_file: false
+    note: "固定"
+  - key: calls.ring_timeout
+    type: duration
+    default: 60
+    range: {"min": 30, "max": 120}
+    layers: [db]
+    chapter: "第6章 8"
+    locked_when_env_or_file: false
+  - key: calls.video_max
+    type: int
+    default: 8
+    range: {"min": 2, "max": 20}
+    layers: [db]
+    chapter: "第6章 8"
+    locked_when_env_or_file: false
+  - key: calls.audio_max
+    type: enum
+    default: "family_size"
+    range: {"enum": ["family_size"]}
+    layers: []
+    chapter: "第6章 8"
+    locked_when_env_or_file: false
+    note: "家族の人数（20 まで）"
+  - key: calls.empty_timeout
+    type: duration
+    default: 60
+    range: {"min": 30, "max": 300}
+    layers: [db]
+    chapter: "第6章 8"
+    locked_when_env_or_file: false
+  - key: calls.reconnect_timeout
+    type: duration
+    default: 30
+    range: {"min": 10, "max": 120}
+    layers: []
+    chapter: "第6章 8"
+    locked_when_env_or_file: false
+    note: "固定（変更：—）"
+  - key: calls.sfu_token_ttl
+    type: duration
+    default: 300
+    range: {"min": 1}
+    layers: []
+    chapter: "第6章 8"
+    locked_when_env_or_file: false
+    note: "固定"
+  - key: calls.simulcast_layers
+    type: list
+    default: ["180p", "360p", "720p"]
+    layers: []
+    chapter: "第6章 8"
+    locked_when_env_or_file: false
+    note: "固定"
+  - key: calls.high_quality
+    type: string
+    default: "1080p"
+    layers: []
+    chapter: "第6章 8"
+    locked_when_env_or_file: false
+    note: "固定（2 人・Wi-Fi）"
+  - key: calls.key_grace
+    type: duration
+    default: 10
+    range: {"min": 1}
+    layers: []
+    chapter: "第6章 8"
+    locked_when_env_or_file: false
+    note: "固定"
+  - key: auth.session_absolute
+    type: duration
+    default: 7776000
+    range: {"min": 1}
+    layers: [db]
+    chapter: "第1章 DD-1-17、第3章 DD-3-5"
+    locked_when_env_or_file: false
+  - key: auth.session_idle
+    type: duration
+    default: 2592000
+    range: {"min": 1}
+    layers: [db]
+    chapter: "第1章 DD-1-17、第3章 DD-3-5"
+    locked_when_env_or_file: false
+  - key: auth.invite_ttl
+    type: duration
+    default: 604800
+    range: {"min": 1}
+    layers: [db]
+    chapter: "第3章 DD-3-2、3.2"
+    locked_when_env_or_file: false
+  - key: auth.invite_uses
+    type: int
+    default: 1
+    range: {"min": 1}
+    layers: [db]
+    chapter: "第3章 DD-3-2、3.2"
+    locked_when_env_or_file: false
+  - key: auth.members_can_invite
+    type: bool
+    default: false
+    layers: [db]
+    chapter: "第3章 3.2"
+    locked_when_env_or_file: false
+  - key: auth.unused_invites_max
+    type: int
+    default: 20
+    range: {"min": 1}
+    layers: [db]
+    chapter: "第3章 3.2"
+    locked_when_env_or_file: false
+    note: "1 人あたり"
+  - key: keys.session_key_rotation
+    type: duration
+    default: 7776000
+    range: {"min": 1}
+    layers: [db]
+    chapter: "第12章 10"
+    locked_when_env_or_file: false
+  - key: keys.kek_rotation_reminder
+    type: duration
+    default: 63072000
+    range: {"min": 1}
+    layers: [db]
+    chapter: "第12章 6.2、第7章 9"
+    locked_when_env_or_file: false
+    note: "自動では交代しない。過ぎたら知らせる"
+  - key: keys.kek_rotation_reminder_repeat
+    type: duration
+    default: 2592000
+    range: {"min": 1}
+    layers: []
+    chapter: "第7章 9"
+    locked_when_env_or_file: false
+    note: "交代するまで繰り返す"
+  - key: keys.sfu_key_rotation
+    type: duration
+    default: 31536000
+    range: {"min": 1}
+    layers: [db]
+    chapter: "第12章 10"
+    locked_when_env_or_file: false
+  - key: notices.capacity_thresholds
+    type: list
+    default: [80, 90, 100]
+    layers: [db]
+    chapter: "第7章 9、第5章 7"
+    locked_when_env_or_file: false
+    note: "%"
+  - key: notices.cert_days
+    type: list
+    default: [14, 7, 1]
+    layers: [db]
+    chapter: "第7章 9"
+    locked_when_env_or_file: false
+    note: "失効も知らせる"
+  - key: notices.paper_check_interval
+    type: duration
+    default: 31536000
+    range: {"min": 1}
+    layers: [db]
+    chapter: "第7章 9"
+    locked_when_env_or_file: false
+    note: "参加の日"
+  - key: backup.time
+    type: string
+    default: "03:00"
+    layers: [db]
+    chapter: "第11章 9.1"
+    locked_when_env_or_file: false
+    note: "日次"
+  - key: backup.local_path
+    type: string
+    default: ""
+    layers: [file, db]
+    chapter: "第11章 9.1"
+    locked_when_env_or_file: true
+    note: "別のディスク、USB の HDD"
+  - key: backup.s3_endpoint
+    type: string
+    default: ""
+    layers: [file, db]
+    chapter: "第11章 9.1"
+    locked_when_env_or_file: true
+  - key: backup.s3_bucket
+    type: string
+    default: ""
+    layers: [file, db]
+    chapter: "第11章 9.1"
+    locked_when_env_or_file: true
+    note: "アクセスキーは secrets のファイル"
+  - key: backup.keep_daily
+    type: int
+    default: 7
+    range: {"min": 1}
+    layers: [db]
+    chapter: "第11章 9.1"
+    locked_when_env_or_file: false
+  - key: backup.keep_weekly
+    type: int
+    default: 4
+    range: {"min": 1}
+    layers: [db]
+    chapter: "第11章 9.1"
+    locked_when_env_or_file: false
+  - key: backup.keep_monthly
+    type: int
+    default: 6
+    range: {"min": 1}
+    layers: [db]
+    chapter: "第11章 9.1"
+    locked_when_env_or_file: false
+  - key: backup.check_subset
+    type: percent
+    default: 10
+    range: {"min": 1, "max": 100}
+    layers: [db]
+    chapter: "第11章 9.1"
+    locked_when_env_or_file: false
+    note: "日次"
+  - key: backup.restore_test_interval
+    type: duration
+    default: 2592000
+    range: {"min": 1}
+    layers: [db]
+    chapter: "第11章 9.1"
+    locked_when_env_or_file: false
+    note: "月 1"
+  - key: backup.include_maps
+    type: bool
+    default: false
+    layers: [db]
+    chapter: "第11章 9.1"
+    locked_when_env_or_file: false
+  - key: update.auto
+    type: bool
+    default: false
+    layers: [db]
+    chapter: "第11章 10"
+    locked_when_env_or_file: false
+  - key: update.window
+    type: string
+    default: "Tue 04:00"
+    layers: [db]
+    chapter: "第11章 10"
+    locked_when_env_or_file: false
+    note: "週 1"
+  - key: maps.region
+    type: string
+    default: "japan"
+    layers: [db]
+    chapter: "第5章 8.1"
+    locked_when_env_or_file: false
+    note: "既定：日本"
+  - key: maps.update_reminder_interval
+    type: duration
+    default: 31536000
+    range: {"min": 1}
+    layers: [db]
+    chapter: "第5章 8.1、第7章 9"
+    locked_when_env_or_file: false
+  - key: log.level
+    type: enum
+    default: "info"
+    range: {"enum": ["info", "debug"]}
+    layers: [db]
+    chapter: "第1章 10.4"
+    locked_when_env_or_file: false
+  - key: user.notify_content
+    type: enum
+    default: "name_and_body"
+    range: {"enum": ["name_and_body", "name_only", "none"]}
+    layers: [user]
+    chapter: "第7章 5.2"
+    locked_when_env_or_file: false
+  - key: user.muted_users
+    type: list
+    default: []
+    layers: [user]
+    chapter: "第7章 6"
+    locked_when_env_or_file: false
+    note: "通知を出さない人"
+  - key: user.mention_overrides_mute
+    type: bool
+    default: true
+    layers: [user]
+    chapter: "第7章 6"
+    locked_when_env_or_file: false
+  - key: user.badge_includes_muted
+    type: bool
+    default: true
+    layers: [user]
+    chapter: "第7章 5.3"
+    locked_when_env_or_file: false
+  - key: user.tz
+    type: string
+    default: "Asia/Tokyo"
+    layers: [user]
+    chapter: "第7章 6"
+    locked_when_env_or_file: false
+    note: "翌朝 8 時の判定"
+  - key: user.receive_calls
+    type: bool
+    default: true
+    layers: [user]
+    chapter: "第7章 6"
+    locked_when_env_or_file: false
+    note: "偽で CALL-005"
+  - key: user.typing_indicator
+    type: bool
+    default: true
+    layers: [user]
+    chapter: "第4章 DD-4-5"
+    locked_when_env_or_file: false
+    note: "入力中を相手に知らせる"
+  - key: user.read_receipts
+    type: bool
+    default: true
+    layers: [user]
+    chapter: "第4章 5.4"
+    locked_when_env_or_file: false
+    note: "既読を相手に知らせる（相互）"
+  - key: user.url_preview
+    type: bool
+    default: true
+    layers: [user]
+    chapter: "第4章 DD-4-7"
+    locked_when_env_or_file: false
+  - key: user.enter_to_send
+    type: bool
+    default: true
+    layers: [user]
+    chapter: "第10章 8"
+    locked_when_env_or_file: false
+    note: "PC"
+  - key: user.chat_background
+    type: string
+    default: ""
+    layers: [user]
+    chapter: "第10章 8"
+    locked_when_env_or_file: false
+    note: "全体の背景"
+  - key: user.send_quality
+    type: enum
+    default: "standard"
+    range: {"enum": ["standard", "high", "original"]}
+    layers: [user]
+    chapter: "第5章 4.1"
+    locked_when_env_or_file: false
+  - key: user.auto_download
+    type: object
+    default: {"photo": {"wifi": true, "mobile": false}, "video": {"wifi": true, "mobile": false}, "file": {"wifi": true, "mobile": false}, "audio": {"wifi": true, "mobile": true}}
+    layers: [user]
+    chapter: "第5章 5.2"
+    locked_when_env_or_file: false
+  - key: user.video_autoplay
+    type: enum
+    default: "wifi"
+    range: {"enum": ["always", "wifi", "never"]}
+    layers: [user]
+    chapter: "第5章 5.2"
+    locked_when_env_or_file: false
+    note: "動きを減らす設定の時は never"
+  - key: user.sticker_animation
+    type: bool
+    default: true
+    layers: [user]
+    chapter: "第5章 5.2"
+    locked_when_env_or_file: false
+    note: "動きを減らす設定の時は偽"
+  - key: user.call_quality
+    type: enum
+    default: "standard"
+    range: {"enum": ["high", "wifi_high", "standard"]}
+    layers: [user]
+    chapter: "第6章 5.1"
+    locked_when_env_or_file: false
+  - key: user.call_data_saver
+    type: enum
+    default: "off"
+    range: {"enum": ["off", "mobile", "always"]}
+    layers: [user]
+    chapter: "第6章 5.1"
+    locked_when_env_or_file: false
+    note: "iPhone は off と always"
+  - key: user.ringtone
+    type: string
+    default: "default"
+    layers: [user]
+    chapter: "第10章 8、第6章"
+    locked_when_env_or_file: false
+    note: "iPhone と PC。Android は OS"
+  - key: device.font_scale
+    type: enum
+    default: "device"
+    range: {"enum": ["device", "1", "2", "3", "4"]}
+    layers: [device]
+    chapter: "第10章 3.2、8"
+    locked_when_env_or_file: false
+    note: "4 段 + 端末"
+  - key: device.theme
+    type: enum
+    default: "system"
+    range: {"enum": ["light", "dark", "system"]}
+    layers: [device]
+    chapter: "第10章 3、8"
+    locked_when_env_or_file: false
+  - key: device.palette
+    type: string
+    default: "default"
+    layers: [device]
+    chapter: "第10章 3.1、8"
+    locked_when_env_or_file: false
+  - key: device.reduce_motion
+    type: bool
+    default: false
+    layers: [device]
+    chapter: "第10章 3.2"
+    locked_when_env_or_file: false
+    note: "端末の設定に従う"
+  - key: device.app_lock_method
+    type: enum
+    default: "biometric"
+    range: {"enum": ["biometric", "pin"]}
+    layers: [device]
+    chapter: "第3章 4.7"
+    locked_when_env_or_file: false
+    note: "生体認証・画面のロック、または 6 桁"
+  - key: device.app_lock_timeout
+    type: enum
+    default: "off"
+    range: {"enum": ["immediate", "1m", "5m", "1h", "off"]}
+    layers: [device]
+    chapter: "第3章 4.7"
+    locked_when_env_or_file: false
+    note: "off はロックしない"
+  - key: guardian.quiet_hours
+    type: string
+    default: ""
+    layers: [guardian]
+    chapter: "第3章 9.2"
+    locked_when_env_or_file: false
+    note: "例 21:00-07:00。空は無し"
+  - key: guardian.link_confirm
+    type: bool
+    default: true
+    layers: [guardian]
+    chapter: "第3章 9.2"
+    locked_when_env_or_file: false
+    note: "既定 ON"
+  - key: guardian.device_approval
+    type: bool
+    default: true
+    layers: [guardian]
+    chapter: "第3章 9.2"
+    locked_when_env_or_file: false
+    note: "既定 ON"
+  - key: guardian.allow_invites
+    type: bool
+    default: false
+    layers: [guardian]
+    chapter: "第3章 9.2"
+    locked_when_env_or_file: false
+  - key: room_me.mute_until
+    type: string
+    default: null
+    layers: [room_me]
+    chapter: "第2章 5.5、第7章 6"
+    locked_when_env_or_file: false
+    note: "RFC 3339。null はミュートなし"
+  - key: room_me.pinned
+    type: bool
+    default: false
+    layers: [room_me]
+    chapter: "第2章 5.5"
+    locked_when_env_or_file: false
+  - key: room_me.favorite
+    type: bool
+    default: false
+    layers: [room_me]
+    chapter: "第2章 5.5"
+    locked_when_env_or_file: false
+  - key: room_me.hidden
+    type: bool
+    default: false
+    layers: [room_me]
+    chapter: "第2章 5.5"
+    locked_when_env_or_file: false
+  - key: room_me.background
+    type: string
+    default: ""
+    layers: [room_me]
+    chapter: "第2章 5.5"
+    locked_when_env_or_file: false

@@ -1,0 +1,24 @@
+# SPDX-FileCopyrightText: 2026 株式会社流山ソフトウェア開発 (Nagareyama Software Development Co., Ltd.)
+# SPDX-License-Identifier: Apache-2.0
+# 依存の更新（基本設計書 第14章 11.3、11.4）。cooldown 3 日。security update は cooldown を適用しない（第14章 13.2）。
+# Go、web の npm、Gradle、Docker の基盤は、そのディレクトリを作る WP で足す。
+version: 2
+updates:
+  - package-ecosystem: github-actions
+    directory: /
+    schedule:
+      interval: weekly
+    cooldown:
+      default-days: 3
+  - package-ecosystem: pip
+    directory: /tools
+    schedule:
+      interval: weekly
+    cooldown:
+      default-days: 3
+  - package-ecosystem: npm
+    directory: /tools/node
+    schedule:
+      interval: weekly
+    cooldown:
+      default-days: 3

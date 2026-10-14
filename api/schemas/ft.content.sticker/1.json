@@ -1,0 +1,49 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://family-talk.invalid/schemas/ft.content.sticker/1",
+  "title": "ft.content.sticker/1",
+  "description": "第4章 3.1",
+  "type": "object",
+  "properties": {
+    "replaces": {
+      "$ref": "../common/uuidv7/1.json"
+    },
+    "inReplyTo": {
+      "$ref": "../common/uuidv7/1.json"
+    },
+    "expires": {
+      "$ref": "../common/rfc3339/1.json"
+    },
+    "pack_id": {
+      "$ref": "../common/uuidv7/1.json"
+    },
+    "sticker_id": {
+      "$ref": "../common/uuidv7/1.json"
+    },
+    "items": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "properties": {
+          "pack_id": {
+            "$ref": "../common/uuidv7/1.json"
+          },
+          "sticker_id": {
+            "$ref": "../common/uuidv7/1.json"
+          }
+        },
+        "required": [
+          "pack_id",
+          "sticker_id"
+        ],
+        "additionalProperties": false
+      },
+      "maxItems": 6
+    }
+  },
+  "required": [
+    "pack_id",
+    "sticker_id"
+  ],
+  "additionalProperties": false
+}

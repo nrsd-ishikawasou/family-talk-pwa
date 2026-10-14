@@ -1,0 +1,28 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://family-talk.invalid/schemas/common/jwk_p256/1",
+  "title": "P-256 の公開鍵（JWK）",
+  "description": "第12章 12（fdev、fusr）。RFC 7517",
+  "type": "object",
+  "required": [
+    "kty",
+    "crv",
+    "x",
+    "y"
+  ],
+  "additionalProperties": false,
+  "properties": {
+    "kty": {
+      "const": "EC"
+    },
+    "crv": {
+      "const": "P-256"
+    },
+    "x": {
+      "$ref": "../base64url/1.json"
+    },
+    "y": {
+      "$ref": "../base64url/1.json"
+    }
+  }
+}

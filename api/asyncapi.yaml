@@ -1,0 +1,955 @@
+# 境界の正本（AsyncAPI 3.1）。中身は基本設計書 第2章 6、6.4、7。向きはサーバーから見る（send＝サーバーから端末、receive＝端末からサーバー）。
+# 直す時は基本設計書の該当の節を先に直し、tools/tests/test_api.py を通す。
+asyncapi: 3.1.0
+info:
+  title: family-talk
+  version: 0.1.0
+  description: 家族専用の通信アプリの境界（WebSocket のイベント、配布元の常時接続、通知の中身）。API は openapi.yaml。中身は基本設計書 第2章 6、6.4、7。
+  contact:
+    name: 株式会社流山ソフトウェア開発（NRSD）
+    url: https://github.com/nrsd-ishikawasou/family-talk-pwa
+  license:
+    name: Apache-2.0
+  tags:
+  - name: events
+    description: WebSocket のイベント（第2章 6）
+  - name: shell
+    description: Android のシェルの配布元の常時接続（第2章 6.4）
+  - name: push
+    description: 通知の中身（第2章 7）
+servers:
+  family:
+    host: '{domain}'
+    protocol: wss
+    description: 家族のサーバー（第1章 10.10）
+    variables:
+      domain:
+        description: 家族のサーバーのドメインとポート
+channels:
+  ws:
+    address: /api/v1/ws
+    description: 第2章 6.1〜6.3。/sync の応答の項目も S→C のメッセージと同じ形
+    messages:
+      wsRoomEvent:
+        $ref: '#/components/messages/wsRoomEvent'
+      wsRoomReceipt:
+        $ref: '#/components/messages/wsRoomReceipt'
+      wsRoomTyping:
+        $ref: '#/components/messages/wsRoomTyping'
+      wsRoomMember:
+        $ref: '#/components/messages/wsRoomMember'
+      wsRoomSettings:
+        $ref: '#/components/messages/wsRoomSettings'
+      wsRoomMe:
+        $ref: '#/components/messages/wsRoomMe'
+      wsRoomMls:
+        $ref: '#/components/messages/wsRoomMls'
+      wsRoomScheduled:
+        $ref: '#/components/messages/wsRoomScheduled'
+      wsDeviceInbox:
+        $ref: '#/components/messages/wsDeviceInbox'
+      wsDeviceChanged:
+        $ref: '#/components/messages/wsDeviceChanged'
+      wsUserChanged:
+        $ref: '#/components/messages/wsUserChanged'
+      wsKeybundleChanged:
+        $ref: '#/components/messages/wsKeybundleChanged'
+      wsRecoveryRequest:
+        $ref: '#/components/messages/wsRecoveryRequest'
+      wsRecoveryUsed:
+        $ref: '#/components/messages/wsRecoveryUsed'
+      wsCallRing:
+        $ref: '#/components/messages/wsCallRing'
+      wsCallState:
+        $ref: '#/components/messages/wsCallState'
+      wsSessionRevoked:
+        $ref: '#/components/messages/wsSessionRevoked'
+      wsNotice:
+        $ref: '#/components/messages/wsNotice'
+      wsSyncGap:
+        $ref: '#/components/messages/wsSyncGap'
+      wsPing:
+        $ref: '#/components/messages/wsPing'
+      wsPong:
+        $ref: '#/components/messages/wsPong'
+      wsReady:
+        $ref: '#/components/messages/wsReady'
+      wsBye:
+        $ref: '#/components/messages/wsBye'
+      wsTyping:
+        $ref: '#/components/messages/wsTyping'
+      wsAuth:
+        $ref: '#/components/messages/wsAuth'
+  upWs:
+    address: /api/v1/up/ws
+    description: 第2章 6.4（Android のシェルの配布元の常時接続）
+    messages:
+      upMsg:
+        $ref: '#/components/messages/upMsg'
+      upAck:
+        $ref: '#/components/messages/upAck'
+      upPing:
+        $ref: '#/components/messages/upPing'
+      upPong:
+        $ref: '#/components/messages/upPong'
+  push:
+    address: null
+    description: 第2章 7（Web Push と UnifiedPush の中身。RFC 8291 で暗号化する前の JSON）
+    messages:
+      pushPayload:
+        $ref: '#/components/messages/pushPayload'
+operations:
+  wsSend:
+    action: send
+    description: サーバーから端末へ
+    channel:
+      $ref: '#/channels/ws'
+    messages:
+    - $ref: '#/channels/ws/messages/wsRoomEvent'
+    - $ref: '#/channels/ws/messages/wsRoomReceipt'
+    - $ref: '#/channels/ws/messages/wsRoomTyping'
+    - $ref: '#/channels/ws/messages/wsRoomMember'
+    - $ref: '#/channels/ws/messages/wsRoomSettings'
+    - $ref: '#/channels/ws/messages/wsRoomMe'
+    - $ref: '#/channels/ws/messages/wsRoomMls'
+    - $ref: '#/channels/ws/messages/wsRoomScheduled'
+    - $ref: '#/channels/ws/messages/wsDeviceInbox'
+    - $ref: '#/channels/ws/messages/wsDeviceChanged'
+    - $ref: '#/channels/ws/messages/wsUserChanged'
+    - $ref: '#/channels/ws/messages/wsKeybundleChanged'
+    - $ref: '#/channels/ws/messages/wsRecoveryRequest'
+    - $ref: '#/channels/ws/messages/wsRecoveryUsed'
+    - $ref: '#/channels/ws/messages/wsCallRing'
+    - $ref: '#/channels/ws/messages/wsCallState'
+    - $ref: '#/channels/ws/messages/wsSessionRevoked'
+    - $ref: '#/channels/ws/messages/wsNotice'
+    - $ref: '#/channels/ws/messages/wsSyncGap'
+    - $ref: '#/channels/ws/messages/wsPing'
+    - $ref: '#/channels/ws/messages/wsPong'
+    - $ref: '#/channels/ws/messages/wsReady'
+    - $ref: '#/channels/ws/messages/wsBye'
+  wsReceive:
+    action: receive
+    description: 端末からサーバーへ
+    channel:
+      $ref: '#/channels/ws'
+    messages:
+    - $ref: '#/channels/ws/messages/wsPing'
+    - $ref: '#/channels/ws/messages/wsPong'
+    - $ref: '#/channels/ws/messages/wsTyping'
+    - $ref: '#/channels/ws/messages/wsAuth'
+  upWsSend:
+    action: send
+    description: サーバーからシェルへ
+    channel:
+      $ref: '#/channels/upWs'
+    messages:
+    - $ref: '#/channels/upWs/messages/upMsg'
+    - $ref: '#/channels/upWs/messages/upPing'
+    - $ref: '#/channels/upWs/messages/upPong'
+  upWsReceive:
+    action: receive
+    description: シェルからサーバーへ
+    channel:
+      $ref: '#/channels/upWs'
+    messages:
+    - $ref: '#/channels/upWs/messages/upAck'
+    - $ref: '#/channels/upWs/messages/upPing'
+    - $ref: '#/channels/upWs/messages/upPong'
+  pushSend:
+    action: send
+    description: サーバーからプッシュ配信サービスへ（暗号化の前の中身）
+    channel:
+      $ref: '#/channels/push'
+    messages:
+    - $ref: '#/channels/push/messages/pushPayload'
+components:
+  messages:
+    wsRoomEvent:
+      name: room.event
+      title: room.event
+      summary: 第2章 6.2。向き S→C
+      payload:
+        type: object
+        properties:
+          type:
+            const: room.event
+          payload:
+            $ref: ./schemas/ft.room_event/1.json
+          pos: &id002
+            $ref: ./schemas/common/pos/1.json
+          id: &id001
+            $ref: ./schemas/common/uuidv7/1.json
+          ts: &id003
+            $ref: ./schemas/common/rfc3339/1.json
+          room_id: *id001
+        required:
+        - type
+        - payload
+        - pos
+        - id
+        - ts
+        - room_id
+        additionalProperties: false
+    wsRoomReceipt:
+      name: room.receipt
+      title: room.receipt
+      summary: 第2章 6.2。向き S→C
+      payload:
+        type: object
+        properties:
+          type:
+            const: room.receipt
+          payload:
+            type: object
+            properties:
+              user_id: *id001
+              read: *id001
+              read_private: *id001
+              fully_read: *id001
+            required:
+            - user_id
+            additionalProperties: false
+          pos: *id002
+          id: *id001
+          ts: *id003
+          room_id: *id001
+        required:
+        - type
+        - payload
+        - pos
+        - id
+        - ts
+        - room_id
+        additionalProperties: false
+    wsRoomTyping:
+      name: room.typing
+      title: room.typing
+      summary: 第2章 6.2。向き S→C
+      payload:
+        type: object
+        properties:
+          type:
+            const: room.typing
+          payload:
+            type: object
+            properties:
+              user_ids:
+                type: array
+                items: *id001
+              timeout: &id004
+                type: integer
+                minimum: 0
+            required:
+            - user_ids
+            - timeout
+            additionalProperties: false
+          room_id: *id001
+        required:
+        - type
+        - payload
+        - room_id
+        additionalProperties: false
+    wsRoomMember:
+      name: room.member
+      title: room.member
+      summary: 第2章 6.2。向き S→C
+      payload:
+        type: object
+        properties:
+          type:
+            const: room.member
+          payload:
+            type: object
+            properties:
+              user_id: *id001
+              change:
+                type: string
+                enum:
+                - added
+                - removed
+                - left
+                - pending_add
+                - pending_remove
+              by: *id001
+            required:
+            - user_id
+            - change
+            additionalProperties: false
+          pos: *id002
+          id: *id001
+          ts: *id003
+          room_id: *id001
+        required:
+        - type
+        - payload
+        - pos
+        - id
+        - ts
+        - room_id
+        additionalProperties: false
+    wsRoomSettings:
+      name: room.settings
+      title: room.settings
+      summary: 第2章 6.2。向き S→C
+      payload:
+        type: object
+        properties:
+          type:
+            const: room.settings
+          payload:
+            type: object
+            properties:
+              settings:
+                type: object
+                properties:
+                  kind:
+                    type: string
+                    enum:
+                    - dm
+                    - group
+                    - self
+                    - family
+                  creator_id: *id001
+                required:
+                - kind
+                additionalProperties: false
+            required:
+            - settings
+            additionalProperties: false
+          pos: *id002
+          id: *id001
+          ts: *id003
+          room_id: *id001
+        required:
+        - type
+        - payload
+        - pos
+        - id
+        - ts
+        - room_id
+        additionalProperties: false
+    wsRoomMe:
+      name: room.me
+      title: room.me
+      summary: 第2章 6.2。向き S→C
+      payload:
+        type: object
+        properties:
+          type:
+            const: room.me
+          payload:
+            type: object
+            properties:
+              settings:
+                $ref: ./schemas/ft.settings.room_me/1.json
+            required:
+            - settings
+            additionalProperties: false
+          pos: *id002
+          id: *id001
+          ts: *id003
+          room_id: *id001
+        required:
+        - type
+        - payload
+        - pos
+        - id
+        - ts
+        - room_id
+        additionalProperties: false
+    wsRoomMls:
+      name: room.mls
+      title: room.mls
+      summary: 第2章 6.2。向き S→C
+      payload:
+        type: object
+        properties:
+          type:
+            const: room.mls
+          payload:
+            type: object
+            properties:
+              epoch: *id004
+              commit_ref: &id005
+                type: string
+              has_welcome_for_me: &id006
+                type: boolean
+            required:
+            - epoch
+            - commit_ref
+            - has_welcome_for_me
+            additionalProperties: false
+          pos: *id002
+          id: *id001
+          ts: *id003
+          room_id: *id001
+        required:
+        - type
+        - payload
+        - pos
+        - id
+        - ts
+        - room_id
+        additionalProperties: false
+    wsRoomScheduled:
+      name: room.scheduled
+      title: room.scheduled
+      summary: 第2章 6.2。向き S→C
+      payload:
+        type: object
+        properties:
+          type:
+            const: room.scheduled
+          payload:
+            type: object
+            properties:
+              scheduled_id: *id001
+              state:
+                type: string
+                enum:
+                - pending
+                - sent
+                - cancelled
+            required:
+            - scheduled_id
+            - state
+            additionalProperties: false
+          pos: *id002
+          id: *id001
+          ts: *id003
+          room_id: *id001
+        required:
+        - type
+        - payload
+        - pos
+        - id
+        - ts
+        - room_id
+        additionalProperties: false
+    wsDeviceInbox:
+      name: device.inbox
+      title: device.inbox
+      summary: 第2章 6.2。向き S→C
+      payload:
+        type: object
+        properties:
+          type:
+            const: device.inbox
+          payload:
+            type: object
+            properties:
+              count: *id004
+            required:
+            - count
+            additionalProperties: false
+          pos: *id002
+          id: *id001
+          ts: *id003
+        required:
+        - type
+        - payload
+        - pos
+        - id
+        - ts
+        additionalProperties: false
+    wsDeviceChanged:
+      name: device.changed
+      title: device.changed
+      summary: 第2章 6.2。向き S→C
+      payload:
+        type: object
+        properties:
+          type:
+            const: device.changed
+          payload:
+            type: object
+            properties:
+              user_id: *id001
+              device_id: *id001
+              change:
+                type: string
+                enum:
+                - added
+                - approved
+                - revoked
+                - renamed
+              by: *id001
+            required:
+            - user_id
+            - device_id
+            - change
+            additionalProperties: false
+          pos: *id002
+          id: *id001
+          ts: *id003
+        required:
+        - type
+        - payload
+        - pos
+        - id
+        - ts
+        additionalProperties: false
+    wsUserChanged:
+      name: user.changed
+      title: user.changed
+      summary: 第2章 6.2。向き S→C
+      payload:
+        type: object
+        properties:
+          type:
+            const: user.changed
+          payload:
+            type: object
+            properties:
+              user_id: *id001
+              fields:
+                type: array
+                items: *id005
+            required:
+            - user_id
+            - fields
+            additionalProperties: false
+          pos: *id002
+          id: *id001
+          ts: *id003
+        required:
+        - type
+        - payload
+        - pos
+        - id
+        - ts
+        additionalProperties: false
+    wsKeybundleChanged:
+      name: keybundle.changed
+      title: keybundle.changed
+      summary: 第2章 6.2。向き S→C
+      payload:
+        type: object
+        properties:
+          type:
+            const: keybundle.changed
+          payload:
+            type: object
+            properties:
+              kinds:
+                type: array
+                items:
+                  type: string
+                  enum:
+                  - device
+                  - recovery-code
+                  - share
+                  - family
+                  - prf
+            required:
+            - kinds
+            additionalProperties: false
+          pos: *id002
+          id: *id001
+          ts: *id003
+        required:
+        - type
+        - payload
+        - pos
+        - id
+        - ts
+        additionalProperties: false
+    wsRecoveryRequest:
+      name: recovery.request
+      title: recovery.request
+      summary: 第2章 6.2。向き S→C
+      payload:
+        type: object
+        properties:
+          type:
+            const: recovery.request
+          payload:
+            type: object
+            properties:
+              request_id: *id001
+              user_id: *id001
+              device_id: *id001
+              device_name: *id005
+              expires_at: *id003
+            required:
+            - request_id
+            - user_id
+            - device_id
+            - device_name
+            - expires_at
+            additionalProperties: false
+          pos: *id002
+          id: *id001
+          ts: *id003
+        required:
+        - type
+        - payload
+        - pos
+        - id
+        - ts
+        additionalProperties: false
+    wsRecoveryUsed:
+      name: recovery.used
+      title: recovery.used
+      summary: 第2章 6.2。向き S→C
+      payload:
+        type: object
+        properties:
+          type:
+            const: recovery.used
+          payload:
+            type: object
+            properties:
+              user_id: *id001
+              method:
+                type: string
+                enum:
+                - device
+                - share
+                - recovery-code
+                - family
+                - prf
+              device_id: *id001
+              result:
+                type: string
+                enum:
+                - success
+                - failure
+            required:
+            - user_id
+            - method
+            - result
+            additionalProperties: false
+          pos: *id002
+          id: *id001
+          ts: *id003
+        required:
+        - type
+        - payload
+        - pos
+        - id
+        - ts
+        additionalProperties: false
+    wsCallRing:
+      name: call.ring
+      title: call.ring
+      summary: 第2章 6.2。向き S→C
+      payload:
+        type: object
+        properties:
+          type:
+            const: call.ring
+          payload:
+            type: object
+            properties:
+              call_id: *id001
+              room_id: *id001
+              caller_id: *id001
+              video: *id006
+              expires_at: *id003
+            required:
+            - call_id
+            - room_id
+            - caller_id
+            - video
+            - expires_at
+            additionalProperties: false
+          pos: *id002
+          id: *id001
+          ts: *id003
+        required:
+        - type
+        - payload
+        - pos
+        - id
+        - ts
+        additionalProperties: false
+    wsCallState:
+      name: call.state
+      title: call.state
+      summary: 第2章 6.2。向き S→C
+      payload:
+        type: object
+        properties:
+          type:
+            const: call.state
+          payload:
+            type: object
+            properties:
+              call_id: *id001
+              state:
+                type: string
+                enum:
+                - ringing
+                - active
+                - ended
+                - missed
+                - declined
+                - cancelled
+              participants:
+                type: array
+                items: *id001
+            required:
+            - call_id
+            - state
+            - participants
+            additionalProperties: false
+          pos: *id002
+          id: *id001
+          ts: *id003
+        required:
+        - type
+        - payload
+        - pos
+        - id
+        - ts
+        additionalProperties: false
+    wsSessionRevoked:
+      name: session.revoked
+      title: session.revoked
+      summary: 第2章 6.2。向き S→C
+      payload:
+        type: object
+        properties:
+          type:
+            const: session.revoked
+          payload:
+            type: object
+            properties:
+              reason:
+                type: string
+                enum:
+                - logout
+                - device_revoked
+                - suspended
+                - deleted
+                - erased
+                - key_rotation
+                - expired
+            required:
+            - reason
+            additionalProperties: false
+          pos: *id002
+          id: *id001
+          ts: *id003
+        required:
+        - type
+        - payload
+        - pos
+        - id
+        - ts
+        additionalProperties: false
+    wsNotice:
+      name: notice
+      title: notice
+      summary: 第2章 6.2。向き S→C
+      payload:
+        type: object
+        properties:
+          type:
+            const: notice
+          payload:
+            type: object
+            properties:
+              kind: *id005
+              level:
+                type: string
+                enum:
+                - info
+                - warning
+                - error
+              text_key: *id005
+              params:
+                type: object
+            required:
+            - kind
+            - level
+            - text_key
+            - params
+            additionalProperties: false
+          pos: *id002
+          id: *id001
+          ts: *id003
+        required:
+        - type
+        - payload
+        - pos
+        - id
+        - ts
+        additionalProperties: false
+    wsSyncGap:
+      name: sync.gap
+      title: sync.gap
+      summary: 第2章 6.2。向き S→C
+      payload:
+        type: object
+        properties:
+          type:
+            const: sync.gap
+          payload:
+            type: object
+            properties:
+              reason:
+                type: string
+                enum:
+                - retention
+                - restore
+            required:
+            - reason
+            additionalProperties: false
+          pos: *id002
+          id: *id001
+          ts: *id003
+        required:
+        - type
+        - payload
+        - pos
+        - id
+        - ts
+        additionalProperties: false
+    wsPing:
+      name: ping
+      title: ping
+      summary: 第2章 6.2。向き 両方
+      payload:
+        type: object
+        properties:
+          type:
+            const: ping
+        required:
+        - type
+        additionalProperties: false
+    wsPong:
+      name: pong
+      title: pong
+      summary: 第2章 6.2。向き 両方
+      payload:
+        type: object
+        properties:
+          type:
+            const: pong
+        required:
+        - type
+        additionalProperties: false
+    wsReady:
+      name: ready
+      title: ready
+      summary: 第2章 6.2。向き S→C
+      payload:
+        type: object
+        properties:
+          type:
+            const: ready
+          pos: *id002
+        required:
+        - type
+        - pos
+        additionalProperties: false
+    wsBye:
+      name: bye
+      title: bye
+      summary: 第2章 6.2。向き S→C
+      payload:
+        type: object
+        properties:
+          type:
+            const: bye
+          retry_after: *id004
+        required:
+        - type
+        - retry_after
+        additionalProperties: false
+    wsTyping:
+      name: typing
+      title: typing
+      summary: 第2章 6.2。向き C→S
+      payload:
+        type: object
+        properties:
+          type:
+            const: typing
+          room_id: *id001
+          typing: *id006
+        required:
+        - type
+        - room_id
+        - typing
+        additionalProperties: false
+    wsAuth:
+      name: auth
+      title: auth
+      summary: 第2章 6.2。向き C→S
+      payload:
+        type: object
+        properties:
+          type:
+            const: auth
+          token: *id005
+        required:
+        - type
+        - token
+        additionalProperties: false
+    upMsg:
+      name: msg
+      title: msg
+      summary: 第2章 6.4。向き S→C
+      payload:
+        type: object
+        properties:
+          type:
+            const: msg
+          id: *id001
+          body:
+            $ref: ./schemas/common/base64url/1.json
+          expires_at: *id003
+        required:
+        - type
+        - id
+        - body
+        - expires_at
+        additionalProperties: false
+    upAck:
+      name: ack
+      title: ack
+      summary: 第2章 6.4。向き C→S
+      payload:
+        type: object
+        properties:
+          type:
+            const: ack
+          id: *id001
+        required:
+        - type
+        - id
+        additionalProperties: false
+    upPing:
+      name: ping
+      title: ping
+      summary: 第2章 6.4。向き 両方
+      payload:
+        type: object
+        properties:
+          type:
+            const: ping
+        required:
+        - type
+        additionalProperties: false
+    upPong:
+      name: pong
+      title: pong
+      summary: 第2章 6.4。向き 両方
+      payload:
+        type: object
+        properties:
+          type:
+            const: pong
+        required:
+        - type
+        additionalProperties: false
+    pushPayload:
+      name: push
+      title: ft.push/1
+      summary: 第2章 7
+      payload:
+        $ref: ./schemas/ft.push/1.json

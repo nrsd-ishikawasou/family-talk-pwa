@@ -1,0 +1,19 @@
+# SPDX-FileCopyrightText: 2026 株式会社流山ソフトウェア開発 (Nagareyama Software Development Co., Ltd.)
+# SPDX-License-Identifier: Apache-2.0
+
+# 道具が読む Git の外の一覧（全体実装設計書 6.3。CI は secret から書き出す）
+/tools/forbidden_words.txt
+/tools/plaintext_markers.txt
+
+# 生成ファイル（コミットするのは fixtures だけ。基本設計書 第14章 10）
+/dev/generated/*
+!/dev/generated/fixtures/
+/server/internal/common/gen/
+/server/internal/boundary/gen/
+/.gen-check-a/
+/.gen-check-b/
+
+# 依存と実行の残り
+__pycache__/
+*.pyc
+node_modules/

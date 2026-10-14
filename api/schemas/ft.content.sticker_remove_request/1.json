@@ -1,0 +1,24 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://family-talk.invalid/schemas/ft.content.sticker_remove_request/1",
+  "title": "ft.content.sticker_remove_request/1",
+  "description": "第4章 3.1。端末宛メールボックスで送る（第12章 5.2）",
+  "type": "object",
+  "properties": {
+    "pack_id": {
+      "$ref": "../common/uuidv7/1.json"
+    },
+    "sticker_id": {
+      "$ref": "../common/uuidv7/1.json"
+    },
+    "requester_id": {
+      "$ref": "../common/uuidv7/1.json"
+    }
+  },
+  "required": [
+    "pack_id",
+    "sticker_id",
+    "requester_id"
+  ],
+  "additionalProperties": false
+}

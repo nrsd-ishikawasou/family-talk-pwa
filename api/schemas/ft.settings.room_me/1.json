@@ -1,0 +1,38 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://family-talk.invalid/schemas/ft.settings.room_me/1",
+  "title": "ft.settings.room_me/1",
+  "description": "第2章 12。トークごとの自分の設定（/rooms/{id}/me）。api/config.yaml から生成",
+  "type": "object",
+  "properties": {
+    "mute_until": {
+      "type": [
+        "string",
+        "null"
+      ],
+      "default": null,
+      "description": "第2章 5.5、第7章 6。RFC 3339。null はミュートなし"
+    },
+    "pinned": {
+      "type": "boolean",
+      "default": false,
+      "description": "第2章 5.5"
+    },
+    "favorite": {
+      "type": "boolean",
+      "default": false,
+      "description": "第2章 5.5"
+    },
+    "hidden": {
+      "type": "boolean",
+      "default": false,
+      "description": "第2章 5.5"
+    },
+    "background": {
+      "type": "string",
+      "default": "",
+      "description": "第2章 5.5"
+    }
+  },
+  "additionalProperties": false
+}

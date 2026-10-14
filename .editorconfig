@@ -1,0 +1,22 @@
+# SPDX-FileCopyrightText: 2026 株式会社流山ソフトウェア開発 (Nagareyama Software Development Co., Ltd.)
+# SPDX-License-Identifier: Apache-2.0
+# 文字コードは UTF-8、改行は LF、末尾に改行（基本設計書 第14章 14 の 9）
+
+root = true
+
+[*]
+charset = utf-8
+end_of_line = lf
+insert_final_newline = true
+trim_trailing_whitespace = true
+indent_style = space
+indent_size = 2
+
+[*.{py,kt,kts}]
+indent_size = 4
+
+[*.go]
+indent_style = tab
+
+[*.md]
+trim_trailing_whitespace = false

@@ -1,0 +1,41 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://family-talk.invalid/schemas/ft.content.rsvp/1",
+  "title": "ft.content.rsvp/1",
+  "description": "第4章 3.1。annotation",
+  "type": "object",
+  "properties": {
+    "replaces": {
+      "$ref": "../common/uuidv7/1.json"
+    },
+    "inReplyTo": {
+      "$ref": "../common/uuidv7/1.json"
+    },
+    "expires": {
+      "$ref": "../common/rfc3339/1.json"
+    },
+    "answer": {
+      "type": "string",
+      "enum": [
+        "yes",
+        "maybe",
+        "no"
+      ]
+    },
+    "candidate_answers": {
+      "type": "object",
+      "additionalProperties": {
+        "type": "string",
+        "enum": [
+          "yes",
+          "maybe",
+          "no"
+        ]
+      }
+    }
+  },
+  "required": [
+    "answer"
+  ],
+  "additionalProperties": false
+}

@@ -1,0 +1,99 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://family-talk.invalid/schemas/ft.event.mls/1",
+  "title": "ft.event.mls/1",
+  "description": "第2章 12、DD-2-6。暗号文と、サーバーが読む平文の欄",
+  "type": "object",
+  "properties": {
+    "group_id": {
+      "$ref": "../common/base64url/1.json"
+    },
+    "epoch": {
+      "type": "integer",
+      "minimum": 0
+    },
+    "ciphertext": {
+      "$ref": "../common/base64url/1.json"
+    },
+    "schema_inner": {
+      "type": "string",
+      "pattern": "^ft\\.content\\.[a-z_]+/\\d+$"
+    },
+    "mentions": {
+      "type": "object",
+      "properties": {
+        "user_ids": {
+          "type": "array",
+          "items": {
+            "$ref": "../common/uuidv7/1.json"
+          }
+        },
+        "room": {
+          "type": "boolean"
+        }
+      },
+      "required": [],
+      "additionalProperties": false
+    },
+    "relates_to": {
+      "type": "object",
+      "properties": {
+        "rel_type": {
+          "type": "string",
+          "enum": [
+            "replace",
+            "annotation",
+            "reply",
+            "thread"
+          ]
+        },
+        "event_id": {
+          "$ref": "../common/uuidv7/1.json"
+        },
+        "key": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "rel_type",
+        "event_id"
+      ],
+      "additionalProperties": false
+    },
+    "attachments": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "$ref": "../common/uuidv7/1.json"
+          },
+          "size": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "hash": {
+            "$ref": "../common/sha256/1.json"
+          }
+        },
+        "required": [
+          "id",
+          "size",
+          "hash"
+        ],
+        "additionalProperties": false
+      },
+      "maxItems": 50
+    },
+    "expires_at": {
+      "$ref": "../common/rfc3339/1.json"
+    }
+  },
+  "required": [
+    "group_id",
+    "epoch",
+    "ciphertext",
+    "schema_inner"
+  ],
+  "additionalProperties": false
+}

@@ -11,14 +11,17 @@
 
 - 概要設計書 第8章「iPhone と PC のウェブアプリのシェル」を詳細化する。manifest、Service Worker、ホーム画面への追加、保存、権限、iPhone の制約の補い方、PC のブラウザの差、配信の完全性を定める。
 - ウェブアプリの中身（画面、鍵、通知の表示、通話）は各章にあり、本章は「ブラウザの上でアプリとして動く仕組み」を持つ。Android のシェルは第9章。
-- 準拠：W3C Web Application Manifest、Service Workers、Push API、Notifications、Badging、Screen Wake Lock、Storage（persist）、CSP Level 3、Fetch Metadata、OS とブラウザの提供者の文書（調査 I-01、I-13、第14章 4）、法務調査 L-15。
+- 準拠するものは次のとおり。
+  - W3C：Web Application Manifest、Service Workers、Push API、Notifications、Badging、Screen Wake Lock
+  - W3C：Storage（persist）、CSP Level 3、Fetch Metadata
+  - OS とブラウザの提供者の文書（調査 I-01、I-13、第14章 4）、法務調査 L-15
 
 ## 1. 設計上の決定の一覧
 
 |番号|決定|理由|退けた案|
 |---|---|---|---|
 |DD-8-1|manifest は api が家族ごとに返す（`/manifest.webmanifest`。名前 = 家族の名前、`id: "/"`、`start_url: "/"`、`scope: "/"`、`display: "standalone"`、`lang: "ja"`、アイコンは同梱の絵柄に家族ごとの色、`screenshots`）。Service Worker は手書きで、プリキャッシュ（ハッシュ付きの資産と index）、API はネットワークのみ、添付と地図は触らない、push と通知のクリックと購読の変更と更新を扱う|R-8-1-1、設計計画書 D-5-1、調査 I-01（Web Push の条件）、第14章 DD-14-3|生成の道具による SW。家族のアイコン（暗号文）を manifest に（復号できない）|
-|DD-8-2|ホーム画面に追加されていないことを `display-mode` で検出し、iPhone では参加の後に図で案内する（追加 → 開き直す）。通知の許可は standalone で、利用者の操作を起点に求める。PC は任意のインストール（`beforeinstallprompt` のあるブラウザ）。Android のブラウザで開いた時はシェルの案内|R-8-1-1、設計計画書 D-12-5、調査 I-01|追加の前に通知の許可を求める（iOS では取れない）|
+|DD-8-2|ホーム画面に追加されていないことを `display-mode` で検出し、iPhone では参加の後に図で案内する（追加し、ホーム画面から開き直す）。通知の許可は standalone で、利用者の操作を起点に求める。PC は任意のインストール（`beforeinstallprompt` のあるブラウザ）。Android のブラウザで開いた時はシェルの案内|R-8-1-1、設計計画書 D-12-5、調査 I-01|追加の前に通知の許可を求める（iOS では取れない）|
 |DD-8-3|WebKit のホーム画面のウェブアプリ（Safari または WebKit を使う第三者のブラウザから追加）を対象とし、WebKit 以外のエンジンから追加したものは対象外と手順書に明示する|R-8-1-2、調査 I-01 1.10、法務調査 L-15|全エンジンを対象（通知と通話の挙動が未確認）|
 |DD-8-4|端末の保存は IndexedDB（イベント、トーク、キュー、MLS の状態、鍵、設定、同期の位置）と OPFS（添付の暗号文、復号の一時、検索の索引、地図）。初回に `persist()` を求める。どの状態でも同期の位置とキューから再開でき、サーバーが正本。失ってはならないものの唯一のコピーを置かない（鍵バンドルのコピーはサーバーに。第12章）|R-8-2-1、第1章 DD-1-3、調査 I-01 1.8、第12章 5.3|localStorage（容量と同期性）。端末だけに鍵を置く|
 |DD-8-5|権限は使う瞬間に求める：通知（standalone、操作の後）、カメラとマイク（通話のたび。拒否の時は OS の設定への案内）、位置（位置の送信の時）。保持されない不具合に備えて通話の開始のたびに `getUserMedia` を呼ぶ|R-8-3-1、調査 I-01 1.4|最初に一括|
@@ -43,7 +46,7 @@
 
 ### 3.1 manifest（DD-8-1）
 
-```
+```text
 { "id": "/", "name": "<家族の名前>", "short_name": "<家族の名前（12 文字まで）>",
   "start_url": "/", "scope": "/", "display": "standalone", "lang": "ja", "dir": "ltr",
   "theme_color": "<家族の色>", "background_color": "#ffffff",
@@ -68,14 +71,14 @@
 |更新|`skipWaiting` は画面の確認の後（DD-8-9）。`clients.claim` は activate で|
 |メッセージ|画面との `postMessage`（版の通知、復号の依頼の結果の共有）|
 
-- SW は認証の状態を持たない（Cookie はブラウザが付ける）。セッションが切れていれば push の取得が 401 → 汎用の本文。
+- SW は認証の状態を持たない（Cookie はブラウザが付ける）。セッションが切れていれば push の取得が 401 になり、汎用の本文を出す。
 - SW の寿命（iOS）は短い前提。復号は 10 秒以内に終える（第7章）。
 
 ### 3.3 ホーム画面への追加（DD-8-2、DD-8-3）
 
 |状況|検出|振る舞い|
 |---|---|---|
-|iPhone の Safari のタブ|`display-mode: browser` かつ iOS の UA|参加の後（または起動時）に案内の画面：「共有ボタン → ホーム画面に追加 → 追加」の図（iOS 16〜17 と 18 以降の 2 種）、「追加したらホーム画面から開いてください」。通知の許可の求めは出さない|
+|iPhone の Safari のタブ|`display-mode: browser` かつ iOS の UA|参加の後（または起動時）に案内の画面：「共有ボタン、ホーム画面に追加、追加」の順の図（iOS 16〜17 と 18 以降の 2 種）、「追加したらホーム画面から開いてください」。通知の許可の求めは出さない|
 |iPhone の standalone|`display-mode: standalone`|通常。最初のトークで通知の許可のボタン|
 |Android のブラウザ（シェルでない）|Android の UA かつ JS ブリッジがない|「Android ではアプリをお使いください」+ APK の案内（第13章）。ブラウザのままでも使えるが通知は Web Push（着信は全画面にならない）|
 |PC のブラウザ|それ以外|通常。`beforeinstallprompt` があれば設定に「アプリとしてインストール」|
@@ -96,8 +99,8 @@
 |OPFS `search.sqlite`|検索の索引|なし（H-12-8）|再作成可|
 |OPFS `maps/`|地図のタイル|—|200 MB|
 
-- `navigator.storage.persist()` を初回に。結果を `settings` に。拒否なら設定に「保存が消えることがあります」。
-- 再開：起動 → `sync.pos` → `/sync?since` → `queue` の再送。SW と画面の両方が IndexedDB を開くため、書き込みは Web Locks で直列化。
+- `navigator.storage.persist()` を初回に。結果は `settings` に残す。拒否されたら、設定の画面で「保存は消えることがあります」と示す。
+- 再開：起動、`sync.pos` の読み出し、`/sync?since`、`queue` の再送の順。SW と画面の両方が IndexedDB を開くため、書き込みは Web Locks で直列化。
 - 容量の逼迫（`estimate()` で 90%）：添付の本体を古い順に消す。
 
 ### 3.5 権限（DD-8-5）
@@ -139,7 +142,7 @@
 |手段|値|
 |---|---|
 |TLS|第12章 4|
-|CSP|`default-src 'self'; script-src 'self' 'nonce-<起動ごとの乱数>' 'strict-dynamic' 'wasm-unsafe-eval'; style-src 'self' 'unsafe-inline'; connect-src 'self' wss://<サーバー>; img-src 'self' blob: data:; media-src 'self' blob:; worker-src 'self' blob:; font-src 'self'; frame-ancestors 'none'; object-src 'none'; base-uri 'none'; form-action 'self'; upgrade-insecure-requests`。`style-src` の `'unsafe-inline'` は地図の部品の要件（第2巡で nonce 化を検討）|
+|CSP|`default-src 'self'; script-src 'self' 'nonce-<応答ごとの乱数>' 'strict-dynamic' 'wasm-unsafe-eval'; style-src 'self' 'unsafe-inline'; connect-src 'self' wss://<サーバー>; img-src 'self' blob: data:; media-src 'self' blob:; worker-src 'self' blob:; font-src 'self'; frame-ancestors 'none'; object-src 'none'; base-uri 'none'; form-action 'self'; upgrade-insecure-requests`。`style-src` の `'unsafe-inline'` は地図の部品の要件（第2巡で nonce 化を検討）。nonce は index の応答ごとに api が暗号論的な乱数で 128 ビットを作る（CSP Level 2 の 4.2：方針を送るたびに独立に新しい値）。nonce を含む CSP は api が index の応答に付け、それ以外の応答（静的な資産、Service Worker）には caddy が nonce の無い値を付ける|
 |COOP|`same-origin`。COEP は不要（OPFS の同期アクセスは sahpool）|
 |資産|ハッシュ付きの名前で同じオリジンから。外部の CDN を使わない|
 |Fetch Metadata|第2章 4.2|
@@ -171,7 +174,7 @@
 |SW の登録に失敗|画面は動く（通知なし）。設定に表示。再試行|
 |プリキャッシュの取得に失敗（途中で切れた）|古い版のまま。次の起動で再試行|
 |`persist()` が拒否|案内。動作は同じ|
-|保存が消えた（iOS の削除）|起動時に `sync.pos` も鍵もない → 新しい端末として承認（第3章 4.4）。履歴は鍵のバックアップから|
+|保存が消えた（iOS の削除）|起動時に `sync.pos` も鍵もなければ、新しい端末として承認する（第3章 4.4）。履歴は鍵のバックアップから|
 |push の取得が 401（セッション切れ）|汎用の本文。開いた時にログイン|
 |standalone でないのに通知の許可を求められた（Safari 26 の挙動の変化）|`display-mode` で判定するため起きない。起きれば許可の求めを出さない|
 |CSP の違反|報告しない（外へ出さない。`report-to` を置かない）。記録は端末のコンソールのみ|
@@ -186,7 +189,11 @@
 |H-8-4|PC のブラウザを閉じている間の通知は一部のブラウザに限る|ブラウザの仕様|7|
 |H-8-5|iPhone の制約（4 の表）|OS の仕様|補い方と明示|
 
-［要実測］：standalone での PiP、「ファイルを選択」の HEIC（iOS 16.x）、Wake Lock の代用、SW の寿命と復号の時間、背景でのアップロードの継続、Safari 26 以降の standalone の挙動、persist の許可率。
+［要実測］の事項は次のとおり。
+
+- standalone での PiP、「ファイルを選択」の HEIC（iOS 16.x）、Wake Lock の代用
+- SW の寿命と復号の時間、背景でのアップロードの継続
+- Safari 26 以降の standalone の挙動、persist の許可率
 
 ## 10. 要件との対応
 
@@ -212,4 +219,4 @@
 - 第5章 4.1：「ファイルを選択」経由の HEIC の端末での復号（iOS 17 以上）を加える。
 - 第10章：追加の案内の図、「できないこと」の画面、更新の促し、オフラインのバナー。
 
-改版の記録：2026-10-13 第1版（案）。
+改版の記録：2026-10-14 の訂正（サーバーの境界の部品を作る時の検査）：6 の CSP の nonce を「起動ごと」から「応答ごと」に改めた。CSP Level 2 の 4.2 は送るたびに新しい値を求める。作り手（api）と caddy の分担を足した。2026-10-14 の訂正（文書の検査の規則に合わせる）：矢印を言葉に改め、長い文と列挙を分けた。2026-10-13 第1版（案）。

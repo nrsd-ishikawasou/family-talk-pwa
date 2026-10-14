@@ -1,0 +1,42 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://family-talk.invalid/schemas/problem/1",
+  "title": "problem",
+  "description": "RFC 9457 の problem に code、retryable、params を加えたもの（第2章 9.1）",
+  "type": "object",
+  "required": [
+    "type",
+    "title",
+    "status",
+    "code",
+    "retryable"
+  ],
+  "properties": {
+    "type": {
+      "type": "string"
+    },
+    "title": {
+      "type": "string"
+    },
+    "status": {
+      "type": "integer"
+    },
+    "detail": {
+      "type": "string"
+    },
+    "instance": {
+      "type": "string"
+    },
+    "code": {
+      "type": "string",
+      "pattern": "^[A-Z]{3,5}-[0-9]{3}$"
+    },
+    "retryable": {
+      "type": "boolean"
+    },
+    "params": {
+      "type": "object"
+    }
+  },
+  "additionalProperties": false
+}

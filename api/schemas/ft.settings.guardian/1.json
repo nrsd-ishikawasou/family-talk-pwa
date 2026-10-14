@@ -1,0 +1,30 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://family-talk.invalid/schemas/ft.settings.guardian/1",
+  "title": "ft.settings.guardian/1",
+  "description": "第2章 12。保護者が決める子の制限（/me/guardian/children/{id}/controls）。api/config.yaml から生成",
+  "type": "object",
+  "properties": {
+    "quiet_hours": {
+      "type": "string",
+      "default": "",
+      "description": "第3章 9.2。例 21:00-07:00。空は無し"
+    },
+    "link_confirm": {
+      "type": "boolean",
+      "default": true,
+      "description": "第3章 9.2。既定 ON"
+    },
+    "device_approval": {
+      "type": "boolean",
+      "default": true,
+      "description": "第3章 9.2。既定 ON"
+    },
+    "allow_invites": {
+      "type": "boolean",
+      "default": false,
+      "description": "第3章 9.2"
+    }
+  },
+  "additionalProperties": false
+}

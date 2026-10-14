@@ -1,0 +1,7 @@
+# SPDX-FileCopyrightText: 2026 株式会社流山ソフトウェア開発 (Nagareyama Software Development Co., Ltd.)
+# SPDX-License-Identifier: Apache-2.0
+# tools/ と tools/tests の Python の直接の依存。requirements.txt は pip-compile --generate-hashes でこのファイルから作る。
+PyYAML==6.0.3
+jsonschema==4.26.0
+zizmor==1.30.1
+reuse==6.2.0

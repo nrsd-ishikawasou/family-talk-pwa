@@ -1,0 +1,501 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://family-talk.invalid/schemas/ft.settings.server/1",
+  "title": "ft.settings.server/1",
+  "description": "第2章 12。サーバーの設定（/admin/settings。env と file 由来はロック表示）。api/config.yaml から生成",
+  "type": "object",
+  "properties": {
+    "server.domain": {
+      "type": [
+        "string",
+        "null"
+      ],
+      "default": null,
+      "description": "第11章 3.2。必須"
+    },
+    "server.https_port": {
+      "type": "integer",
+      "minimum": 1,
+      "maximum": 65535,
+      "default": 443,
+      "description": "第11章 3.2"
+    },
+    "server.http_port": {
+      "type": "integer",
+      "minimum": 1,
+      "maximum": 65535,
+      "default": 80,
+      "description": "第11章 3.2。MAP-E では使わない"
+    },
+    "server.tz": {
+      "type": "string",
+      "default": "Asia/Tokyo",
+      "description": "第11章 3.2"
+    },
+    "server.data_dir": {
+      "type": "string",
+      "default": "/data",
+      "description": "第11章 3.2"
+    },
+    "server.mode": {
+      "type": "string",
+      "enum": [
+        "A",
+        "B",
+        "C",
+        "D"
+      ],
+      "default": "A",
+      "description": "第11章 3.2、5"
+    },
+    "server.sfu_udp_start": {
+      "type": "integer",
+      "minimum": 1024,
+      "maximum": 65535,
+      "default": 50000,
+      "description": "第11章 3.2、第6章 8"
+    },
+    "server.sfu_udp_end": {
+      "type": "integer",
+      "minimum": 1024,
+      "maximum": 65535,
+      "default": 60000,
+      "description": "第11章 3.2、第6章 8"
+    },
+    "server.turn_udp_port": {
+      "type": "integer",
+      "minimum": 1,
+      "maximum": 65535,
+      "default": 3478,
+      "description": "第11章 3.2、第6章 8"
+    },
+    "server.turn_tls_port": {
+      "type": "integer",
+      "minimum": 1,
+      "maximum": 65535,
+      "default": 5349,
+      "description": "第11章 3.2、第6章 8"
+    },
+    "server.external_ipv4": {
+      "type": "string",
+      "default": "auto",
+      "description": "第11章 3.2。auto は名前の解決"
+    },
+    "server.external_ipv6": {
+      "type": "string",
+      "default": "auto",
+      "description": "第11章 3.2。auto は名前の解決"
+    },
+    "server.dns_provider": {
+      "type": [
+        "string",
+        "null"
+      ],
+      "default": null,
+      "description": "第11章 3.2。必須。caddy の DNS のモジュール名"
+    },
+    "server.ddns": {
+      "type": "boolean",
+      "default": true,
+      "description": "第11章 3.2"
+    },
+    "server.acme_fallback": {
+      "type": "boolean",
+      "default": false,
+      "description": "第11章 3.2"
+    },
+    "server.relay_turn_host": {
+      "type": "string",
+      "default": "",
+      "description": "第11章 3.2。形 C の時"
+    },
+    "server.admin_bind": {
+      "type": "string",
+      "default": "127.0.0.1",
+      "description": "第11章 3.2。/metrics の bind"
+    },
+    "server.metrics": {
+      "type": "boolean",
+      "default": false,
+      "description": "第11章 3.2、11。opt-in"
+    },
+    "room.text_max": {
+      "type": "integer",
+      "minimum": 10000,
+      "default": 10000,
+      "description": "第4章 7。書記素"
+    },
+    "room.edit_window": {
+      "type": "integer",
+      "minimum": 900,
+      "default": 900,
+      "description": "第4章 7。15 分"
+    },
+    "room.retract_window": {
+      "type": "integer",
+      "minimum": 604800,
+      "default": 604800,
+      "description": "第4章 7。送信者。null は無期限"
+    },
+    "room.announcements_max": {
+      "type": "integer",
+      "minimum": 5,
+      "default": 5,
+      "description": "第4章 7"
+    },
+    "room.schedule_horizon": {
+      "type": "integer",
+      "minimum": 2592000,
+      "default": 2592000,
+      "description": "第4章 7"
+    },
+    "room.empty_group_delete_after": {
+      "type": "integer",
+      "minimum": 604800,
+      "maximum": 31536000,
+      "default": 2592000,
+      "description": "第4章 7"
+    },
+    "room.sticker_packs_max": {
+      "type": "integer",
+      "minimum": 1,
+      "default": 100,
+      "description": "第4章 7"
+    },
+    "room.stickers_per_pack": {
+      "type": "integer",
+      "minimum": 1,
+      "default": 40,
+      "description": "第4章 7"
+    },
+    "media.items_per_send": {
+      "type": "integer",
+      "minimum": 50,
+      "default": 50,
+      "description": "第5章 9。第4章 7 も参照"
+    },
+    "media.photo_original_max": {
+      "type": "integer",
+      "minimum": 20971520,
+      "default": 20971520,
+      "description": "第5章 9。超えたら高画質"
+    },
+    "media.video_duration_max": {
+      "type": "integer",
+      "minimum": 300,
+      "default": 300,
+      "description": "第5章 9"
+    },
+    "media.video_size_max": {
+      "type": "integer",
+      "minimum": 1073741824,
+      "default": 1073741824,
+      "description": "第5章 9"
+    },
+    "media.file_size_max": {
+      "type": "integer",
+      "minimum": 1073741824,
+      "default": 1073741824,
+      "description": "第5章 9"
+    },
+    "media.audio_duration_max": {
+      "type": "integer",
+      "minimum": 1800,
+      "default": 1800,
+      "description": "第5章 9"
+    },
+    "media.server_quota": {
+      "type": "integer",
+      "minimum": 1,
+      "maximum": 100,
+      "default": 80,
+      "description": "第5章 9、7。設置時のディスクの空きの割合"
+    },
+    "media.retention_video_years": {
+      "type": [
+        "integer",
+        "null"
+      ],
+      "minimum": 1,
+      "maximum": 10,
+      "default": null,
+      "description": "第5章 7、9。N 年より古い動画の原本"
+    },
+    "media.retention_original_photo_years": {
+      "type": [
+        "integer",
+        "null"
+      ],
+      "minimum": 1,
+      "maximum": 10,
+      "default": null,
+      "description": "第5章 7、9。N 年より古いオリジナルの写真の原本"
+    },
+    "media.retention_include_files": {
+      "type": "boolean",
+      "default": false,
+      "description": "第5章 7。ファイルも含める"
+    },
+    "retention.sync_index": {
+      "type": "integer",
+      "minimum": 1,
+      "default": 7776000,
+      "description": "第2章 DD-2-4、6.2"
+    },
+    "retention.ip": {
+      "type": "integer",
+      "minimum": 1,
+      "default": 2419200,
+      "description": "第3章 5.3、第12章 11"
+    },
+    "retention.redaction_grace": {
+      "type": "integer",
+      "minimum": 1,
+      "default": 604800,
+      "description": "第12章 9。暗号文の物理削除までの猶予"
+    },
+    "retention.unapproved_device": {
+      "type": "integer",
+      "minimum": 1,
+      "default": 604800,
+      "description": "第12章 5.5"
+    },
+    "retention.dormant_leaf": {
+      "type": "integer",
+      "minimum": 1,
+      "default": 7776000,
+      "description": "第12章 5.2"
+    },
+    "retention.invite_records": {
+      "type": "integer",
+      "minimum": 1,
+      "default": 31536000,
+      "description": "第3章 3.2"
+    },
+    "ratelimit.overrides": {
+      "type": "object",
+      "default": {},
+      "description": "第2章 9.3。ratelimits.yaml の limits の上書き（policy と key ごと）"
+    },
+    "push.message_ttl": {
+      "type": "integer",
+      "minimum": 3600,
+      "maximum": 604800,
+      "default": 86400,
+      "description": "第7章 11"
+    },
+    "push.call_ttl": {
+      "type": "integer",
+      "minimum": 30,
+      "maximum": 120,
+      "default": 60,
+      "description": "第7章 11"
+    },
+    "push.up_box_max": {
+      "type": "integer",
+      "minimum": 100,
+      "maximum": 10000,
+      "default": 1000,
+      "description": "第7章 11。受け口の保管（1 端末）"
+    },
+    "push.up_ping": {
+      "type": "integer",
+      "minimum": 30,
+      "maximum": 300,
+      "default": 60,
+      "description": "第7章 11。常時接続の ping"
+    },
+    "push.decrypt_timeout": {
+      "type": "integer",
+      "minimum": 5,
+      "maximum": 30,
+      "default": 10,
+      "description": "第7章 11。SW、シェル"
+    },
+    "calls.ring_timeout": {
+      "type": "integer",
+      "minimum": 30,
+      "maximum": 120,
+      "default": 60,
+      "description": "第6章 8"
+    },
+    "calls.video_max": {
+      "type": "integer",
+      "minimum": 2,
+      "maximum": 20,
+      "default": 8,
+      "description": "第6章 8"
+    },
+    "calls.empty_timeout": {
+      "type": "integer",
+      "minimum": 30,
+      "maximum": 300,
+      "default": 60,
+      "description": "第6章 8"
+    },
+    "auth.session_absolute": {
+      "type": "integer",
+      "minimum": 1,
+      "default": 7776000,
+      "description": "第1章 DD-1-17、第3章 DD-3-5"
+    },
+    "auth.session_idle": {
+      "type": "integer",
+      "minimum": 1,
+      "default": 2592000,
+      "description": "第1章 DD-1-17、第3章 DD-3-5"
+    },
+    "auth.invite_ttl": {
+      "type": "integer",
+      "minimum": 1,
+      "default": 604800,
+      "description": "第3章 DD-3-2、3.2"
+    },
+    "auth.invite_uses": {
+      "type": "integer",
+      "minimum": 1,
+      "default": 1,
+      "description": "第3章 DD-3-2、3.2"
+    },
+    "auth.members_can_invite": {
+      "type": "boolean",
+      "default": false,
+      "description": "第3章 3.2"
+    },
+    "auth.unused_invites_max": {
+      "type": "integer",
+      "minimum": 1,
+      "default": 20,
+      "description": "第3章 3.2。1 人あたり"
+    },
+    "keys.session_key_rotation": {
+      "type": "integer",
+      "minimum": 1,
+      "default": 7776000,
+      "description": "第12章 10"
+    },
+    "keys.kek_rotation_reminder": {
+      "type": "integer",
+      "minimum": 1,
+      "default": 63072000,
+      "description": "第12章 6.2、第7章 9。自動では交代しない。過ぎたら知らせる"
+    },
+    "keys.sfu_key_rotation": {
+      "type": "integer",
+      "minimum": 1,
+      "default": 31536000,
+      "description": "第12章 10"
+    },
+    "notices.capacity_thresholds": {
+      "type": "array",
+      "default": [
+        80,
+        90,
+        100
+      ],
+      "description": "第7章 9、第5章 7。%"
+    },
+    "notices.cert_days": {
+      "type": "array",
+      "default": [
+        14,
+        7,
+        1
+      ],
+      "description": "第7章 9。失効も知らせる"
+    },
+    "notices.paper_check_interval": {
+      "type": "integer",
+      "minimum": 1,
+      "default": 31536000,
+      "description": "第7章 9。参加の日"
+    },
+    "backup.time": {
+      "type": "string",
+      "default": "03:00",
+      "description": "第11章 9.1。日次"
+    },
+    "backup.local_path": {
+      "type": "string",
+      "default": "",
+      "description": "第11章 9.1。別のディスク、USB の HDD"
+    },
+    "backup.s3_endpoint": {
+      "type": "string",
+      "default": "",
+      "description": "第11章 9.1"
+    },
+    "backup.s3_bucket": {
+      "type": "string",
+      "default": "",
+      "description": "第11章 9.1。アクセスキーは secrets のファイル"
+    },
+    "backup.keep_daily": {
+      "type": "integer",
+      "minimum": 1,
+      "default": 7,
+      "description": "第11章 9.1"
+    },
+    "backup.keep_weekly": {
+      "type": "integer",
+      "minimum": 1,
+      "default": 4,
+      "description": "第11章 9.1"
+    },
+    "backup.keep_monthly": {
+      "type": "integer",
+      "minimum": 1,
+      "default": 6,
+      "description": "第11章 9.1"
+    },
+    "backup.check_subset": {
+      "type": "integer",
+      "minimum": 1,
+      "maximum": 100,
+      "default": 10,
+      "description": "第11章 9.1。日次"
+    },
+    "backup.restore_test_interval": {
+      "type": "integer",
+      "minimum": 1,
+      "default": 2592000,
+      "description": "第11章 9.1。月 1"
+    },
+    "backup.include_maps": {
+      "type": "boolean",
+      "default": false,
+      "description": "第11章 9.1"
+    },
+    "update.auto": {
+      "type": "boolean",
+      "default": false,
+      "description": "第11章 10"
+    },
+    "update.window": {
+      "type": "string",
+      "default": "Tue 04:00",
+      "description": "第11章 10。週 1"
+    },
+    "maps.region": {
+      "type": "string",
+      "default": "japan",
+      "description": "第5章 8.1。既定：日本"
+    },
+    "maps.update_reminder_interval": {
+      "type": "integer",
+      "minimum": 1,
+      "default": 31536000,
+      "description": "第5章 8.1、第7章 9"
+    },
+    "log.level": {
+      "type": "string",
+      "enum": [
+        "info",
+        "debug"
+      ],
+      "default": "info",
+      "description": "第1章 10.4"
+    }
+  },
+  "additionalProperties": false
+}

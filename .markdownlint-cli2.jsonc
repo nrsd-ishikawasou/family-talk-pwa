@@ -1,0 +1,17 @@
+// SPDX-FileCopyrightText: 2026 株式会社流山ソフトウェア開発 (Nagareyama Software Development Co., Ltd.)
+// SPDX-License-Identifier: Apache-2.0
+// markdownlint の規則（基本設計書 第14章 11.1 の docs の段）。既定の規則を全部使い、外すのは理由のあるものだけ。
+{
+  "config": {
+    "default": true,
+    // 日本語の文は折り返さずに 1 文を 1 行に書く（第14章 14）。行の長さは読みやすさの指標にならない
+    "MD013": false,
+    // 参考文献の出典の URL は裸で書く（運営者の画面はそのままリンクとして表示する）
+    "MD034": false,
+    // 文書の書式の <sub>（著作権の行）、図の元の文を畳む <details> と <summary> だけを許す（第14章 14 の 8、10）
+    "MD033": { "allowed_elements": ["sub", "details", "summary"] },
+    // 同じ見出し（「本書の位置付け」等）は別の親の下なら許す
+    "MD024": { "siblings_only": true }
+  },
+  "globs": ["README.md", "CHANGELOG.md", "SECURITY.md", "docs/**/*.md", "dev/docs/**/*.md", "api/**/*.md"]
+}

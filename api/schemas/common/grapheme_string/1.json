@@ -1,0 +1,7 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://family-talk.invalid/schemas/common/grapheme_string/1",
+  "title": "書記素で数える文字列",
+  "description": "長さの上限は x-grapheme-max（書記素）で各所が持つ（第1章 8.6）。サーバーはバイト長、端末は書記素で数える",
+  "type": "string"
+}

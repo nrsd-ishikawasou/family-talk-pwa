@@ -1,0 +1,9 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://family-talk.invalid/schemas/common/rfc3339/1",
+  "title": "時刻",
+  "description": "RFC 3339 の UTC（第1章 10.7）",
+  "type": "string",
+  "format": "date-time",
+  "pattern": "Z$"
+}

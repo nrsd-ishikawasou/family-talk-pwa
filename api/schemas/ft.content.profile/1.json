@@ -1,0 +1,30 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://family-talk.invalid/schemas/ft.content.profile/1",
+  "title": "ft.content.profile/1",
+  "description": "第4章 3.1。家族全員のトーク",
+  "type": "object",
+  "properties": {
+    "replaces": {
+      "$ref": "../common/uuidv7/1.json"
+    },
+    "inReplyTo": {
+      "$ref": "../common/uuidv7/1.json"
+    },
+    "expires": {
+      "$ref": "../common/rfc3339/1.json"
+    },
+    "avatar": {
+      "$ref": "../ft.content.attachment_item/1.json"
+    },
+    "background": {
+      "$ref": "../ft.content.attachment_item/1.json"
+    },
+    "bio": {
+      "type": "string",
+      "x-grapheme-max": 500
+    }
+  },
+  "required": [],
+  "additionalProperties": false
+}

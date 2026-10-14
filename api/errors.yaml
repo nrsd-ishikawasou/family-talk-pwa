@@ -1,0 +1,755 @@
+# エラーコード表の正本（基本設計書 第2章 9.2。番号の形と分類は第1章 8.2）。
+# params は JSON Schema。meaning は第2章 9.2 の意味の欄の写し（利用者に見せる文言は端末の文言の表が持つ）。log は記録するか、scope: global は全 operation に暗に掛かる番号。
+# 番号は欠番を許し、消した番号は retired に移して再利用しない。
+rows:
+  - code: AUTH-001
+    status: 401
+    title: "Not authenticated"
+    meaning: "未認証"
+    retryable: false
+    params: {"type": "object", "properties": {}, "additionalProperties": false}
+    log: false
+    scope: route
+    user_text_key: err.AUTH-001
+    test: TestErr_AUTH_001
+  - code: AUTH-002
+    status: 401
+    title: "Session revoked"
+    meaning: "セッションの失効（理由を params に）"
+    retryable: false
+    params: {"type": "object", "properties": {"reason": {"type": "string", "enum": ["logout", "device_revoked", "suspended", "deleted", "erased", "key_rotation", "expired"]}}, "additionalProperties": false}
+    log: false
+    scope: route
+    user_text_key: err.AUTH-002
+    test: TestErr_AUTH_002
+  - code: AUTH-003
+    status: 400
+    title: "WebAuthn verification failed"
+    meaning: "WebAuthn の検証の失敗"
+    retryable: true
+    params: {"type": "object", "properties": {}, "additionalProperties": false}
+    log: true
+    scope: route
+    user_text_key: err.AUTH-003
+    test: TestErr_AUTH_003
+  - code: AUTH-004
+    status: 429
+    title: "Too many login failures"
+    meaning: "ログインの失敗の回数の超過"
+    retryable: true
+    params: {"type": "object", "properties": {}, "additionalProperties": false}
+    log: true
+    scope: route
+    user_text_key: err.AUTH-004
+    test: TestErr_AUTH_004
+  - code: AUTH-005
+    status: 400
+    title: "QR login not completed"
+    meaning: "QR の `authorization_pending`、`slow_down`、`expired`（params.state）"
+    retryable: "by_state"
+    params: {"type": "object", "properties": {"state": {"type": "string", "enum": ["authorization_pending", "slow_down", "expired"]}}, "additionalProperties": false}
+    log: false
+    scope: route
+    user_text_key: err.AUTH-005
+    test: TestErr_AUTH_005
+  - code: AUTH-006
+    status: 403
+    title: "Re-authentication required"
+    meaning: "再認証が必要（アプリのロック、パスキー）"
+    retryable: true
+    params: {"type": "object", "properties": {}, "additionalProperties": false}
+    log: false
+    scope: route
+    user_text_key: err.AUTH-006
+    test: TestErr_AUTH_006
+  - code: AUTH-007
+    status: 410
+    title: "Token expired or used"
+    meaning: "招待・リンクの期限切れまたは使用済み"
+    retryable: false
+    params: {"type": "object", "properties": {}, "additionalProperties": false}
+    log: false
+    scope: route
+    user_text_key: err.AUTH-007
+    test: TestErr_AUTH_007
+  - code: AUTH-008
+    status: 409
+    title: "Last passkey cannot be deleted"
+    meaning: "最後のパスキーは削除できない"
+    retryable: false
+    params: {"type": "object", "properties": {}, "additionalProperties": false}
+    log: false
+    scope: route
+    user_text_key: err.AUTH-008
+    test: TestErr_AUTH_008
+  - code: MEM-001
+    status: 404
+    title: "Member not found"
+    meaning: "構成員がいない"
+    retryable: false
+    params: {"type": "object", "properties": {}, "additionalProperties": false}
+    log: false
+    scope: route
+    user_text_key: err.MEM-001
+    test: TestErr_MEM_001
+  - code: MEM-002
+    status: 409
+    title: "Member suspended or deleted"
+    meaning: "停止中・削除済みの構成員への操作"
+    retryable: false
+    params: {"type": "object", "properties": {}, "additionalProperties": false}
+    log: false
+    scope: route
+    user_text_key: err.MEM-002
+    test: TestErr_MEM_002
+  - code: MEM-003
+    status: 403
+    title: "Last administrator"
+    meaning: "最後の管理者は解除・停止・削除できない"
+    retryable: false
+    params: {"type": "object", "properties": {}, "additionalProperties": false}
+    log: false
+    scope: route
+    user_text_key: err.MEM-003
+    test: TestErr_MEM_003
+  - code: MEM-004
+    status: 409
+    title: "Invite limit exceeded"
+    meaning: "招待の回数の超過"
+    retryable: false
+    params: {"type": "object", "properties": {}, "additionalProperties": false}
+    log: false
+    scope: route
+    user_text_key: err.MEM-004
+    test: TestErr_MEM_004
+  - code: MEM-005
+    status: 422
+    title: "Invalid profile field"
+    meaning: "表示名・プロフィールの長さ・形式"
+    retryable: false
+    params: {"type": "object", "properties": {}, "additionalProperties": false}
+    log: false
+    scope: route
+    user_text_key: err.MEM-005
+    test: TestErr_MEM_005
+  - code: MEM-006
+    status: 403
+    title: "Guardian approval required"
+    meaning: "保護者の承認が要る（子ども区分の抹消・端末の追加）"
+    retryable: false
+    params: {"type": "object", "properties": {}, "additionalProperties": false}
+    log: false
+    scope: route
+    user_text_key: err.MEM-006
+    test: TestErr_MEM_006
+  - code: MEM-007
+    status: 403
+    title: "Not allowed for a child member"
+    meaning: "子ども区分ではできない操作（招待の発行）"
+    retryable: false
+    params: {"type": "object", "properties": {}, "additionalProperties": false}
+    log: false
+    scope: route
+    user_text_key: err.MEM-007
+    test: TestErr_MEM_007
+  - code: KEY-001
+    status: 404
+    title: "Device or public key not found"
+    meaning: "端末がない、または未登録の公開鍵"
+    retryable: false
+    params: {"type": "object", "properties": {}, "additionalProperties": false}
+    log: false
+    scope: route
+    user_text_key: err.KEY-001
+    test: TestErr_KEY_001
+  - code: KEY-002
+    status: 409
+    title: "Device already approved"
+    meaning: "端末は承認済み（二重の承認）"
+    retryable: false
+    params: {"type": "object", "properties": {}, "additionalProperties": false}
+    log: false
+    scope: route
+    user_text_key: err.KEY-002
+    test: TestErr_KEY_002
+  - code: KEY-003
+    status: 403
+    title: "Approval from unapproved device"
+    meaning: "未承認の端末からの承認の操作"
+    retryable: false
+    params: {"type": "object", "properties": {}, "additionalProperties": false}
+    log: false
+    scope: route
+    user_text_key: err.KEY-003
+    test: TestErr_KEY_003
+  - code: KEY-004
+    status: 403
+    title: "Device not approved"
+    meaning: "未承認の端末はトークを使えない"
+    retryable: false
+    params: {"type": "object", "properties": {}, "additionalProperties": false}
+    log: false
+    scope: route
+    user_text_key: err.KEY-004
+    test: TestErr_KEY_004
+  - code: KEY-005
+    status: 404
+    title: "Key bundle copy not found"
+    meaning: "鍵バンドルのコピーがない（種類）"
+    retryable: false
+    params: {"type": "object", "properties": {"kind": {"type": "string", "enum": ["device", "recovery-code", "share", "family", "prf"]}}, "additionalProperties": false}
+    log: false
+    scope: route
+    user_text_key: err.KEY-005
+    test: TestErr_KEY_005
+  - code: KEY-006
+    status: 200
+    title: "Last-resort KeyPackage returned"
+    meaning: "KeyPackage が尽き最後の手段を返した（警告）"
+    warning: true  # 200 の応答の warnings に入る（第2章 5.4）
+    params: {"type": "object", "properties": {}, "additionalProperties": false}
+    log: false
+    scope: route
+    user_text_key: err.KEY-006
+    test: TestErr_KEY_006
+  - code: KEY-007
+    status: 409
+    title: "Commit epoch mismatch"
+    meaning: "Commit の epoch が現在と一致しない"
+    retryable: true
+    params: {"type": "object", "properties": {}, "additionalProperties": false}
+    log: false
+    scope: route
+    user_text_key: err.KEY-007
+    test: TestErr_KEY_007
+  - code: KEY-008
+    status: 429
+    title: "Too many recovery attempts"
+    meaning: "回復コードの試行の超過（10 回/日）"
+    retryable: true
+    params: {"type": "object", "properties": {}, "additionalProperties": false}
+    log: true
+    scope: route
+    user_text_key: err.KEY-008
+    test: TestErr_KEY_008
+  - code: KEY-009
+    status: 422
+    title: "Malformed share or copy"
+    meaning: "秘密分散の断片・コピーの形式の誤り"
+    retryable: false
+    params: {"type": "object", "properties": {}, "additionalProperties": false}
+    log: true
+    scope: route
+    user_text_key: err.KEY-009
+    test: TestErr_KEY_009
+  - code: KEY-010
+    status: 413
+    title: "Device inbox full"
+    meaning: "端末宛メールボックスの上限（1,000 件）"
+    retryable: false
+    params: {"type": "object", "properties": {}, "additionalProperties": false}
+    log: false
+    scope: route
+    user_text_key: err.KEY-010
+    test: TestErr_KEY_010
+  - code: ROOM-001
+    status: 404
+    title: "Room not found"
+    meaning: "トークがない"
+    retryable: false
+    params: {"type": "object", "properties": {}, "additionalProperties": false}
+    log: false
+    scope: route
+    user_text_key: err.ROOM-001
+    test: TestErr_ROOM_001
+  - code: ROOM-002
+    status: 403
+    title: "Not a room member"
+    meaning: "トークの構成員ではない"
+    retryable: false
+    params: {"type": "object", "properties": {}, "additionalProperties": false}
+    log: false
+    scope: route
+    user_text_key: err.ROOM-002
+    test: TestErr_ROOM_002
+  - code: ROOM-003
+    status: 403
+    title: "Operation not permitted in room"
+    meaning: "この操作の権限がない（外す、削除）"
+    retryable: false
+    params: {"type": "object", "properties": {"room_id": {"$ref": "./schemas/common/uuidv7/1.json"}}, "additionalProperties": false}
+    log: false
+    scope: route
+    user_text_key: err.ROOM-003
+    test: TestErr_ROOM_003
+  - code: ROOM-004
+    status: 409
+    title: "Direct room already exists"
+    meaning: "1 対 1 のトークは既にある（params.room_id）"
+    retryable: false
+    params: {"type": "object", "properties": {"room_id": {"$ref": "./schemas/common/uuidv7/1.json"}}, "additionalProperties": false}
+    log: false
+    scope: route
+    user_text_key: err.ROOM-004
+    test: TestErr_ROOM_004
+  - code: ROOM-005
+    status: 422
+    title: "Invalid event"
+    meaning: "イベントの形式（schema、大きさ 256 KiB）"
+    retryable: false
+    params: {"type": "object", "properties": {}, "additionalProperties": false}
+    log: false
+    scope: route
+    user_text_key: err.ROOM-005
+    test: TestErr_ROOM_005
+  - code: ROOM-006
+    status: 409
+    title: "Stale epoch"
+    meaning: "送信先の epoch が古い（Remove の後）"
+    retryable: true
+    params: {"type": "object", "properties": {}, "additionalProperties": false}
+    log: false
+    scope: route
+    user_text_key: err.ROOM-006
+    test: TestErr_ROOM_006
+  - code: ROOM-007
+    status: 404
+    title: "Event not found"
+    meaning: "イベントがない"
+    retryable: false
+    params: {"type": "object", "properties": {}, "additionalProperties": false}
+    log: false
+    scope: route
+    user_text_key: err.ROOM-007
+    test: TestErr_ROOM_007
+  - code: ROOM-008
+    status: 410
+    title: "Event redacted"
+    meaning: "イベントは削除済み（削除済みの印）"
+    retryable: false
+    params: {"type": "object", "properties": {}, "additionalProperties": false}
+    log: false
+    scope: route
+    user_text_key: err.ROOM-008
+    test: TestErr_ROOM_008
+  - code: ROOM-009
+    status: 422
+    title: "Edit window passed"
+    meaning: "編集・取消の期限（15 分、7 日）の超過"
+    retryable: false
+    params: {"type": "object", "properties": {}, "additionalProperties": false}
+    log: false
+    scope: route
+    user_text_key: err.ROOM-009
+    test: TestErr_ROOM_009
+  - code: ROOM-010
+    status: 422
+    title: "Invalid schedule time"
+    meaning: "予約の時刻（過去、30 日超）"
+    retryable: false
+    params: {"type": "object", "properties": {}, "additionalProperties": false}
+    log: false
+    scope: route
+    user_text_key: err.ROOM-010
+    test: TestErr_ROOM_010
+  - code: ROOM-011
+    status: 403
+    title: "Family room cannot be left or deleted"
+    meaning: "家族全員のトークは退出・削除できない"
+    retryable: false
+    params: {"type": "object", "properties": {}, "additionalProperties": false}
+    log: false
+    scope: route
+    user_text_key: err.ROOM-011
+    test: TestErr_ROOM_011
+  - code: ROOM-012
+    status: 422
+    title: "Relation target in another room"
+    meaning: "関係の対象が別のトークにある"
+    retryable: false
+    params: {"type": "object", "properties": {}, "additionalProperties": false}
+    log: false
+    scope: route
+    user_text_key: err.ROOM-012
+    test: TestErr_ROOM_012
+  - code: MEDIA-001
+    status: 413
+    title: "Attachment limit exceeded"
+    meaning: "添付の上限（1 件、件数、1 日の総量）"
+    retryable: false
+    params: {"type": "object", "properties": {}, "additionalProperties": false}
+    log: false
+    scope: route
+    user_text_key: err.MEDIA-001
+    test: TestErr_MEDIA_001
+  - code: MEDIA-002
+    status: 404
+    title: "Slot or attachment not found"
+    meaning: "スロット・添付がない、または期限切れ"
+    retryable: false
+    params: {"type": "object", "properties": {}, "additionalProperties": false}
+    log: false
+    scope: route
+    user_text_key: err.MEDIA-002
+    test: TestErr_MEDIA_002
+  - code: MEDIA-003
+    status: 409
+    title: "Upload offset mismatch"
+    meaning: "`Upload-Offset` が現在と一致しない（params.offset）"
+    retryable: true
+    params: {"type": "object", "properties": {"offset": {"type": "integer", "minimum": 0}}, "additionalProperties": false}
+    log: false
+    scope: route
+    user_text_key: err.MEDIA-003
+    test: TestErr_MEDIA_003
+  - code: MEDIA-004
+    status: 422
+    title: "Attachment hash mismatch"
+    meaning: "完了時のハッシュの不一致"
+    retryable: false
+    params: {"type": "object", "properties": {}, "additionalProperties": false}
+    log: true
+    scope: route
+    user_text_key: err.MEDIA-004
+    test: TestErr_MEDIA_004
+  - code: MEDIA-005
+    status: 403
+    title: "Attachment access denied"
+    meaning: "添付の取得の権限がない"
+    retryable: false
+    params: {"type": "object", "properties": {}, "additionalProperties": false}
+    log: false
+    scope: route
+    user_text_key: err.MEDIA-005
+    test: TestErr_MEDIA_005
+  - code: MEDIA-006
+    status: 404
+    title: "Attachment data missing"
+    meaning: "添付の実体がない（記録はあるが実体が失われた。管理者がバックアップから戻す）"
+    retryable: false
+    params: {"type": "object", "properties": {}, "additionalProperties": false}
+    log: true
+    scope: route
+    user_text_key: err.MEDIA-006
+    test: TestErr_MEDIA_006
+  - code: MEDIA-010
+    status: 422
+    title: "Preview fetch rejected"
+    meaning: "プレビューの URL が不正、内部のアドレス、取得先の応答なし"
+    retryable: false
+    params: {"type": "object", "properties": {}, "additionalProperties": false}
+    log: false
+    scope: route
+    user_text_key: err.MEDIA-010
+    test: TestErr_MEDIA_010
+  - code: CALL-001
+    status: 404
+    title: "Call not found"
+    meaning: "通話がない、または終了済み"
+    retryable: false
+    params: {"type": "object", "properties": {}, "additionalProperties": false}
+    log: false
+    scope: route
+    user_text_key: err.CALL-001
+    test: TestErr_CALL_001
+  - code: CALL-002
+    status: 409
+    title: "Already in call"
+    meaning: "既に参加している"
+    retryable: false
+    params: {"type": "object", "properties": {}, "additionalProperties": false}
+    log: false
+    scope: route
+    user_text_key: err.CALL-002
+    test: TestErr_CALL_002
+  - code: CALL-003
+    status: 409
+    title: "Callee busy"
+    meaning: "相手は通話中"
+    retryable: false
+    params: {"type": "object", "properties": {}, "additionalProperties": false}
+    log: false
+    scope: route
+    user_text_key: err.CALL-003
+    test: TestErr_CALL_003
+  - code: CALL-004
+    status: 503
+    title: "SFU unavailable"
+    meaning: "SFU が応答しない"
+    retryable: true
+    params: {"type": "object", "properties": {}, "additionalProperties": false}
+    log: true
+    scope: route
+    user_text_key: err.CALL-004
+    test: TestErr_CALL_004
+  - code: CALL-005
+    status: 403
+    title: "Callee not accepting calls"
+    meaning: "相手は着信を受け付けていない（メッセージは送れる）"
+    retryable: false
+    params: {"type": "object", "properties": {}, "additionalProperties": false}
+    log: false
+    scope: route
+    user_text_key: err.CALL-005
+    test: TestErr_CALL_005
+  - code: CALL-006
+    status: 409
+    title: "Call participant limit"
+    meaning: "通話の人数の上限（音声のみなら参加できる）"
+    retryable: false
+    params: {"type": "object", "properties": {}, "additionalProperties": false}
+    log: false
+    scope: route
+    user_text_key: err.CALL-006
+    test: TestErr_CALL_006
+  - code: PUSH-001
+    status: 422
+    title: "Invalid push subscription"
+    meaning: "購読の形式（endpoint、keys）"
+    retryable: false
+    params: {"type": "object", "properties": {}, "additionalProperties": false}
+    log: false
+    scope: route
+    user_text_key: err.PUSH-001
+    test: TestErr_PUSH_001
+  - code: PUSH-002
+    status: 410
+    title: "Push subscription expired"
+    meaning: "購読は失効（中継の 404/410）"
+    retryable: false
+    params: {"type": "object", "properties": {}, "additionalProperties": false}
+    log: false
+    scope: route
+    user_text_key: err.PUSH-002
+    test: TestErr_PUSH_002
+  - code: PUSH-003
+    status: 413
+    title: "Distributor mailbox full"
+    meaning: "配布元の受け口（(i)。第7章 3.1）の保管の上限（1,000 件）"
+    retryable: false
+    params: {"type": "object", "properties": {}, "additionalProperties": false}
+    log: false
+    scope: route
+    user_text_key: err.PUSH-003
+    test: TestErr_PUSH_003
+  - code: ADM-001
+    status: 403
+    title: "Not an administrator"
+    meaning: "管理者ではない"
+    retryable: false
+    params: {"type": "object", "properties": {}, "additionalProperties": false}
+    log: false
+    scope: route
+    user_text_key: err.ADM-001
+    test: TestErr_ADM_001
+  - code: ADM-002
+    status: 409
+    title: "Setting is read-only"
+    meaning: "設定の項目は読み取り専用（ファイル・環境変数由来）"
+    retryable: false
+    params: {"type": "object", "properties": {}, "additionalProperties": false}
+    log: false
+    scope: route
+    user_text_key: err.ADM-002
+    test: TestErr_ADM_002
+  - code: ADM-003
+    status: 409
+    title: "Backup or update in progress"
+    meaning: "バックアップ・更新は実行中"
+    retryable: true
+    params: {"type": "object", "properties": {}, "additionalProperties": false}
+    log: false
+    scope: route
+    user_text_key: err.ADM-003
+    test: TestErr_ADM_003
+  - code: ADM-004
+    status: 422
+    title: "Setting value out of range"
+    meaning: "設定の値の範囲"
+    retryable: false
+    params: {"type": "object", "properties": {}, "additionalProperties": false}
+    log: false
+    scope: route
+    user_text_key: err.ADM-004
+    test: TestErr_ADM_004
+  - code: SRV-001
+    status: 503
+    title: "Server is read-only"
+    meaning: "読み取り専用（理由を params に：マイグレーション、容量、置き場に書けない、復元の後始末）"
+    retryable: true
+    params: {"type": "object", "properties": {"reason": {"type": "string", "enum": ["migration", "capacity", "storage", "restore"]}}, "additionalProperties": false}
+    log: true
+    scope: global
+    user_text_key: err.SRV-001
+    test: TestErr_SRV_001
+  - code: SRV-002
+    status: 507
+    title: "Storage full"
+    meaning: "容量の上限"
+    retryable: false
+    params: {"type": "object", "properties": {}, "additionalProperties": false}
+    log: true
+    scope: route
+    user_text_key: err.SRV-002
+    test: TestErr_SRV_002
+  - code: SRV-003
+    status: 500
+    title: "Internal error"
+    meaning: "内部の誤り（instance で記録を引く）"
+    retryable: true
+    params: {"type": "object", "properties": {}, "additionalProperties": false}
+    log: true
+    scope: global
+    user_text_key: err.SRV-003
+    test: TestErr_SRV_003
+  - code: SRV-004
+    status: 503
+    title: "Dependency unavailable"
+    meaning: "依存するサービスが止まっている（params.service）"
+    retryable: true
+    params: {"type": "object", "properties": {"service": {"type": "string"}}, "additionalProperties": false}
+    log: true
+    scope: global
+    user_text_key: err.SRV-004
+    test: TestErr_SRV_004
+  - code: NET-001
+    status: 400
+    title: "Schema validation failed"
+    meaning: "型の検証の失敗（params.errors[]）"
+    retryable: false
+    params: {"type": "object", "properties": {"errors": {"type": "array", "items": {"type": "object", "required": ["path", "message"], "properties": {"path": {"type": "string"}, "message": {"type": "string"}}, "additionalProperties": false}}}, "additionalProperties": false}
+    log: false
+    scope: global
+    user_text_key: err.NET-001
+    test: TestErr_NET_001
+  - code: NET-002
+    status: 415
+    title: "Unsupported media type or accept"
+    meaning: "Content-Type、Accept"
+    retryable: false
+    params: {"type": "object", "properties": {}, "additionalProperties": false}
+    log: false
+    scope: global
+    user_text_key: err.NET-002
+    test: TestErr_NET_002
+  - code: NET-003
+    status: 403
+    title: "Cross-site request rejected"
+    meaning: "cross-site の要求、ヘッダの欠落"
+    retryable: false
+    params: {"type": "object", "properties": {}, "additionalProperties": false}
+    log: true
+    scope: global
+    user_text_key: err.NET-003
+    test: TestErr_NET_003
+  - code: NET-004
+    status: 429
+    title: "Rate limited"
+    meaning: "レート制限（params.policy）"
+    retryable: true
+    params: {"type": "object", "properties": {"policy": {"type": "string"}}, "additionalProperties": false}
+    log: false
+    scope: global
+    user_text_key: err.NET-004
+    test: TestErr_NET_004
+  - code: NET-005
+    status: 410
+    title: "Sync position out of retention"
+    meaning: "`since` が保持の外（全差分の取り直し）"
+    retryable: false
+    params: {"type": "object", "properties": {}, "additionalProperties": false}
+    log: false
+    scope: route
+    user_text_key: err.NET-005
+    test: TestErr_NET_005
+  - code: NET-006
+    status: 426
+    title: "App version too old"
+    meaning: "アプリの版が古い（params.min_app）"
+    retryable: false
+    params: {"type": "object", "properties": {"min_app": {"type": "string"}}, "additionalProperties": false}
+    log: false
+    scope: global
+    user_text_key: err.NET-006
+    test: TestErr_NET_006
+  - code: NET-007
+    status: 400
+    title: "Missing or invalid Idempotency-Key"
+    meaning: "Idempotency-Key の欠落・形式"
+    retryable: false
+    params: {"type": "object", "properties": {}, "additionalProperties": false}
+    log: false
+    scope: route
+    user_text_key: err.NET-007
+    test: TestErr_NET_007
+  - code: NET-008
+    status: 409
+    title: "Idempotency-Key reused with different body"
+    meaning: "同じ Idempotency-Key で異なる本文"
+    retryable: false
+    params: {"type": "object", "properties": {}, "additionalProperties": false}
+    log: true
+    scope: route
+    user_text_key: err.NET-008
+    test: TestErr_NET_008
+  - code: NET-009
+    status: 413
+    title: "Request body too large"
+    meaning: "要求の本文が上限（3）を超えた（params.limit）"
+    retryable: false
+    params: {"type": "object", "properties": {"limit": {"type": "integer", "minimum": 1}}, "additionalProperties": false}
+    log: false
+    scope: global
+    user_text_key: err.NET-009
+    test: TestErr_NET_009
+  - code: SHELL-001
+    status: null
+    title: "Unknown bridge command or invalid args"
+    meaning: "JS ブリッジの未知の命令、または args が型に合わない（Android のシェルの中。第9章 14）"
+    retryable: false
+    params: {"type": "object", "properties": {}, "additionalProperties": false}
+    log: true
+    scope: route
+    user_text_key: err.SHELL-001
+    test: TestErr_SHELL_001
+  - code: SHELL-002
+    status: null
+    title: "Bridge message from foreign origin"
+    meaning: "家族のサーバー以外のオリジンからの JS ブリッジのメッセージ（無視して記録）"
+    retryable: false
+    params: {"type": "object", "properties": {}, "additionalProperties": false}
+    log: true
+    scope: route
+    user_text_key: err.SHELL-002
+    test: TestErr_SHELL_002
+  - code: SHELL-003
+    status: null
+    title: "WebView too old"
+    meaning: "WebView の版が下限に足りない（第9章 DD-9-4）"
+    retryable: false
+    params: {"type": "object", "properties": {}, "additionalProperties": false}
+    log: false
+    scope: route
+    user_text_key: err.SHELL-003
+    test: TestErr_SHELL_003
+  - code: SHELL-004
+    status: null
+    title: "Keystore key lost"
+    meaning: "鍵保管庫の鍵が失われた（端末鍵を復号できない）"
+    retryable: false
+    params: {"type": "object", "properties": {}, "additionalProperties": false}
+    log: true
+    scope: route
+    user_text_key: err.SHELL-004
+    test: TestErr_SHELL_004
+  - code: SHELL-005
+    status: null
+    title: "APK signature mismatch"
+    meaning: "更新の APK の署名が一致しない"
+    retryable: false
+    params: {"type": "object", "properties": {}, "additionalProperties": false}
+    log: true
+    scope: route
+    user_text_key: err.SHELL-005
+    test: TestErr_SHELL_005
+retired: []

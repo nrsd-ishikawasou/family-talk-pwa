@@ -1,0 +1,75 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://family-talk.invalid/schemas/ft.push/1",
+  "title": "ft.push/1",
+  "description": "第2章 7。通知の中身（RFC 8291 で暗号化する前）",
+  "type": "object",
+  "properties": {
+    "v": {
+      "const": 1
+    },
+    "event_id": {
+      "$ref": "../common/uuidv7/1.json"
+    },
+    "room_id": {
+      "$ref": "../common/uuidv7/1.json"
+    },
+    "sender_id": {
+      "$ref": "../common/uuidv7/1.json"
+    },
+    "kind": {
+      "type": "string",
+      "enum": [
+        "message",
+        "call",
+        "call_end",
+        "notice"
+      ]
+    },
+    "call_id": {
+      "$ref": "../common/uuidv7/1.json"
+    }
+  },
+  "required": [
+    "v",
+    "kind"
+  ],
+  "additionalProperties": false,
+  "allOf": [
+    {
+      "if": {
+        "properties": {
+          "kind": {
+            "const": "message"
+          }
+        }
+      },
+      "then": {
+        "required": [
+          "event_id",
+          "room_id",
+          "sender_id"
+        ]
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "kind": {
+            "enum": [
+              "call",
+              "call_end"
+            ]
+          }
+        }
+      },
+      "then": {
+        "required": [
+          "call_id",
+          "room_id",
+          "sender_id"
+        ]
+      }
+    }
+  ]
+}

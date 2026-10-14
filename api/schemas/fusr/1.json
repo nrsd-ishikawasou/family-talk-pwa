@@ -1,0 +1,31 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://family-talk.invalid/schemas/fusr/1",
+  "title": "fusr/1",
+  "description": "第12章 12。本人の署名鍵の公開部",
+  "type": "object",
+  "properties": {
+    "v": {
+      "const": 1
+    },
+    "user_id": {
+      "$ref": "../common/uuidv7/1.json"
+    },
+    "user_sig_pub": {
+      "$ref": "../common/jwk_p256/1.json"
+    },
+    "created_at": {
+      "$ref": "../common/rfc3339/1.json"
+    },
+    "rotated_at": {
+      "$ref": "../common/rfc3339/1.json"
+    }
+  },
+  "required": [
+    "v",
+    "user_id",
+    "user_sig_pub",
+    "created_at"
+  ],
+  "additionalProperties": false
+}

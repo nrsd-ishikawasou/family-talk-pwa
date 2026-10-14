@@ -1,0 +1,39 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://family-talk.invalid/schemas/ft.content.reminder/1",
+  "title": "ft.content.reminder/1",
+  "description": "第4章 3.1、5.8。予約送信で流れる予定のリマインド",
+  "type": "object",
+  "properties": {
+    "replaces": {
+      "$ref": "../common/uuidv7/1.json"
+    },
+    "inReplyTo": {
+      "$ref": "../common/uuidv7/1.json"
+    },
+    "expires": {
+      "$ref": "../common/rfc3339/1.json"
+    },
+    "target_event_id": {
+      "$ref": "../common/uuidv7/1.json"
+    },
+    "title": {
+      "type": "string",
+      "x-grapheme-max": 100
+    },
+    "starts_at": {
+      "$ref": "../common/rfc3339/1.json"
+    },
+    "before": {
+      "type": "integer",
+      "minimum": 0
+    }
+  },
+  "required": [
+    "target_event_id",
+    "title",
+    "starts_at",
+    "before"
+  ],
+  "additionalProperties": false
+}

@@ -1,0 +1,200 @@
+# SPDX-FileCopyrightText: 2026 株式会社流山ソフトウェア開発 (Nagareyama Software Development Co., Ltd.)
+# SPDX-License-Identifier: Apache-2.0
+"""道具の試験（L0。全体実装設計書 6.1）。正しい入力で緑、壊した入力で赤になることを確かめる。"""
+import contextlib
+import io
+import pathlib
+import tempfile
+import unittest
+
+import yaml
+
+from tools import bundle_openapi, config_check, forbidden_words, gen_config, gen_errors, trace_requirements
+
+ROOT = pathlib.Path(__file__).resolve().parents[2]
+
+
+class TestGenConfig(unittest.TestCase):
+    # R: R-2-8-1
+    def test_committed_schemas_are_reproduced(self):
+        with contextlib.redirect_stdout(io.StringIO()):
+            self.assertEqual(gen_config.main(['--check']), 0)
+
+    def test_strips_category_for_single_category_sets(self):
+        built = {p.parent.name: p for p in gen_config.build()}
+        self.assertIn('ft.settings.room_me', built)
+
+
+class TestGenErrors(unittest.TestCase):
+    """api/ の errors.yaml、ratelimits.yaml、config.yaml から Go の定数を作る道具（全体実装設計書 5.1）。"""
+
+    def load(self, name):
+        return yaml.safe_load((ROOT / 'api' / name).read_text(encoding='utf-8'))
+
+    # R: R-2-8-1
+    def test_output_is_reproducible(self):
+        a = gen_errors.config_go(self.load('config.yaml')) + gen_errors.errors_go(self.load('errors.yaml'))
+        b = gen_errors.config_go(self.load('config.yaml')) + gen_errors.errors_go(self.load('errors.yaml'))
+        self.assertEqual(a, b)
+
+    def test_required_and_nullable_follow_config_yaml(self):
+        doc = self.load('config.yaml')
+        out = gen_errors.config_go(doc)
+        required = sorted(it['key'] for it in doc['items'] if gen_errors.required(it))
+        self.assertEqual(required, ['server.dns_provider', 'server.domain'])
+        self.assertEqual(out.count('Required: true'), len(required))
+        nullable = [it for it in doc['items'] if 'null_means' in (it.get('range') or {})]
+        self.assertEqual(out.count('Nullable: true'), len(nullable))
+        for it in nullable:
+            self.assertIn(gen_errors.q(it['range']['null_means']), out)
+
+    def test_every_error_code_has_a_constant_and_shell_rows_have_no_status(self):
+        doc = self.load('errors.yaml')
+        out = gen_errors.errors_go(doc)
+        for r in doc['rows']:
+            self.assertIn(f'\t{gen_errors.ident(r["code"])} = "{r["code"]}"\n', out)
+            if r['code'].startswith('SHELL-'):
+                self.assertIn(f'{{Code: {gen_errors.ident(r["code"])}, Status: 0,', out)
+
+    def test_broken_input_is_an_error(self):
+        doc = self.load('config.yaml')
+        doc['items'][0] = dict(doc['items'][0])
+        del doc['items'][0]['type']
+        with self.assertRaises(KeyError):
+            gen_errors.config_go(doc)
+
+
+class TestBundleOpenapi(unittest.TestCase):
+    """oapi-codegen の前に openapi を束ねる道具（基本設計書 第14章 8）。"""
+
+    @classmethod
+    def setUpClass(cls):
+        cls.text = (ROOT / 'api' / 'openapi.yaml').read_text(encoding='utf-8')
+        cls.spec = bundle_openapi.bundle(cls.text)
+
+    def refs(self, node):
+        if isinstance(node, dict):
+            if isinstance(node.get('$ref'), str):
+                yield node['$ref']
+            for v in node.values():
+                yield from self.refs(v)
+        elif isinstance(node, list):
+            for v in node:
+                yield from self.refs(v)
+
+    def operations(self, spec):
+        return sorted(op['operationId'] for item in spec['paths'].values()
+                      for m, op in item.items() if m in bundle_openapi.METHODS)
+
+    # R: R-2-8-1
+    def test_output_is_reproducible(self):
+        self.assertEqual(bundle_openapi.bundle(self.text), self.spec)
+
+    def test_no_external_refs_remain_and_all_refs_resolve(self):
+        refs = list(self.refs(self.spec))
+        self.assertTrue(refs)
+        for ref in refs:
+            self.assertTrue(ref.startswith('#/'), ref)
+            node = self.spec
+            for part in ref[2:].split('/'):
+                node = node[part.replace('~1', '/').replace('~0', '~')]
+
+    def test_schema_names(self):
+        p = ROOT / 'api' / 'schemas' / 'ft.event.mls' / '1.json'
+        self.assertEqual(bundle_openapi.schema_name(p), 'FtEventMls1')
+        self.assertIn('FtEventMls1', self.spec['components']['schemas'])
+
+    def test_paths_are_absolute_and_operations_are_kept(self):
+        original = yaml.safe_load(self.text)
+        self.assertEqual(self.operations(self.spec), self.operations(original))
+        self.assertEqual(self.spec['servers'], [{'url': '/'}])
+        for path, item in self.spec['paths'].items():
+            self.assertNotIn('servers', item, path)
+        self.assertIn('/health', self.spec['paths'])
+        self.assertIn('/internal/auth', self.spec['paths'])
+        self.assertIn('/api/v1/sync', self.spec['paths'])
+        self.assertNotIn('/sync', self.spec['paths'])
+
+    def test_generator_config(self):
+        conf = bundle_openapi.oapi_config(self.spec)
+        self.assertEqual(conf['output-options']['exclude-operation-ids'], ['connectUpWs', 'connectWs'])
+        self.assertEqual(conf['output-options']['exclude-tags'], ['static'])
+        self.assertNotIn('embedded-spec', conf['generate'])
+
+    def test_broken_servers_are_errors(self):
+        def spec(paths, servers=None):
+            return {'servers': servers or [{'url': '/api/v1'}], 'paths': paths}
+        op = {'get': {'operationId': 'x'}}
+        with self.assertRaises(ValueError):
+            bundle_openapi.absolute_paths(spec({'/a': dict(op), '/api/v1/a': {**op, 'servers': [{'url': '/'}]}}))
+        with self.assertRaises(ValueError):
+            bundle_openapi.absolute_paths(spec({'/a': {'get': {'operationId': 'x', 'servers': [{'url': '/'}]}}}))
+        with self.assertRaises(ValueError):
+            bundle_openapi.absolute_paths(spec({'/a': dict(op)}, [{'url': '/{v}'}]))
+        with self.assertRaises(ValueError):
+            bundle_openapi.absolute_paths(spec({'/a': dict(op)}, [{'url': '/a'}, {'url': '/b'}]))
+
+
+class TestConfigCheck(unittest.TestCase):
+    # R: R-11-4-2
+    def test_repository_config_is_consistent(self):
+        with contextlib.redirect_stdout(io.StringIO()):
+            self.assertEqual(config_check.main([]), 0)
+
+    def test_detects_default_out_of_range_and_bad_layer(self):
+        items = [{'key': 'x.a', 'type': 'int', 'default': 5, 'range': {'min': 10}, 'layers': ['db'], 'chapter': '第1章'},
+                 {'key': 'x.b', 'type': 'bool', 'default': True, 'layers': ['nowhere'], 'chapter': '第1章'},
+                 {'key': 'x.b', 'type': 'bool', 'default': True, 'layers': ['db'], 'chapter': ''}]
+        bad = config_check.check_items(items)
+        self.assertTrue(any('下限' in b for b in bad))
+        self.assertTrue(any('置ける場所' in b for b in bad))
+        self.assertTrue(any('重複' in b for b in bad))
+        self.assertTrue(any('出典' in b for b in bad))
+
+    def test_reads_units_and_per_unit_qualifiers(self):
+        self.assertEqual([n for n, _ in config_check.nums('15 分')], [900])
+        self.assertEqual([n for n, _ in config_check.nums('100、1 パック 40')], [100, 40])
+        self.assertEqual([n for n, _ in config_check.nums('1 億')], [1e8])
+
+
+class TestForbiddenWords(unittest.TestCase):
+    def test_missing_list_is_an_error(self):
+        with contextlib.redirect_stdout(io.StringIO()):
+            self.assertEqual(forbidden_words.main(['--list', '/nonexistent/list.txt']), 2)
+
+    def test_word_boundaries_and_japanese_substrings(self):
+        ascii_pat = forbidden_words.pattern('line')
+        self.assertTrue(ascii_pat.search('use LINE here'))
+        self.assertFalse(ascii_pat.search('online offline'))
+        self.assertTrue(forbidden_words.pattern('例の語').search('この例の語を含む'))
+
+    def test_report_does_not_reveal_the_word(self):
+        # 語は実行時に組み立てる（追跡しているこのファイル自身が走査で当たらないように）
+        word = 'zz-secret-' + 'word-qq'
+        with tempfile.TemporaryDirectory() as d:
+            lst = pathlib.Path(d) / 'list.txt'
+            lst.write_text('# 注記\n' + word + '\n', encoding='utf-8')
+            out = io.StringIO()
+            with contextlib.redirect_stdout(out):
+                code = forbidden_words.main(['--list', str(lst)])
+            self.assertEqual(code, 0)
+            self.assertNotIn(word, out.getvalue())
+
+
+class TestTraceRequirements(unittest.TestCase):
+    # R: R-2-8-1
+    def test_repository_trace_is_consistent(self):
+        with contextlib.redirect_stdout(io.StringIO()):
+            self.assertEqual(trace_requirements.main([]), 0)
+
+    def test_note_forms(self):
+        lines = ['# R: R-2-8-1', '// R: R-4-2-1、R-4-2-2', '/* R: R-5-1-1 */', '@Requirement("R-9-1-1")']
+        found = []
+        for line in lines:
+            for m in trace_requirements.NOTE.finditer(line):
+                found += __import__('re').findall(r'R-\d+-\d+-\d+', m.group(1) or m.group(2))
+        self.assertEqual(found, ['R-2-8-1', 'R-4-2-1', 'R-4-2-2', 'R-5-1-1', 'R-9-1-1'])
+
+
+if __name__ == '__main__':
+    unittest.main()

@@ -1,0 +1,208 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://family-talk.invalid/schemas/ft.release/1",
+  "title": "ft.release/1",
+  "description": "第13章 3。配布物の version.json",
+  "type": "object",
+  "properties": {
+    "v": {
+      "const": 1
+    },
+    "server": {
+      "type": "object",
+      "properties": {
+        "version": {
+          "$ref": "../common/semver/1.json"
+        },
+        "released_at": {
+          "$ref": "../common/rfc3339/1.json"
+        },
+        "image_digest": {
+          "type": "string",
+          "pattern": "^sha256:[0-9a-f]{64}$"
+        }
+      },
+      "required": [
+        "version",
+        "released_at",
+        "image_digest"
+      ],
+      "additionalProperties": false
+    },
+    "web": {
+      "type": "object",
+      "properties": {
+        "version": {
+          "$ref": "../common/semver/1.json"
+        }
+      },
+      "required": [
+        "version"
+      ],
+      "additionalProperties": false
+    },
+    "ft": {
+      "type": "object",
+      "properties": {
+        "version": {
+          "$ref": "../common/semver/1.json"
+        },
+        "sha256": {
+          "type": "object",
+          "properties": {
+            "linux/amd64": {
+              "$ref": "../common/sha256/1.json"
+            },
+            "linux/arm64": {
+              "$ref": "../common/sha256/1.json"
+            }
+          },
+          "required": [
+            "linux/amd64",
+            "linux/arm64"
+          ],
+          "additionalProperties": false
+        }
+      },
+      "required": [
+        "version",
+        "sha256"
+      ],
+      "additionalProperties": false
+    },
+    "android": {
+      "type": "object",
+      "properties": {
+        "version": {
+          "$ref": "../common/semver/1.json"
+        },
+        "code": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "min_sdk": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "apks": {
+          "type": "object",
+          "properties": {
+            "universal": {
+              "type": "object",
+              "properties": {
+                "url": {
+                  "type": "string"
+                },
+                "sha256": {
+                  "$ref": "../common/sha256/1.json"
+                }
+              },
+              "required": [
+                "url",
+                "sha256"
+              ],
+              "additionalProperties": false
+            },
+            "arm64-v8a": {
+              "type": "object",
+              "properties": {
+                "url": {
+                  "type": "string"
+                },
+                "sha256": {
+                  "$ref": "../common/sha256/1.json"
+                }
+              },
+              "required": [
+                "url",
+                "sha256"
+              ],
+              "additionalProperties": false
+            },
+            "armeabi-v7a": {
+              "type": "object",
+              "properties": {
+                "url": {
+                  "type": "string"
+                },
+                "sha256": {
+                  "$ref": "../common/sha256/1.json"
+                }
+              },
+              "required": [
+                "url",
+                "sha256"
+              ],
+              "additionalProperties": false
+            }
+          },
+          "required": [
+            "universal"
+          ],
+          "additionalProperties": false
+        },
+        "signing_cert_sha256": {
+          "type": "array",
+          "items": {
+            "$ref": "../common/sha256/1.json"
+          },
+          "minItems": 1
+        },
+        "released_at": {
+          "$ref": "../common/rfc3339/1.json"
+        }
+      },
+      "required": [
+        "version",
+        "code",
+        "min_sdk",
+        "apks",
+        "signing_cert_sha256",
+        "released_at"
+      ],
+      "additionalProperties": false
+    },
+    "boundary": {
+      "$ref": "../common/semver/1.json"
+    },
+    "min_app": {
+      "type": "object",
+      "properties": {
+        "web": {
+          "$ref": "../common/semver/1.json"
+        },
+        "android": {
+          "$ref": "../common/semver/1.json"
+        }
+      },
+      "required": [
+        "web",
+        "android"
+      ],
+      "additionalProperties": false
+    },
+    "notes_url": {
+      "type": "string",
+      "format": "uri"
+    },
+    "revoked_digests": {
+      "type": "array",
+      "items": {
+        "type": "string",
+        "pattern": "^sha256:[0-9a-f]{64}$"
+      }
+    }
+  },
+  "required": [
+    "v",
+    "server",
+    "web",
+    "ft",
+    "android",
+    "boundary",
+    "min_app",
+    "notes_url",
+    "revoked_digests"
+  ],
+  "additionalProperties": false
+}

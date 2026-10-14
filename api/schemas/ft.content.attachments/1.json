@@ -1,0 +1,34 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://family-talk.invalid/schemas/ft.content.attachments/1",
+  "title": "ft.content.attachments/1",
+  "description": "第4章 3.1。項目は第5章 3",
+  "type": "object",
+  "properties": {
+    "replaces": {
+      "$ref": "../common/uuidv7/1.json"
+    },
+    "inReplyTo": {
+      "$ref": "../common/uuidv7/1.json"
+    },
+    "expires": {
+      "$ref": "../common/rfc3339/1.json"
+    },
+    "items": {
+      "type": "array",
+      "items": {
+        "$ref": "../ft.content.attachment_item/1.json"
+      },
+      "minItems": 1,
+      "maxItems": 50
+    },
+    "caption": {
+      "type": "string",
+      "x-grapheme-max": 1000
+    }
+  },
+  "required": [
+    "items"
+  ],
+  "additionalProperties": false
+}

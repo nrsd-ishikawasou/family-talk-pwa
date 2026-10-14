@@ -1,0 +1,81 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://family-talk.invalid/schemas/ft.event.system/1",
+  "title": "ft.event.system/1",
+  "description": "第2章 12。サーバーが発する知らせ（平文）。どのトークに流れるかは第4章 6、第7章 9",
+  "type": "object",
+  "properties": {
+    "kind": {
+      "type": "string",
+      "enum": [
+        "room_created",
+        "member_added",
+        "member_left",
+        "member_removed",
+        "member_suspended",
+        "member_unsuspended",
+        "member_deleted",
+        "member_erased",
+        "birthday",
+        "admin_action",
+        "capacity",
+        "retention_notice",
+        "recovery_used",
+        "server_updated"
+      ]
+    },
+    "params": {
+      "type": "object",
+      "properties": {
+        "user_id": {
+          "$ref": "../common/uuidv7/1.json"
+        },
+        "by": {
+          "$ref": "../common/uuidv7/1.json"
+        },
+        "action": {
+          "type": "string"
+        },
+        "target_user_id": {
+          "$ref": "../common/uuidv7/1.json"
+        },
+        "percent": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 100
+        },
+        "count": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "bytes": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "delete_on": {
+          "$ref": "../common/rfc3339/1.json"
+        },
+        "method": {
+          "type": "string",
+          "enum": [
+            "device",
+            "share",
+            "recovery-code",
+            "family",
+            "prf"
+          ]
+        },
+        "version": {
+          "$ref": "../common/semver/1.json"
+        }
+      },
+      "required": [],
+      "additionalProperties": false
+    }
+  },
+  "required": [
+    "kind",
+    "params"
+  ],
+  "additionalProperties": false
+}

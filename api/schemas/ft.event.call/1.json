@@ -1,0 +1,42 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://family-talk.invalid/schemas/ft.event.call/1",
+  "title": "ft.event.call/1",
+  "description": "第2章 12。通話の記録",
+  "type": "object",
+  "properties": {
+    "call_id": {
+      "$ref": "../common/uuidv7/1.json"
+    },
+    "kind": {
+      "type": "string",
+      "enum": [
+        "started",
+        "ended",
+        "missed",
+        "declined"
+      ]
+    },
+    "reason": {
+      "type": "string",
+      "enum": [
+        "busy"
+      ]
+    },
+    "duration": {
+      "type": "number",
+      "minimum": 0
+    },
+    "participants": {
+      "type": "array",
+      "items": {
+        "$ref": "../common/uuidv7/1.json"
+      }
+    }
+  },
+  "required": [
+    "call_id",
+    "kind"
+  ],
+  "additionalProperties": false
+}

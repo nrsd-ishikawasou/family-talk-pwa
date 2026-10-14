@@ -1,0 +1,52 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://family-talk.invalid/schemas/ft.content.album/1",
+  "title": "ft.content.album/1",
+  "description": "第5章 6",
+  "type": "object",
+  "properties": {
+    "replaces": {
+      "$ref": "../common/uuidv7/1.json"
+    },
+    "inReplyTo": {
+      "$ref": "../common/uuidv7/1.json"
+    },
+    "expires": {
+      "$ref": "../common/rfc3339/1.json"
+    },
+    "album_id": {
+      "$ref": "../common/uuidv7/1.json"
+    },
+    "title": {
+      "type": "string",
+      "x-grapheme-max": 50
+    },
+    "description": {
+      "type": "string",
+      "x-grapheme-max": 500
+    },
+    "items": {
+      "type": "array",
+      "items": {
+        "$ref": "../ft.content.attachment_item/1.json"
+      },
+      "maxItems": 1000
+    },
+    "removed_ids": {
+      "type": "array",
+      "items": {
+        "$ref": "../common/uuidv7/1.json"
+      }
+    },
+    "creator": {
+      "$ref": "../common/uuidv7/1.json"
+    }
+  },
+  "required": [
+    "album_id",
+    "title",
+    "items",
+    "creator"
+  ],
+  "additionalProperties": false
+}

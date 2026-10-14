@@ -1,0 +1,162 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://family-talk.invalid/schemas/ft.content.attachment_item/1",
+  "title": "ft.content.attachment_item/1",
+  "description": "第5章 3。添付の項目",
+  "type": "object",
+  "properties": {
+    "id": {
+      "$ref": "../common/uuidv7/1.json"
+    },
+    "kind": {
+      "type": "string",
+      "enum": [
+        "photo",
+        "video",
+        "file",
+        "audio",
+        "sticker",
+        "avatar"
+      ]
+    },
+    "name": {
+      "type": "string",
+      "maxLength": 255
+    },
+    "mime": {
+      "type": "string"
+    },
+    "size": {
+      "type": "integer",
+      "minimum": 0
+    },
+    "hash": {
+      "$ref": "../common/sha256/1.json"
+    },
+    "key": {
+      "$ref": "../common/base64url/1.json"
+    },
+    "w": {
+      "type": "integer",
+      "minimum": 0
+    },
+    "h": {
+      "type": "integer",
+      "minimum": 0
+    },
+    "duration": {
+      "type": "number",
+      "minimum": 0
+    },
+    "thumb": {
+      "type": "object",
+      "properties": {
+        "id": {
+          "$ref": "../common/uuidv7/1.json"
+        },
+        "key": {
+          "$ref": "../common/base64url/1.json"
+        },
+        "hash": {
+          "$ref": "../common/sha256/1.json"
+        },
+        "w": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "h": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "size": {
+          "type": "integer",
+          "minimum": 0
+        }
+      },
+      "required": [
+        "id",
+        "key",
+        "hash",
+        "w",
+        "h",
+        "size"
+      ],
+      "additionalProperties": false
+    },
+    "poster": {
+      "type": "object",
+      "properties": {
+        "id": {
+          "$ref": "../common/uuidv7/1.json"
+        },
+        "key": {
+          "$ref": "../common/base64url/1.json"
+        },
+        "hash": {
+          "$ref": "../common/sha256/1.json"
+        },
+        "w": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "h": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "size": {
+          "type": "integer",
+          "minimum": 0
+        }
+      },
+      "required": [
+        "id",
+        "key",
+        "hash",
+        "w",
+        "h",
+        "size"
+      ],
+      "additionalProperties": false
+    },
+    "blurhash": {
+      "type": "string"
+    },
+    "playable_hint": {
+      "type": "string",
+      "enum": [
+        "standard",
+        "original"
+      ]
+    },
+    "waveform": {
+      "type": "array",
+      "items": {
+        "type": "integer",
+        "minimum": 0,
+        "maximum": 255
+      },
+      "maxItems": 64
+    },
+    "quality": {
+      "type": "string",
+      "enum": [
+        "standard",
+        "high",
+        "original"
+      ]
+    },
+    "created_at": {
+      "$ref": "../common/rfc3339/1.json"
+    }
+  },
+  "required": [
+    "id",
+    "kind",
+    "name",
+    "mime",
+    "size",
+    "hash",
+    "key"
+  ],
+  "additionalProperties": false
+}

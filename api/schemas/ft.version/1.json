@@ -1,0 +1,61 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://family-talk.invalid/schemas/ft.version/1",
+  "title": "ft.version/1",
+  "description": "第2章 5.11。動いているサーバーの /version の応答",
+  "type": "object",
+  "properties": {
+    "server": {
+      "$ref": "../common/semver/1.json"
+    },
+    "boundary": {
+      "$ref": "../common/semver/1.json"
+    },
+    "min_app": {
+      "type": "object",
+      "properties": {
+        "web": {
+          "$ref": "../common/semver/1.json"
+        },
+        "android": {
+          "$ref": "../common/semver/1.json"
+        }
+      },
+      "required": [
+        "web",
+        "android"
+      ],
+      "additionalProperties": false
+    },
+    "released_at": {
+      "$ref": "../common/rfc3339/1.json"
+    },
+    "deprecations": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "properties": {
+          "path": {
+            "type": "string"
+          },
+          "sunset": {
+            "$ref": "../common/rfc3339/1.json"
+          }
+        },
+        "required": [
+          "path",
+          "sunset"
+        ],
+        "additionalProperties": false
+      }
+    }
+  },
+  "required": [
+    "server",
+    "boundary",
+    "min_app",
+    "released_at",
+    "deprecations"
+  ],
+  "additionalProperties": false
+}

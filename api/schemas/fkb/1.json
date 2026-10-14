@@ -1,0 +1,169 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://family-talk.invalid/schemas/fkb/1",
+  "title": "fkb/1",
+  "description": "第12章 12。鍵バンドルのコピー",
+  "type": "object",
+  "properties": {
+    "v": {
+      "const": 1
+    },
+    "kind": {
+      "type": "string",
+      "enum": [
+        "device",
+        "recovery-code",
+        "share",
+        "family",
+        "prf"
+      ]
+    },
+    "user_id": {
+      "$ref": "../common/uuidv7/1.json"
+    },
+    "target_id": {
+      "type": "string"
+    },
+    "alg": {
+      "type": "string",
+      "enum": [
+        "A256GCM",
+        "HPKE-P256"
+      ]
+    },
+    "nonce": {
+      "$ref": "../common/base64url/1.json"
+    },
+    "ciphertext": {
+      "$ref": "../common/base64url/1.json"
+    },
+    "kdf": {
+      "type": "object",
+      "properties": {
+        "alg": {
+          "const": "argon2id"
+        },
+        "m": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "t": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "p": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "salt": {
+          "$ref": "../common/base64url/1.json"
+        }
+      },
+      "required": [
+        "alg",
+        "m",
+        "t",
+        "p",
+        "salt"
+      ],
+      "additionalProperties": false
+    },
+    "share": {
+      "type": "object",
+      "properties": {
+        "index": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "threshold": {
+          "const": 2
+        },
+        "n": {
+          "type": "integer",
+          "minimum": 2,
+          "maximum": 10
+        }
+      },
+      "required": [
+        "index",
+        "threshold",
+        "n"
+      ],
+      "additionalProperties": false
+    },
+    "prf": {
+      "type": "object",
+      "properties": {
+        "credential_id": {
+          "$ref": "../common/base64url/1.json"
+        },
+        "salt": {
+          "$ref": "../common/base64url/1.json"
+        }
+      },
+      "required": [
+        "credential_id",
+        "salt"
+      ],
+      "additionalProperties": false
+    },
+    "created_at": {
+      "$ref": "../common/rfc3339/1.json"
+    }
+  },
+  "required": [
+    "v",
+    "kind",
+    "user_id",
+    "target_id",
+    "alg",
+    "nonce",
+    "ciphertext",
+    "created_at"
+  ],
+  "additionalProperties": false,
+  "allOf": [
+    {
+      "if": {
+        "properties": {
+          "kind": {
+            "const": "recovery-code"
+          }
+        }
+      },
+      "then": {
+        "required": [
+          "kdf"
+        ]
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "kind": {
+            "const": "share"
+          }
+        }
+      },
+      "then": {
+        "required": [
+          "share"
+        ]
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "kind": {
+            "const": "prf"
+          }
+        }
+      },
+      "then": {
+        "required": [
+          "prf"
+        ]
+      }
+    }
+  ]
+}

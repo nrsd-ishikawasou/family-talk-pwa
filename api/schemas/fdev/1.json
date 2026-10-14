@@ -1,0 +1,46 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://family-talk.invalid/schemas/fdev/1",
+  "title": "fdev/1",
+  "description": "第12章 12。端末の登録",
+  "type": "object",
+  "properties": {
+    "v": {
+      "const": 1
+    },
+    "device_id": {
+      "$ref": "../common/uuidv7/1.json"
+    },
+    "user_id": {
+      "$ref": "../common/uuidv7/1.json"
+    },
+    "sig_pub": {
+      "$ref": "../common/jwk_p256/1.json"
+    },
+    "kem_pub": {
+      "$ref": "../common/jwk_p256/1.json"
+    },
+    "user_sig": {
+      "$ref": "../common/base64url/1.json"
+    },
+    "mls_credential": {
+      "$ref": "../common/base64url/1.json"
+    },
+    "created_at": {
+      "$ref": "../common/rfc3339/1.json"
+    },
+    "approved_at": {
+      "$ref": "../common/rfc3339/1.json"
+    }
+  },
+  "required": [
+    "v",
+    "device_id",
+    "user_id",
+    "sig_pub",
+    "kem_pub",
+    "mls_credential",
+    "created_at"
+  ],
+  "additionalProperties": false
+}

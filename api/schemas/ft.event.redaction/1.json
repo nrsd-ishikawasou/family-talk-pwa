@@ -1,0 +1,23 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://family-talk.invalid/schemas/ft.event.redaction/1",
+  "title": "ft.event.redaction/1",
+  "description": "第2章 12。削除済みの印",
+  "type": "object",
+  "properties": {
+    "redacts": {
+      "$ref": "../common/uuidv7/1.json"
+    },
+    "by": {
+      "$ref": "../common/uuidv7/1.json"
+    },
+    "reason": {
+      "type": "string"
+    }
+  },
+  "required": [
+    "redacts",
+    "by"
+  ],
+  "additionalProperties": false
+}
