@@ -3,13 +3,14 @@
 """道具の試験（L0。全体実装設計書 6.1）。正しい入力で緑、壊した入力で赤になることを確かめる。"""
 import contextlib
 import io
+import json
 import pathlib
 import tempfile
 import unittest
 
 import yaml
 
-from tools import bundle_openapi, config_check, errors_check, forbidden_words, gen_config, gen_errors, no_plaintext, trace_requirements
+from tools import bundle_openapi, config_check, errors_check, forbidden_words, gen_config, gen_errors, gen_texts, no_plaintext, trace_requirements
 
 ROOT = pathlib.Path(__file__).resolve().parents[2]
 
@@ -163,6 +164,26 @@ class TestErrorsCheck(unittest.TestCase):
             (p / 'a_test.go').write_text('package a\nfunc TestErr_NET_001(t *testing.T) {}\n', encoding='utf-8')
             (p / 'b_test.go').write_text('//go:build integration\n\npackage a\nfunc TestErr_NET_002(t *testing.T) {}\n', encoding='utf-8')
             self.assertEqual(set(errors_check.l1_tests(p)), {'TestErr_NET_002'})
+
+
+class TestGenTexts(unittest.TestCase):
+    """エラーの文言の表（第10章 9.2 が正本）。"""
+
+    # R: R-10-7-1
+    def test_committed_texts_are_reproduced(self):
+        with contextlib.redirect_stdout(io.StringIO()):
+            self.assertEqual(gen_texts.main(['--check']), 0)
+
+    def test_table_and_errors_must_match(self):
+        doc = '### 9.2 文言\n\n|番号|1 文目|2 文目|\n|---|---|---|\n|NET-001|a。|b。|\n\n### 9.3 次\n'
+        out = json.loads(gen_texts.build(doc, [{'code': 'NET-001', 'user_text_key': 'err.NET-001'}]))
+        self.assertEqual(out, {'err.NET-001': {'what': 'a。', 'next': 'b。'}})
+        with self.assertRaises(ValueError):
+            gen_texts.build(doc, [{'code': 'NET-001', 'user_text_key': 'err.NET-001'},
+                                  {'code': 'NET-002', 'user_text_key': 'err.NET-002'}])
+        with self.assertRaises(ValueError):
+            gen_texts.build(doc.replace('|NET-001|a。|b。|', '|NET-001|a。|b。|\n|NET-001|c。|d。|'),
+                            [{'code': 'NET-001', 'user_text_key': 'err.NET-001'}])
 
 
 class TestNoPlaintext(unittest.TestCase):

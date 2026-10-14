@@ -74,6 +74,7 @@ classDiagram
   class Tools {
     +gen_errors / gen_config
     +errors_check
+    +gen_texts
     +config_check
     +trace_requirements
     +known_red
@@ -130,7 +131,8 @@ classDiagram
 |Tools|`+bundle_openapi`|api/openapi.yaml の外のファイルへの参照を components/schemas に名前つきで取り込む（名はディレクトリの名から。`ft.event.mls/1.json` を `FtEventMls1`）。oapi-codegen の設定（static のタグと `x-websocket` の操作を除く一覧）も書く。出力は中間の生成ファイル（コミットしない。第14章 8）|
 |Tools|`+genimpl`|server/cmd/genimpl：生成した `StrictServerInterface` をタグごとの interface に分け、srv-boundary の `Implementations` を書く（Go の AST を読む）|
 |Tools|`+gen_errors / gen_config`|errors.yaml、config.yaml、ft.bridge から Go と TypeScript の定数を生成する|
-|Tools|`+errors_check`|エラーコード表の test の欄と L1 の試験（integration の印つきのファイル）の名前、user_text_key と ja.json。試験を求める番号は `--tests`（接頭か番号）で、作り終えたブロックの分に段階で広げる（CI は NET と SRV-001・003・004。SRV-002 は srv-media）。文言の表は `--texts`|
+|Tools|`+gen_texts`|基本設計書 第10章 9.2 のエラーの文言の表から web/src/i18n/ja/errors.json を作る（鍵 err.<番号>、値 what と next）。エラーコード表と表の番号が 1 対 1 でなければ誤り。生成してコミットし、CI は `--check`|
+|Tools|`+errors_check`|エラーコード表の test の欄と L1 の試験（integration の印つきのファイル）の名前、user_text_key と ja.json。試験を求める番号は `--tests`（接頭か番号）で、作り終えたブロックの分に段階で広げる（CI は NET と SRV-001・003・004。SRV-002 は srv-media）。文言の表は `--texts`（CI は web/src/i18n/ja/errors.json）|
 |Tools|`+config_check`|config.yaml と docs の数値の表|
 |Tools|`+trace_requirements`|試験のコードの注記（R:）と試験設計書 第2章の表|
 |Tools|`+known_red`|known_red.txt と各段の記録（go test -json、Vitest JSON、Playwright JSON、JUnit XML）|
