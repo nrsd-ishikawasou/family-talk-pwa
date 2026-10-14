@@ -347,7 +347,7 @@ classDiagram
 |MiddlewareChain|`+ReadOnlyGate`|ServerStateReader が読み取り専用なら、GET と HEAD と `x-readonly: allow` の経路（第2章 10）以外を SRV-001（params.reason は ReadOnlyReason、Retry-After 60）で拒む。Retry-After の 60 秒は、状態が変わるのが管理者の操作か worker の 5 分の monitor であるため|
 |MiddlewareChain|`+Authz`|x-authz の表（5.2）。Principal と経路の引数で判定|
 |MiddlewareChain|`+RateLimit`|x-ratelimit の policy。NET-004 + Retry-After + RateLimit-* ヘッダ（草案）|
-|MiddlewareChain|`+Validate`|要求（常に）と応答（試験と開発だけ）を spec で検証。NET-001（params.errors[]）。ただし Idempotency-Key のヘッダの欠けと形の誤りは NET-007（エラーコード表の専用の番号。部品は必須のヘッダの欠けも要求の誤りにするため、ここで分ける）で、他の誤りより先に返す|
+|MiddlewareChain|`+Validate`|要求（常に）と応答（試験と開発だけ）を spec で検証。NET-001（params.errors[]）。Content-Type が経路の型に合わなければ NET-002（415）、Accept が経路の応答の型（spec の responses）を受けなければ NET-002（406）。ただし Idempotency-Key のヘッダの欠けと形の誤りは NET-007（エラーコード表の専用の番号。部品は必須のヘッダの欠けも要求の誤りにするため、ここで分ける）で、他の誤りより先に返す|
 |MiddlewareChain|`+Idempotency`|x-idempotency = key：Idempotency-Key の欠けは NET-007。トランザクションを開き、srv-store Idempotency.Begin（同じ鍵は入れた応答を返す、本文が違えば NET-008）、同じトランザクションを operation に渡し、応答を Finish してコミットする（同時の再送でも 1 回だけ処理する。第2章 11）|
 |MiddlewareChain|`+Deprecation`|経路の `x-deprecation` があれば `Deprecation: @<at の秒>` と `Sunset: <sunset の HTTP の日時>` を付ける（RFC 9745、8594。第2章 10）。誤りの応答にも付ける。古いアプリへの告知には使わない（第13章 6.2）|
 |MiddlewareChain|`+AppVersion`|X-Family-Talk-App（`<platform>/<version>`）を読み、platform（web、android）の min_app と SemVer で比べ、下回れば NET-006。ヘッダが無ければ比べない（caddy の forward auth、/health、シェルのネイティブ）。min_app はイメージの中の version.json（/srv/www/dl/version.json）を起動の時に読む（VersionHandler と同じ値）|

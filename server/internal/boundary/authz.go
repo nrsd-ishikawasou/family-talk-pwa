@@ -87,6 +87,8 @@ type Route struct {
 	Internal  bool
 	// ReadOnlyAllow は x-readonly: allow（読み取り専用でも通す書き込み。第2章 10）。
 	ReadOnlyAllow bool
+	// Produces は応答の型（responses の content の型の全部。Accept の確かめ。NET-002）。
+	Produces []string
 	// Errors は x-errors（この経路が返しうるエラーコード）。
 	Errors []string
 	// DeprecatedAt と Sunset は x-deprecation（廃止する経路。RFC 9745、8594。第2章 10）。無ければ nil。
@@ -126,7 +128,14 @@ type specOperation struct {
 		At     time.Time `yaml:"at"`
 		Sunset time.Time `yaml:"sunset"`
 	} `yaml:"x-deprecation"`
+	Responses map[string]struct {
+		Ref     string               `yaml:"$ref"`
+		Content map[string]yaml.Node `yaml:"content"`
+	} `yaml:"responses"`
 }
+
+// problemType は共通の誤りの応答の型（components/responses/Problem）。
+const problemType = "application/problem+json"
 
 var httpMethods = []string{"get", "put", "post", "delete", "options", "head", "patch", "trace"}
 
@@ -219,6 +228,23 @@ func routeOf(path, method string, op specOperation, policies map[string]bool) (R
 			return r, fmt.Errorf("x-ratelimit の policy が ratelimits.yaml に無い: %s %s", r.OperationId, p)
 		}
 	}
+	seen := map[string]bool{}
+	for _, resp := range op.Responses {
+		types := make([]string, 0, len(resp.Content))
+		for ct := range resp.Content {
+			types = append(types, ct)
+		}
+		if resp.Ref != "" {
+			types = append(types, problemType)
+		}
+		for _, ct := range types {
+			if !seen[ct] {
+				seen[ct] = true
+				r.Produces = append(r.Produces, ct)
+			}
+		}
+	}
+	sort.Strings(r.Produces)
 	if op.Deprecation != nil {
 		if !op.Deprecated || op.Deprecation.Sunset.Before(op.Deprecation.At) {
 			return r, fmt.Errorf("x-deprecation の形が違う: %s", r.OperationId)

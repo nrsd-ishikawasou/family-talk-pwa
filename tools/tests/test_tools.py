@@ -9,7 +9,7 @@ import unittest
 
 import yaml
 
-from tools import bundle_openapi, config_check, forbidden_words, gen_config, gen_errors, trace_requirements
+from tools import bundle_openapi, config_check, errors_check, forbidden_words, gen_config, gen_errors, no_plaintext, trace_requirements
 
 ROOT = pathlib.Path(__file__).resolve().parents[2]
 
@@ -133,6 +133,95 @@ class TestBundleOpenapi(unittest.TestCase):
             bundle_openapi.absolute_paths(spec({'/a': dict(op)}, [{'url': '/{v}'}]))
         with self.assertRaises(ValueError):
             bundle_openapi.absolute_paths(spec({'/a': dict(op)}, [{'url': '/a'}, {'url': '/b'}]))
+
+
+class TestErrorsCheck(unittest.TestCase):
+    """エラーコード表と L1 の試験の名と文言の照合（全体実装設計書 6.3）。"""
+
+    # R: R-2-8-1
+    def test_repository_rows_for_finished_blocks_have_l1_tests(self):
+        with contextlib.redirect_stdout(io.StringIO()):
+            self.assertEqual(errors_check.main(['--tests', 'NET,SRV-001,SRV-003,SRV-004']), 0)
+
+    def test_detects_missing_test_key_and_text(self):
+        rows = [{'code': 'NET-001', 'test': 'TestErr_NET_001', 'user_text_key': 'err.NET-001'},
+                {'code': 'NET-002', 'test': 'TestNet2', 'user_text_key': 'err.NET-002'},
+                {'code': 'SRV-002', 'test': 'TestErr_SRV_002', 'user_text_key': 'x'}]
+        problems = errors_check.check(rows, ['NET', 'SRV-002', 'KEY'], {'TestErr_NET_001': None}, {'err.NET-001': 'a'})
+        text = '\n'.join(problems)
+        self.assertIn('NET-002：test の欄', text)
+        self.assertIn('NET-002：L1 に試験 TestErr_NET_002 が無い', text)
+        self.assertIn('SRV-002：user_text_key の欄', text)
+        self.assertIn('SRV-002：L1 に試験', text)
+        self.assertIn('NET-002：文言の表に err.NET-002 が無い', text)
+        self.assertIn('--tests の KEY に当たる行が無い', text)
+        self.assertNotIn('NET-001', text)
+
+    def test_only_integration_files_count(self):
+        with tempfile.TemporaryDirectory() as d:
+            p = pathlib.Path(d)
+            (p / 'a_test.go').write_text('package a\nfunc TestErr_NET_001(t *testing.T) {}\n', encoding='utf-8')
+            (p / 'b_test.go').write_text('//go:build integration\n\npackage a\nfunc TestErr_NET_002(t *testing.T) {}\n', encoding='utf-8')
+            self.assertEqual(set(errors_check.l1_tests(p)), {'TestErr_NET_002'})
+
+
+class TestNoPlaintext(unittest.TestCase):
+    """平文の走査（全体実装設計書 6.4。T-L1-16）。"""
+
+    def setUp(self):
+        self.dir = tempfile.TemporaryDirectory()
+        self.root = pathlib.Path(self.dir.name)
+        self.markers = self.root / 'markers.txt'
+        self.markers.write_text('aaaabbbbcccc\nzzzzyyyyxxxx\n', encoding='utf-8')
+        self.env = no_plaintext.os.environ.pop(no_plaintext.ENV, None)
+
+    def tearDown(self):
+        if self.env is not None:
+            no_plaintext.os.environ[no_plaintext.ENV] = self.env
+        self.dir.cleanup()
+
+    def run_tool(self, *paths):
+        out = io.StringIO()
+        with contextlib.redirect_stdout(out):
+            rc = no_plaintext.main(['--markers', str(self.markers), *map(str, paths)])
+        return rc, out.getvalue()
+
+    # R: R-12-1-1
+    def test_finds_marker_without_printing_it(self):
+        data = self.root / 'data'
+        data.mkdir()
+        (data / 'dump.sql').write_bytes(b'xx zzzzyyyyxxxx yy')
+        (data / 'clean.bin').write_bytes(b'nothing here')
+        rc, out = self.run_tool(data, self.markers)
+        self.assertEqual(rc, 1)
+        self.assertIn('語 2 番、位置 3', out)
+        self.assertNotIn('zzzzyyyyxxxx', out)
+        self.assertIn('ファイル 2、見つけた 1', out)  # 語の一覧そのものは走査しない
+
+    def test_clean_and_chunk_boundary(self):
+        f = self.root / 'big.bin'
+        f.write_bytes(b'.' * 10 + b'aaaabbbbcccc' + b'.' * 10)
+        old = no_plaintext.CHUNK
+        no_plaintext.CHUNK = 16  # 語が区切りの境目をまたぐ
+        try:
+            self.assertEqual(no_plaintext.scan_file(f, [b'aaaabbbbcccc']), [(1, 10)])
+        finally:
+            no_plaintext.CHUNK = old
+        clean = self.root / 'clean.txt'
+        clean.write_bytes(b'aaaabbbbccc')
+        self.assertEqual(self.run_tool(clean)[0], 0)
+
+    def test_missing_or_weak_markers_stop(self):
+        with self.assertRaises(SystemExit):
+            no_plaintext.load_markers(self.root / 'none.txt')
+        weak = self.root / 'weak.txt'
+        weak.write_text('short\n', encoding='utf-8')
+        with self.assertRaises(SystemExit):
+            no_plaintext.load_markers(weak)
+        made = self.root / 'made.txt'
+        self.assertTrue(no_plaintext.generate(made, 3))
+        self.assertEqual(len(no_plaintext.load_markers(made)), 3)
+        self.assertFalse(no_plaintext.generate(made, 3))
 
 
 class TestConfigCheck(unittest.TestCase):

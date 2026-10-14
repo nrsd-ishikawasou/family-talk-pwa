@@ -348,6 +348,31 @@ func TestValidateIdempotencyKeyAndParams(t *testing.T) {
 	}
 }
 
+// R: R-2-1-1
+func TestAcceptable(t *testing.T) {
+	json := []string{"application/json", "application/problem+json"}
+	cases := []struct {
+		accept   string
+		produces []string
+		want     bool
+	}{
+		{"", json, true},
+		{"application/json", json, true},
+		{"*/*", json, true},
+		{"application/*;q=0.5", json, true},
+		{"text/html", json, false},
+		{"application/json;q=0, text/html", json, false},
+		{"application/json; q=0.0", json, false},
+		{"image/png", []string{"image/png", "application/problem+json"}, true},
+		{"text/html", nil, true},
+	}
+	for _, c := range cases {
+		if got := acceptable(c.accept, c.produces); got != c.want {
+			t.Errorf("%q %v：%v", c.accept, c.produces, got)
+		}
+	}
+}
+
 func TestBodyLimit(t *testing.T) {
 	c := newTestChain(t, defaultVerifiers())
 	h := c.RequestId(c.BodyLimit(okHandler))

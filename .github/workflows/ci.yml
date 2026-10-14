@@ -37,6 +37,8 @@ jobs:
         run: python -m tools.config_check
       - name: 要件の注記と試験設計書 第2章の表
         run: python -m tools.trace_requirements
+      - name: エラーコード表と L1 の試験の名（T-L2-05。照らす番号は作り終えたブロックの分）
+        run: python -m tools.errors_check --tests NET,SRV-001,SRV-003,SRV-004
       - name: 生成してコミットする形の再現（第14章 8）
         run: python -m tools.gen_config --check
       - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
@@ -99,6 +101,10 @@ jobs:
       - name: 結合の試験（L1。testcontainers の postgres 18）
         working-directory: server
         run: go test -race -count=1 -tags integration ./...
+      - name: 平文の走査の骨（T-L1-16。走査する置き場は L1 の試験が本文を書くブロックから足す）
+        run: |
+          python -m tools.no_plaintext --generate 32 --markers "$RUNNER_TEMP/plaintext_markers.txt"
+          python -m tools.no_plaintext --markers "$RUNNER_TEMP/plaintext_markers.txt"
       - name: 脆弱性（govulncheck）
         working-directory: server
         run: go run golang.org/x/vuln/cmd/govulncheck@v1.9.0 ./...

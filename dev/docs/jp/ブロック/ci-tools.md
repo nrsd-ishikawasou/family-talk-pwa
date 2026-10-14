@@ -130,11 +130,11 @@ classDiagram
 |Tools|`+bundle_openapi`|api/openapi.yaml の外のファイルへの参照を components/schemas に名前つきで取り込む（名はディレクトリの名から。`ft.event.mls/1.json` を `FtEventMls1`）。oapi-codegen の設定（static のタグと `x-websocket` の操作を除く一覧）も書く。出力は中間の生成ファイル（コミットしない。第14章 8）|
 |Tools|`+genimpl`|server/cmd/genimpl：生成した `StrictServerInterface` をタグごとの interface に分け、srv-boundary の `Implementations` を書く（Go の AST を読む）|
 |Tools|`+gen_errors / gen_config`|errors.yaml、config.yaml、ft.bridge から Go と TypeScript の定数を生成する|
-|Tools|`+errors_check`|エラーコード表の test の欄と L1 の試験の名前、user_text_key と ja.json|
+|Tools|`+errors_check`|エラーコード表の test の欄と L1 の試験（integration の印つきのファイル）の名前、user_text_key と ja.json。試験を求める番号は `--tests`（接頭か番号）で、作り終えたブロックの分に段階で広げる（CI は NET と SRV-001・003・004。SRV-002 は srv-media）。文言の表は `--texts`|
 |Tools|`+config_check`|config.yaml と docs の数値の表|
 |Tools|`+trace_requirements`|試験のコードの注記（R:）と試験設計書 第2章の表|
 |Tools|`+known_red`|known_red.txt と各段の記録（go test -json、Vitest JSON、Playwright JSON、JUnit XML）|
-|Tools|`+no_plaintext`|固有の語（Git の外の一覧。CI は secret）を DB のダンプ、/data/media、ログ、restic の restore から走査|
+|Tools|`+no_plaintext`|固有の語（Git の外の一覧 tools/plaintext_markers.txt、または環境変数 FT_PLAINTEXT_MARKERS）を DB のダンプ、/data/media、ログ、restic の restore から走査。見つけた時も語は出さず番号と場所だけ。一覧が無い・12 文字未満の語は止まる。`--generate N` で乱数の語を作る（CI は走るたびに作る）。走査の置き場は L1 の試験が本文を書くブロックから足す|
 |Tools|`+forbidden_words`|他社の名称と痕跡（Git の外の一覧）をリポジトリと配布物から|
 |Tools|`+dist_check`|イメージの中身、SHA-256、非 root、HEALTHCHECK、公開ポート、THIRD_PARTY_NOTICES、version.json の整合|
 |Tools|`+licenses`|3 層の THIRD_PARTY_NOTICES と許可リスト|

@@ -518,6 +518,12 @@ func clientIp(r *http.Request) string {
 // Base.ValidateResponses が真なら応答も検証し、違えば Fault（試験が赤になる）。
 func (c *MiddlewareChain) Validate(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if !acceptable(r.Header.Get("Accept"), c.route(r).Produces) {
+			ev := fault.New(cgen.NET002, nil)
+			ev.Status = http.StatusNotAcceptable
+			Problem(w, r, ev)
+			return
+		}
 		if ok, errs := c.validator.ValidateHttpRequestSync(r); !ok {
 			Problem(w, r, requestErrors(errs))
 			return
@@ -539,10 +545,45 @@ func (c *MiddlewareChain) Validate(next http.Handler) http.Handler {
 	})
 }
 
-// requestErrors は検証の誤りを NET-007 か NET-001（params.errors[]。最大 20 件）にする。
+// acceptable は Accept が経路の応答の型のどれかを受けるか（RFC 9110 12.5.1。無ければ受ける。q=0 は断り）。
+// 応答の型を持たない経路（本文の無い応答だけ）は確かめない。
+func acceptable(accept string, produces []string) bool {
+	if accept == "" || len(produces) == 0 {
+		return true
+	}
+	for _, part := range strings.Split(accept, ",") {
+		fields := strings.Split(part, ";")
+		mt := strings.ToLower(strings.TrimSpace(fields[0]))
+		refused := false
+		for _, f := range fields[1:] {
+			k, v, _ := strings.Cut(strings.TrimSpace(f), "=")
+			if strings.EqualFold(k, "q") {
+				if q, err := strconv.ParseFloat(v, 64); err == nil && q == 0 {
+					refused = true
+				}
+			}
+		}
+		if refused {
+			continue
+		}
+		for _, p := range produces {
+			typ, _, _ := strings.Cut(p, "/")
+			if mt == "*/*" || mt == p || mt == typ+"/*" {
+				return true
+			}
+		}
+	}
+	return false
+}
+
+// requestErrors は検証の誤りを NET-002、NET-007、NET-001（params.errors[]。最大 20 件）にする。
+// Content-Type が経路の型に合わない（無い時を含む）のは NET-002（415）。
 func requestErrors(errs []*verrors.ValidationError) *fault.Event {
 	list := []map[string]any{}
 	for _, e := range errs {
+		if e.ValidationSubType == "contentType" {
+			return fault.New(cgen.NET002, nil)
+		}
 		if e.ParameterName == headerIdemKey && e.ValidationSubType == "header" {
 			return fault.New(cgen.NET007, nil)
 		}

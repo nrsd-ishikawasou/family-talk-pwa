@@ -87,11 +87,11 @@ func Open(ctx context.Context, info ConnInfo) (*Pool, error) {
 	cfg.HealthCheckPeriod = healthCheckPeriod
 	p, err := pgxpool.NewWithConfig(ctx, cfg)
 	if err != nil {
-		return nil, fault.New(gen.SRV004, nil)
+		return nil, dbUnavailable()
 	}
 	if err := p.Ping(ctx); err != nil {
 		p.Close()
-		return nil, fault.New(gen.SRV004, nil)
+		return nil, dbUnavailable()
 	}
 	keep := info
 	keep.Password = append([]byte(nil), info.Password...)
@@ -125,7 +125,7 @@ func (p *Pool) Exec(ctx context.Context, sql string, args ...any) (pgconn.Comman
 // Ping は /health の確かめ。届かなければ SRV-004。
 func (p *Pool) Ping(ctx context.Context) error {
 	if err := p.pool.Ping(ctx); err != nil {
-		return fault.New(gen.SRV004, nil)
+		return dbUnavailable()
 	}
 	return nil
 }
@@ -151,7 +151,7 @@ func unavailable(err error) error {
 	if errors.As(err, &pgErr) {
 		return fault.Wrap(err)
 	}
-	return fault.New(gen.SRV004, nil)
+	return dbUnavailable()
 }
 
 // Tx は 1 つのトランザクション。コミットの後に走る付け足し（AfterCommit）を持つ。
@@ -236,4 +236,9 @@ func (p *Pool) InTx(ctx context.Context, fn func(tx *Tx) error) error {
 		return err
 	}
 	return tx.Commit(ctx)
+}
+
+// dbUnavailable は DB に届かない時の SRV-004（params.service は postgres。第2章 9.2）。
+func dbUnavailable() error {
+	return fault.New(gen.SRV004, map[string]any{"service": "postgres"})
 }

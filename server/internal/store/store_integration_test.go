@@ -23,6 +23,7 @@ import (
 	tcpg "github.com/testcontainers/testcontainers-go/modules/postgres"
 
 	"github.com/nrsd-ishikawasou/family-talk-pwa/server/internal/common/clock"
+	"github.com/nrsd-ishikawasou/family-talk-pwa/server/internal/common/fault"
 	"github.com/nrsd-ishikawasou/family-talk-pwa/server/internal/common/gen"
 	"github.com/nrsd-ishikawasou/family-talk-pwa/server/internal/common/ids"
 )
@@ -415,13 +416,18 @@ func TestAfterCommitRunsOnlyOnCommit(t *testing.T) {
 	}
 }
 
-func TestOpenUnreachableIsSRV004(t *testing.T) {
+// TestErr_SRV_004 はエラーコード表の test の欄の名（tools/errors_check が照らす）。届かない DB は SRV-004、params.service は postgres。
+func TestErr_SRV_004(t *testing.T) {
 	l, _ := net.Listen("tcp", "127.0.0.1:0")
 	port := l.Addr().(*net.TCPAddr).Port
 	_ = l.Close()
 	_, err := Open(context.Background(), ConnInfo{Host: "127.0.0.1", Port: uint16(port), Database: DbName, User: DbUser, Password: []byte("x")})
 	if !isCode(err, gen.SRV004) {
 		t.Fatalf("届かない DB を SRV-004 にしない: %v", err)
+	}
+	var ev *fault.Event
+	if !errors.As(err, &ev) || ev.Params["service"] != "postgres" || !ev.Retryable || ev.Status != 503 {
+		t.Fatalf("SRV-004 の形が違う: %+v", ev)
 	}
 }
 

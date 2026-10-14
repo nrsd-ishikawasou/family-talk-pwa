@@ -90,6 +90,11 @@ func (f *fakeImpl) RequestRecovery(ctx context.Context, _ gen.RequestRecoveryReq
 	return gen.RequestRecovery200JSONResponse{RequestId: "01890a5d-ac96-774b-bcce-b302099a8077", ExpiresAt: testNow}, nil
 }
 
+// UseFamilyRecoveryKey は本文の違う同じ鍵の再送（NET-008）の試験に使う。
+func (f *fakeImpl) UseFamilyRecoveryKey(context.Context, gen.UseFamilyRecoveryKeyRequestObject) (gen.UseFamilyRecoveryKeyResponseObject, error) {
+	return gen.UseFamilyRecoveryKey200JSONResponse{}, nil
+}
+
 // RunAdminBackup は管理者でなければ届かない（ADM-001）。読み取り専用の門を通ったことだけを見る。
 func (f *fakeImpl) RunAdminBackup(context.Context, gen.RunAdminBackupRequestObject) (gen.RunAdminBackupResponseObject, error) {
 	return nil, fault.New(cgen.ADM003, nil)
@@ -396,5 +401,123 @@ func TestIntegrationWebSocketAuthReadyAndCatchUp(t *testing.T) {
 	_ = c.Write(ctx, websocket.MessageText, []byte(`{"type":"unknown"}`))
 	if _, _, err := c.Read(ctx); websocket.CloseStatus(err) != closePolicy {
 		t.Fatalf("知らない type で 1008 にならない：%v", err)
+	}
+}
+
+// expectProblem は応答が code の problem で、状態が status であることを確かめる。
+func expectProblem(t *testing.T, resp *http.Response, body []byte, status int, code string) map[string]any {
+	t.Helper()
+	var p map[string]any
+	if err := json.Unmarshal(body, &p); err != nil || resp.StatusCode != status || p["code"] != code ||
+		resp.Header.Get("Content-Type") != "application/problem+json" {
+		t.Fatalf("%s（%d）でない：%d %s", code, status, resp.StatusCode, body)
+	}
+	if def := cgen.Errors[code]; p["retryable"] != (def.Retry == cgen.RetryYes) {
+		t.Fatalf("%s の retryable が表と違う：%s", code, body)
+	}
+	return p
+}
+
+// エラーコード表の test の欄の試験（T-L1-13。tools/errors_check が名を照らす）。番号ごとに、起きる条件で本物の経路から起こす。
+
+func TestErr_NET_001(t *testing.T) {
+	e := newItEnv(t)
+	resp, body := e.do(t, "POST", "/api/v1/family/recovery-key/use", `{"result":"maybe"}`, map[string]string{"Idempotency-Key": uuid.Must(uuid.NewV7()).String()})
+	p := expectProblem(t, resp, body, 400, cgen.NET001)
+	if errs, _ := p["params"].(map[string]any)["errors"].([]any); len(errs) == 0 {
+		t.Fatalf("params.errors[] が空：%s", body)
+	}
+}
+
+func TestErr_NET_002(t *testing.T) {
+	e := newItEnv(t)
+	resp, body := e.do(t, "POST", "/api/v1/me/recovery/request", `{}`, map[string]string{"Idempotency-Key": uuid.Must(uuid.NewV7()).String(), "Content-Type": "text/plain"})
+	expectProblem(t, resp, body, 415, cgen.NET002)
+	resp, body = e.do(t, "GET", "/api/v1/sync", "", map[string]string{"Accept": "text/html"})
+	expectProblem(t, resp, body, 406, cgen.NET002)
+}
+
+func TestErr_NET_003(t *testing.T) {
+	e := newItEnv(t)
+	resp, body := e.do(t, "POST", "/api/v1/me/recovery/request", `{}`, map[string]string{"Idempotency-Key": uuid.Must(uuid.NewV7()).String(), "Sec-Fetch-Site": "cross-site"})
+	expectProblem(t, resp, body, 403, cgen.NET003)
+}
+
+func TestErr_NET_004(t *testing.T) {
+	e := newItEnv(t)
+	var resp *http.Response
+	var body []byte
+	for i := 0; i < 61; i++ { // public：IP あたり 1 分 60 回（第2章 9.3）
+		resp, body = e.do(t, "GET", "/version", "", nil)
+	}
+	p := expectProblem(t, resp, body, 429, cgen.NET004)
+	if p["params"].(map[string]any)["policy"] != "public" || resp.Header.Get("Retry-After") == "" {
+		t.Fatalf("params.policy か Retry-After が違う：%v %s", resp.Header, body)
+	}
+}
+
+func TestErr_NET_005(t *testing.T) {
+	e := newItEnv(t)
+	first := e.appendFeed(t, "notice")
+	e.appendFeed(t, "notice")
+	if _, err := itPool.Exec(context.Background(), `DELETE FROM feed WHERE user_id = $1 AND pos <= $2`, e.user, first); err != nil {
+		t.Fatal(err)
+	}
+	resp, body := e.do(t, "GET", "/api/v1/sync?since=0", "", nil)
+	expectProblem(t, resp, body, 410, cgen.NET005)
+}
+
+func TestErr_NET_006(t *testing.T) {
+	e := newItEnv(t)
+	resp, body := e.do(t, "GET", "/api/v1/sync", "", map[string]string{"X-Family-Talk-App": "web/0.9.0"})
+	p := expectProblem(t, resp, body, 426, cgen.NET006)
+	if p["params"].(map[string]any)["min_app"] != "1.0.0" {
+		t.Fatalf("params.min_app が違う：%s", body)
+	}
+}
+
+func TestErr_NET_007(t *testing.T) {
+	e := newItEnv(t)
+	resp, body := e.do(t, "POST", "/api/v1/me/recovery/request", `{}`, nil)
+	expectProblem(t, resp, body, 400, cgen.NET007)
+}
+
+func TestErr_NET_008(t *testing.T) {
+	e := newItEnv(t)
+	key := uuid.Must(uuid.NewV7()).String()
+	if resp, body := e.do(t, "POST", "/api/v1/family/recovery-key/use", `{"result":"success"}`, map[string]string{"Idempotency-Key": key}); resp.StatusCode != 200 {
+		t.Fatalf("1 回目：%d %s", resp.StatusCode, body)
+	}
+	resp, body := e.do(t, "POST", "/api/v1/family/recovery-key/use", `{"result":"failure"}`, map[string]string{"Idempotency-Key": key})
+	expectProblem(t, resp, body, 409, cgen.NET008)
+}
+
+func TestErr_NET_009(t *testing.T) {
+	e := newItEnv(t)
+	big := `{"pad":"` + strings.Repeat("a", BodyLimitJson) + `"}`
+	resp, body := e.do(t, "POST", "/api/v1/me/recovery/request", big, map[string]string{"Idempotency-Key": uuid.Must(uuid.NewV7()).String()})
+	p := expectProblem(t, resp, body, 413, cgen.NET009)
+	if p["params"].(map[string]any)["limit"] != float64(BodyLimitJson) {
+		t.Fatalf("params.limit が違う：%s", body)
+	}
+}
+
+func TestErr_SRV_001(t *testing.T) {
+	e := newItEnv(t)
+	e.state.set(StateReadOnly, "capacity")
+	resp, body := e.do(t, "POST", "/api/v1/me/recovery/request", `{}`, map[string]string{"Idempotency-Key": uuid.Must(uuid.NewV7()).String()})
+	p := expectProblem(t, resp, body, 503, cgen.SRV001)
+	if p["params"].(map[string]any)["reason"] != "capacity" || resp.Header.Get("Retry-After") != "60" {
+		t.Fatalf("params.reason か Retry-After が違う：%s", body)
+	}
+}
+
+func TestErr_SRV_003(t *testing.T) {
+	e := newItEnv(t)
+	// 偽の業務の操作は getMe を持たない（埋め込みの nil の interface）。呼ぶと panic し、Recover が SRV-003 にする。
+	resp, body := e.do(t, "GET", "/api/v1/me", "", nil)
+	p := expectProblem(t, resp, body, 500, cgen.SRV003)
+	if !strings.HasPrefix(fmt.Sprint(p["instance"]), "urn:uuid:") {
+		t.Fatalf("instance が要求の識別子でない：%s", body)
 	}
 }
