@@ -214,7 +214,7 @@ classDiagram
 |---|---|---|---|
 |B-600|openapi.yaml、asyncapi.yaml、schemas/、errors.yaml、ratelimits.yaml、config.yaml からの生成ファイル（Go：interface と型と埋め込みの spec。TypeScript：型と呼び出しとイベントの型。Kotlin：シェルが使う型）|srv-boundary、web-core、and-shell|[第14章 8 境界の型の生成](../../../../docs/jp/design/14_基本設計書_開発基盤.md#8-境界の型の生成)、全体実装設計書 5.1|
 |B-601|`ft.push/1`（通知の中身の形）|srv-push（暗号化の前の JSON）、web-push（SW の復号の後）、and-push（connector の復号の後）|[第2章 7 通知の中身（第7章）](../../../../docs/jp/design/02_基本設計書_境界.md#7-通知の中身第7章)|
-|B-603|`errors.yaml` の `user_text_key`（文言の表の鍵の一覧）|web-ui（P-8 の表に全部の鍵があることを tools/errors_check が見る）|[第10章 9.2 エラーの文言のエラーコード表（第2章 9.2 の `code` に対応する文。例）](../../../../docs/jp/design/10_基本設計書_画面.md#92-エラーの文言のエラーコード表第2章-92-の-code-に対応する文例)|
+|B-603|`errors.yaml` の `user_text_key`（文言の表の鍵の一覧）|web-ui（P-8 の表に全部の鍵があることを tools/errors_check が見る）|[第10章 9.2 エラーの文言のエラーコード表（第2章 9.2 の `code` に対応する文。例）](../../../../docs/jp/design/10_基本設計書_画面.md#92-エラーの文言第2章-92-のエラーコード表の全部の番号)|
 |B-604|`x-authz`、`x-idempotency`、`x-ratelimit`、`x-internal` の値（経路の属性）|srv-boundary（middleware の表を起動時に組む）|[第2章 3 やり取りの分類と規則](../../../../docs/jp/design/02_基本設計書_境界.md#3-やり取りの分類と規則)、[第2章 4.3 認可の 3 つの基本](../../../../docs/jp/design/02_基本設計書_境界.md#43-認可の-3-つの基本)、[第2章 9.3 レート制限（初期値。config.yaml の「レート制限」）](../../../../docs/jp/design/02_基本設計書_境界.md#93-レート制限初期値configyaml-のレート制限)|
 |B-605|`ft.bridge/1`（JS ブリッジの契約）|web-shell（命令の送り手）、and-shell（命令の受け手）|[第9章 4.2 JS ブリッジの命令](../../../../docs/jp/design/09_基本設計書_Androidのシェル.md#42-js-ブリッジの命令)|
 |B-606|`ft.settings.*`（設定の形）と config.yaml の `layers`・`default`|srv-admin（3 層の読み）、web-ui・web-admin（設定の画面の生成）|[第11章 7 設定（DD-11-6）](../../../../docs/jp/design/11_基本設計書_運用.md#7-設定dd-11-6)|

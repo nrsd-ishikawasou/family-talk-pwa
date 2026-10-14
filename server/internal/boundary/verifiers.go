@@ -22,7 +22,6 @@ type Verifiers struct {
 	Shell      ShellTokenVerifier
 	Ws         WsTokenVerifier
 	Membership RoomMembership
-	Approval   DeviceApproval
 	State      ServerStateReader
 }
 
@@ -48,11 +47,6 @@ type WsTokenVerifier interface {
 type RoomMembership interface {
 	IsMember(ctx context.Context, userId, roomId uuid.UUID) (bool, error)
 	RoomRole(ctx context.Context, userId, roomId uuid.UUID) (RoomRole, error)
-}
-
-// DeviceApproval は端末の承認の判定（srv-keys。KEY-004）。
-type DeviceApproval interface {
-	IsApproved(ctx context.Context, deviceId uuid.UUID) (bool, error)
 }
 
 // ServerState は家族のサーバーの状態（第1章 DD-1-15）。srv-admin の Startup が返す。

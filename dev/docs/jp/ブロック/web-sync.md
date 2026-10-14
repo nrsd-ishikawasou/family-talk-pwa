@@ -103,6 +103,9 @@ classDiagram
     +alias(userId) Option~string~
     +setAlias(userId, name) Promise
     +onNamesChanged()
+    +publishProfile(patch) Promise
+    +holdProfile(patch) Promise
+    +flushProfile() Promise
   }
   class Devices {
     +ofUser(userId) [Fdev]
@@ -219,6 +222,9 @@ classDiagram
 |Rooms|`+create(kind, memberIds) Promise~RoomId~`|POST /rooms の後、作成者の端末が Mls.addMembers|
 |Users|`+all() [UserView]`|表示名、別名、アイコン（profile の最新）、役割、状態、子ども|
 |Users|`+setAlias(userId, name) Promise`|PUT /me/aliases/{id}|
+|Users|`+publishProfile(patch) Promise`|写真、背景、ひとことを家族全員のトークへ `ft.content.profile/1` で送る（第3章 6、DD-3-14）。添付は web-media が上げた後の attachment_item。SendQueue.enqueue|
+|Users|`+holdProfile(patch) Promise`|参加と設置の時の写真（第3章 3.1 の 3、3.3 の 2）。家族全員のトークに入る前は送れないので、端末の保存（IndexedDB `pending_profile`。端末の保存の鍵で暗号化）に置く|
+|Users|`+flushProfile() Promise`|家族全員のトークの welcome を取り込んだ後（Ingest）と起動の時に呼ぶ。pending_profile があれば web-media で上げて publishProfile し、消す|
 |Users|`+onNamesChanged()`|表示名か別名が変わった時：Platform.updateNameCache({user_id: 表示名}) をシェルに渡す（G-03。シェルでなければ何もしない）|
 |Devices|`+ofUser(userId) [Fdev]`|E2EE の送信先|
 |Devices|`+onChanged(payload)`|added/approved/revoked/renamed。自分の端末の revoked なら Session.onRevoked と Db.wipe|
@@ -248,7 +254,7 @@ classDiagram
 |---|---|---|---|
 |B-240|`Sync`（`start`、`pull`、`fullResync`、`onGap`、`state`、`initialHistory`）|web-ui（起動、オフラインのバナー、履歴の同期の進み）、web-shell（回線の復帰）|[第2章 5.9 同期（第4章、第7章）](../../../../docs/jp/design/02_基本設計書_境界.md#59-同期第4章第7章)、[第1章 7.11 回線の切断と再接続（端末）](../../../../docs/jp/design/01_基本設計書_全体構成.md#711-回線の切断と再接続端末)、[第12章 5.5 新しい端末の参加（第3章と往復）](../../../../docs/jp/design/12_基本設計書_データと暗号化.md#55-新しい端末の参加第3章と往復)|
 |B-241|`Ingest::apply`、`applyEvent`|web-core `WsClient`（配線は web-ui）、web-push（SW の push の後の取り込み）|[第2章 6.2 イベントの一覧（asyncapi.yaml の `channels`）](../../../../docs/jp/design/02_基本設計書_境界.md#62-イベントの一覧asyncapiyaml-の-channels)|
-|B-242|`Events`、`Relations`、`Rooms`、`Users`、`Devices`、`Receipts`、`Typing`、`Notices`（画面のコピーの読み書き）|web-ui、web-push（通知の表示名）、web-search（一覧）、web-media（添付の記述）|[第4章 4 トーク](../../../../docs/jp/design/04_基本設計書_トークとメッセージ.md#4-トーク)、[第4章 5.2 受信と表示](../../../../docs/jp/design/04_基本設計書_トークとメッセージ.md#52-受信と表示)、[第4章 3.2 関係の規則](../../../../docs/jp/design/04_基本設計書_トークとメッセージ.md#32-関係の規則)、[第4章 5.4 既読と入力中（DD-4-4、DD-4-5）](../../../../docs/jp/design/04_基本設計書_トークとメッセージ.md#54-既読と入力中dd-4-4dd-4-5)|
+|B-242|`Events`、`Relations`、`Rooms`、`Users`、`Devices`、`Receipts`、`Typing`、`Notices`（画面のコピーの読み書き。`Users` はプロフィールの送信を含む）|web-ui、web-push（通知の表示名）、web-search（一覧）、web-media（添付の記述）|[第4章 4 トーク](../../../../docs/jp/design/04_基本設計書_トークとメッセージ.md#4-トーク)、[第4章 5.2 受信と表示](../../../../docs/jp/design/04_基本設計書_トークとメッセージ.md#52-受信と表示)、[第4章 3.2 関係の規則](../../../../docs/jp/design/04_基本設計書_トークとメッセージ.md#32-関係の規則)、[第4章 5.4 既読と入力中（DD-4-4、DD-4-5）](../../../../docs/jp/design/04_基本設計書_トークとメッセージ.md#54-既読と入力中dd-4-4dd-4-5)|
 |B-243|`Decrypt`（`run`、`retryWaiting`、`askKey`）|本ブロック、web-push（SW は `run` の同期版）|[第4章 5.2 受信と表示](../../../../docs/jp/design/04_基本設計書_トークとメッセージ.md#52-受信と表示)、[第12章 13 失敗の扱い](../../../../docs/jp/design/12_基本設計書_データと暗号化.md#13-失敗の扱い)|
 |B-244|`SendQueue`（`enqueue`、`retry`、`discard`、`pending`）|web-ui（送信、再送・破棄）、web-media（添付の完了の後に `enqueue`）、web-push（SW の直接返信は `enqueue` の最小：Android は `/notify.html`）|[第4章 5.1 送信（DD-4-14）](../../../../docs/jp/design/04_基本設計書_トークとメッセージ.md#51-送信dd-4-14)|
 |B-245|`Mls`（`addMembers`、`removeDevices`、`takeover`、`refresh`、`replenishKeyPackages`）|web-ui（グループの作成と構成員の追加・退出、端末の承認の後の Add）、web-crypto `Recovery.approveDevice`、web-shell（起動時の `takeover`）|[第4章 4.1 種類と状態](../../../../docs/jp/design/04_基本設計書_トークとメッセージ.md#41-種類と状態)、[第12章 5.2 群の暗号（MLS）](../../../../docs/jp/design/12_基本設計書_データと暗号化.md#52-群の暗号mls)、[第12章 5.5 新しい端末の参加（第3章と往復）](../../../../docs/jp/design/12_基本設計書_データと暗号化.md#55-新しい端末の参加第3章と往復)|
@@ -272,6 +278,7 @@ classDiagram
 |---|---|---|---|
 |IndexedDB `events`|表|`event_id PK`、`room_id`、`pos`、`ts`、`schema`、`sender_id`、`sender_device_id`、`epoch`、`ciphertext`、`plain`（平文の欄）、`content_enc`（復号済みの中身を端末の保存の鍵で暗号化）、`state`（received、decrypted、waiting_key、failed、tombstone）、`relates_to`、`local_hidden`。索引 (room_id, ts)、(room_id, state)|[第8章 3.4 保存（DD-8-4）](../../../../docs/jp/design/08_基本設計書_iPhoneとPCのシェル.md#34-保存dd-8-4)|
 |IndexedDB `rooms`|表|`room_id PK`、`kind`、`members[]`、`me RoomMe`、`unread`、`last_pos`、`last_event_at`、`last_preview`（種類と冒頭）、`epoch`、`creator_id`、`settings_latest`（名前、アイコン、説明、pinned）|[第8章 3.4 保存（DD-8-4）](../../../../docs/jp/design/08_基本設計書_iPhoneとPCのシェル.md#34-保存dd-8-4)、[第4章 4.2 一覧（DD-4-13）](../../../../docs/jp/design/04_基本設計書_トークとメッセージ.md#42-一覧dd-4-13)|
+|IndexedDB `pending_profile`|key-value（1 件）|写真の縮小した物と背景、ひとこと（端末の保存の鍵で暗号化。送れたら消す）|[第3章 6 アカウントとプロフィール（DD-3-14）](../../../../docs/jp/design/03_基本設計書_認証_構成員_端末.md#6-アカウントとプロフィールdd-3-14)|
 |IndexedDB `users`、`devices`|表|`UserSummary` + `profile_latest`、`alias`；`Fdev` + `state`|[第8章 3.4 保存（DD-8-4）](../../../../docs/jp/design/08_基本設計書_iPhoneとPCのシェル.md#34-保存dd-8-4)|
 |IndexedDB `receipts`|表|`(room_id, user_id)` ごとに `{read, read_private?, fully_read?, at}`|[第4章 5.4 既読と入力中（DD-4-4、DD-4-5）](../../../../docs/jp/design/04_基本設計書_トークとメッセージ.md#54-既読と入力中dd-4-4dd-4-5)|
 |IndexedDB `queue`|表|`transaction_id PK`、`kind`（event、inbox）、`room_id?`、`content_enc`（中身。端末の保存の鍵）、`attachments[]`（media id、鍵は中身の中）、`inbox_to?`（kind=inbox：相手の端末と種類。承認の時の鍵バンドルと鍵のバックアップの転送の未送信。S-04）、`state`（queued、sending、sent、failed、expired）、`attempts`、`next_at`、`created_at`、`pos?`|[第4章 5.1 送信（DD-4-14）](../../../../docs/jp/design/04_基本設計書_トークとメッセージ.md#51-送信dd-4-14)、[第8章 3.4 保存（DD-8-4）](../../../../docs/jp/design/08_基本設計書_iPhoneとPCのシェル.md#34-保存dd-8-4)|

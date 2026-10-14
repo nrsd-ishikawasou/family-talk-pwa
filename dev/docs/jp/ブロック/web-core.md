@@ -177,7 +177,7 @@ classDiagram
 |Locks|`+run(name, fn, opts)`|navigator.locks.request。名前：db、mls:&lt;group_id&gt;、sync、queue:&lt;family&gt;|
 |Channel|`+post(topic, payload)`|BroadcastChannel ft-&lt;topic&gt;（mls、sw、session）。SW と画面の間|
 |Clock|`+skewSeconds() number`|サーバーの Date ヘッダとの差（5 分で「端末の時計がずれている」）|
-|Text|`+t(key, params) string`|文言の表（web-ui の ja.json を本ブロックが読む口。鍵が無ければ鍵をそのまま + 記録）|
+|Text|`+t(key, params) string`|文言の表（web-ui の ja.json と errors.json を本ブロックが読む口。鍵が無ければ鍵をそのまま + 記録）|
 |Text|`+error(err AppError) TwoLines`|what と next と番号|
 |Version|`+app string`|ビルド時に埋める|
 |Version|`+compat() Compat`|ok、app_old（NET-006）、server_old（機能を落とす）のいずれか|
@@ -216,4 +216,4 @@ classDiagram
 |---|---|---|---|
 |IndexedDB `settings`|key-value|`persist_granted bool`、`persist_asked_at`、`app_lock {mode, timeout, pin_hash?, failures}`（web-shell が意味を持つ）、`font_scale`、`theme`、`reduce_motion`、`cache_limit_pct`、`maps_cache_mb`、`me_settings`（`/me/settings` のコピー）、`tz`、`last_version_seen`|[第10章 8 設定の分類と項目（DD-10-4）](../../../../docs/jp/design/10_基本設計書_画面.md#8-設定の分類と項目dd-10-4)、[第8章 3.4 保存（DD-8-4）](../../../../docs/jp/design/08_基本設計書_iPhoneとPCのシェル.md#34-保存dd-8-4)|
 |IndexedDB `sync`|key-value|`pos int64`、`last_ready_at`、`full_resync_needed bool`、`server_version`|[第8章 3.4 保存（DD-8-4）](../../../../docs/jp/design/08_基本設計書_iPhoneとPCのシェル.md#34-保存dd-8-4)、[第2章 6.3 接続の規則](../../../../docs/jp/design/02_基本設計書_境界.md#63-接続の規則)|
-|`AppError` の文言|`err.<code>.what`、`err.<code>.next`、`err.unknown.*`|web-ui の `ja.json`（P-8）|[第10章 9.2 エラーの文言のエラーコード表（第2章 9.2 の `code` に対応する文。例）](../../../../docs/jp/design/10_基本設計書_画面.md#92-エラーの文言のエラーコード表第2章-92-の-code-に対応する文例)|
+|`AppError` の文言|`err.<code>.what`、`err.<code>.next`、`err.unknown.*`|web-ui の `errors.json`（P-8。第10章 9.2 から生成）|[第10章 9.2 エラーの文言のエラーコード表（第2章 9.2 の `code` に対応する文。例）](../../../../docs/jp/design/10_基本設計書_画面.md#92-エラーの文言第2章-92-のエラーコード表の全部の番号)|

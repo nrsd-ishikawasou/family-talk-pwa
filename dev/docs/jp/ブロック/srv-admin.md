@@ -110,6 +110,7 @@ classDiagram
     +Transfer(tx, principal, toUserId)
     +Family(tx, patch)
     +RotateRecoveryKey(tx, principal, newPub)
+    +MarkCardPrinted(tx, principal) Time
     +Audit(ctx, cursor) [AuditRow]
     +Invites(ctx) [Invite]
     +LogsSummary(ctx) [CodeCount]
@@ -185,7 +186,7 @@ classDiagram
 
 |クラス|メンバー|注記|
 |---|---|---|
-|Startup|`+Run(ctx) Result~ServerState, Fault~`|第1章 7.1 の 8 段を順に行う。1. Config（必須の欠けは止まる）。2. Secrets.Ensure（KEK が無ければ止まる）、KeyRotation.RegisterKek。3. Migrator（失敗なら読み取り専用）。4. ディレクトリと権限（media、maps、backups、www。書けなければ読み取り専用）。5. /srv/www を /data/www に同期し、manifest・assetlinks・security.txt を生成。6. sfu の設定の書き出し（内容が前と変われば HostRequests.Put(sfu_restart)。sfu は設定を起動の時にだけ読む）、caddy の証明書の状態。7. 後始動（Jobs.Recover、RingTimer.RecoverAfterRestart、Erasures.Reapply、SweepParts。server_state.restored_at が前回の起動より新しければ全利用者の feed に sync.gap{restore}：S-13）。8. 状態の確定（管理者がいなければ「初回」。リンクは作らない。作るのは `ft setup` の最後と `ft admin create-link` だけ：G-08）|
+|Startup|`+Run(ctx) Result~ServerState, Fault~`|第1章 7.1 の 8 段を順に行う。1. Config（必須の欠けは止まる。形 D で `server.hosting_provider` が空も止まる：第12章 7.1）。2. Secrets.Ensure（KEK が無ければ止まる）、KeyRotation.RegisterKek。3. Migrator（失敗なら読み取り専用）。4. ディレクトリと権限（media、maps、backups、www。書けなければ読み取り専用）。5. /srv/www を /data/www に同期し、manifest・assetlinks・security.txt を生成。6. sfu の設定の書き出し（内容が前と変われば HostRequests.Put(sfu_restart)。sfu は設定を起動の時にだけ読む）、caddy の証明書の状態。7. 後始動（Jobs.Recover、RingTimer.RecoverAfterRestart、Erasures.Reapply、SweepParts。server_state.restored_at が前回の起動より新しければ全利用者の feed に sync.gap{restore}：S-13）。8. 状態の確定（管理者がいなければ「初回」。リンクは作らない。作るのは `ft setup` の最後と `ft admin create-link` だけ：G-08）|
 |Startup|`+State() ServerState`|srv-boundary ServerStateReader。`ServerState` の型は srv-boundary が定める（本ブロックより下に置くため）|
 |Startup|`+SetReadOnly(reason)`|reason は SRV-001 の params の値：migration（移行の失敗）、capacity（容量 100%）、storage（置き場に書けない、DB が書き込みを拒む）、restore（復元の後の抹消の再適用の間）。server_state に書く。srv-boundary の ServerStateReader.ReadOnlyReason が読む|
 |SecretsInit|`+Ensure(ctx) Result~Fault~`|session-keys、vapid、sfu（2 本）、backup、db_password を無ければ生成（第12章 10 の順）。KEK は ft setup が /etc に作る（無ければ Fault）|
@@ -212,7 +213,8 @@ classDiagram
 |AdminApi|`+Maps(ctx) / UpdateMaps(tx)`|jobs maps_update|
 |AdminApi|`+Transfer(tx, principal, toUserId)`|srv-identity Users.Transfer|
 |AdminApi|`+Family(tx, patch)`|srv-identity Families.Update|
-|AdminApi|`+RotateRecoveryKey(tx, principal, newPub)`|srv-keys FamilyRecoveryKey.SetPublic + 全員に keybundle.changed|
+|AdminApi|`+RotateRecoveryKey(tx, principal, newPub)`|srv-keys FamilyRecoveryKey.SetPublic + 全員に keybundle.changed。srv-identity Families.ClearCardPrinted（新しいカードの印刷を待つ）|
+|AdminApi|`+MarkCardPrinted(tx, principal) Time`|`POST /admin/family/recovery-key/printed`。srv-identity Families.MarkCardPrinted。ダッシュボードの注意のバナーは families.card_printed_at が空の間|
 |AdminApi|`+LogsSummary(ctx) [CodeCount]`|`GET /admin/logs/summary`（G-01）：LogStats.Summary(28)。本文と秘密なし（第11章 12）|
 |AdminApi|`+DisposeGuide(ctx) Text`|/admin/disk/dispose の手順|
 |Audit|`+Record(tx, actor, action, target, params)`|audit 表 + 本人と全員へのイベント（FamilyRoom.Flow(admin_action)）+ notice。対象の構成員がいない操作（設定の変更等）は audience = all（S-11）|

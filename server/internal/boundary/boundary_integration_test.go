@@ -187,7 +187,7 @@ func newItEnv(t *testing.T) *itEnv {
 	pr := Principal{Kind: KindUser, UserId: &user, DeviceId: &dev, Role: RoleMember, DeviceApproved: true}
 	state := &mutableState{s: StateNormal}
 	v := Verifiers{Session: fakeSession{p: pr}, Shell: fakeToken{ev: fault.New(cgen.AUTH001, nil)}, Ws: fakeToken{p: pr},
-		Membership: fakeMembership{}, Approval: fakeApproval{}, State: state}
+		Membership: fakeMembership{}, State: state}
 	impl := &fakeImpl{pool: itPool}
 	impls := gen.Implementations{Setup: impl, Invites: impl, Auth: impl, Me: impl, Family: impl, Users: impl, Devices: impl,
 		Keys: impl, Rooms: impl, Media: impl, Calls: impl, Push: impl, Admin: impl, Shell: impl}

@@ -69,10 +69,6 @@ func (f fakeMembership) RoomRole(context.Context, uuid.UUID, uuid.UUID) (RoomRol
 	return RoomRoleMember, nil
 }
 
-type fakeApproval struct{}
-
-func (fakeApproval) IsApproved(context.Context, uuid.UUID) (bool, error) { return true, nil }
-
 type fakeState struct {
 	s      ServerState
 	reason string
@@ -115,7 +111,7 @@ func newTestChain(t *testing.T, v Verifiers) *MiddlewareChain {
 
 func defaultVerifiers() Verifiers {
 	return Verifiers{Session: fakeSession{p: member()}, Shell: fakeToken{ev: fault.New(cgen.AUTH001, nil)},
-		Ws: fakeToken{p: member()}, Membership: fakeMembership{roomA: true}, Approval: fakeApproval{},
+		Ws: fakeToken{p: member()}, Membership: fakeMembership{roomA: true},
 		State: fakeState{s: StateNormal}}
 }
 
@@ -141,7 +137,7 @@ func TestFromSpecReadsEveryOperationOnce(t *testing.T) {
 		t.Fatal(err)
 	}
 	routes := authz.Routes()
-	if len(routes) != 154 { // 162 の operation から caddy が配る 8 を除く
+	if len(routes) != 155 { // 163 の operation から caddy が配る 8 を除く
 		t.Fatalf("経路の数が違う: %d", len(routes))
 	}
 	ws, ok := authz.Route("connectWs")

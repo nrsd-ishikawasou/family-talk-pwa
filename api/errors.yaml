@@ -152,6 +152,16 @@ rows:
     scope: route
     user_text_key: err.MEM-007
     test: TestErr_MEM_007
+  - code: MEM-008
+    status: 409
+    title: "Disclosure version is stale"
+    meaning: "明示の版が古い（「確認した」の版が今の版でない。params.version に今の版）"
+    retryable: false
+    params: {"type": "object", "properties": {"version": {"type": "string"}}, "additionalProperties": false}
+    log: false
+    scope: route
+    user_text_key: err.MEM-008
+    test: TestErr_MEM_008
   - code: KEY-001
     status: 404
     title: "Device or public key not found"

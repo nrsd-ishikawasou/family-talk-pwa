@@ -1,12 +1,17 @@
 # SPDX-FileCopyrightText: 2026 株式会社流山ソフトウェア開発 (Nagareyama Software Development Co., Ltd.)
 # SPDX-License-Identifier: Apache-2.0
-"""エラーの文言の表を作る（基本設計書 第10章 9.2 の表が正本）。
+"""設計書の表から文の生成ファイルを作る（基本設計書 第14章 8、全体実装設計書 5.1）。
 
-第10章 9.2 の表（番号、1 文目、2 文目）から web/src/i18n/ja/errors.json を作る。鍵は err.<番号>（エラーコード表の
-user_text_key）、値は {"what": 1 文目, "next": 2 文目}。生成した物はコミットし、CI は --check で差分 0 を確かめる。
-エラーコード表の番号と表の番号が 1 対 1 でなければ誤り。
+1. エラーの文言の表：第10章 9.2 の表（番号、1 文目、2 文目）から web/src/ui/i18n/errors.json を作る。鍵は err.<番号>
+   （エラーコード表の user_text_key）、値は {"what": 1 文目, "next": 2 文目}。生成した物はコミットし、CI は --check で
+   差分 0 を確かめる。エラーコード表の番号と表の番号が 1 対 1 でなければ誤り。
+2. 明示の文：第12章 7.1 の引用と 8 の表の行から <置き場>/disclosure.json を作る（--disclosure-out。make gen が
+   server/internal/identity/gen に作る。コミットしない）。「（VPS の場合）」で始まる行は mode D の印を付け、行頭の括弧を除く。
+   {admin} と {provider} の埋め込みと版の計算はサーバーが行う（第12章 7.1）。
 
-使い方：python -m tools.gen_texts [--check]
+使い方：
+  python -m tools.gen_texts [--check]          エラーの文言の表を作る（--check は差分を見るだけ）
+  python -m tools.gen_texts --disclosure-out DIR 明示の文だけを DIR に作る
 """
 import argparse
 import json
@@ -17,18 +22,26 @@ import sys
 import yaml
 
 ROOT = pathlib.Path(__file__).resolve().parents[1]
-CHAPTER = ROOT / 'docs' / 'jp' / 'design' / '10_基本設計書_画面.md'
+DESIGN = ROOT / 'docs' / 'jp' / 'design'
+CHAPTER = DESIGN / '10_基本設計書_画面.md'
+DATA_CHAPTER = DESIGN / '12_基本設計書_データと暗号化.md'
 ERRORS = ROOT / 'api' / 'errors.yaml'
-OUT = ROOT / 'web' / 'src' / 'i18n' / 'ja' / 'errors.json'
+OUT = ROOT / 'web' / 'src' / 'ui' / 'i18n' / 'errors.json'
 ROW = re.compile(r'^\|([A-Z]+-\d{3})\|([^|]+)\|([^|]+)\|$')
+VPS = '（VPS の場合）'
+
+
+def section(text, head, level='###'):
+    """見出し head で始まる節の本文（次の同じ深さか浅い見出しの前まで）。"""
+    start = text.index(f'{level} {head}')
+    m = re.compile(r'^#{1,%d} ' % len(level), re.M).search(text, start + 1)
+    return text[start:m.start() if m else len(text)]
 
 
 def table(text):
     """第10章 9.2 の節の表の行（番号、1 文目、2 文目）。"""
-    start = text.index('### 9.2 ')
-    end = text.index('\n### ', start + 1)
     rows = []
-    for line in text[start:end].splitlines():
+    for line in section(text, '9.2 ').splitlines():
         m = ROW.match(line.strip())
         if m:
             rows.append((m.group(1), m.group(2).strip(), m.group(3).strip()))
@@ -48,20 +61,70 @@ def build(chapter_text, errors_rows):
     return json.dumps(dict(sorted(out.items())), ensure_ascii=False, indent=2) + '\n'
 
 
+def conditional(text):
+    """「（VPS の場合）」で始まる文は形 D の時だけ示す。印を外した文と mode の組。"""
+    if text.startswith(VPS):
+        return text[len(VPS):].strip(), 'D'
+    return text, None
+
+
+def build_disclosure(text):
+    """第12章 7.1 の引用（題、前書き、箇条）と 8 の表の行から明示の文の生成ファイルを作る。"""
+    quote = [line[1:].strip() for line in section(text, '7.1 ').splitlines() if line.startswith('>')]
+    quote = [q for q in quote if q]
+    if len(quote) < 3 or not (quote[0].startswith('**') and quote[0].endswith('**')):
+        raise ValueError('第12章 7.1 の引用の形が違う（題、前書き、箇条の順）')
+    title, lead = quote[0].strip('*'), quote[1]
+    if lead.startswith('- '):
+        raise ValueError('第12章 7.1 の引用に前書きが無い')
+    bullets = [q[2:].strip() for q in quote[2:]]
+    if any(not q.startswith('- ') for q in quote[2:]):
+        raise ValueError('第12章 7.1 の引用の前書きの後は箇条だけにする')
+    outbound = []
+    lines = section(text, '8. ', level='##').splitlines()
+    for line in lines:
+        cells = [c.strip() for c in line.strip().strip('|').split('|')] if line.startswith('|') else []
+        if len(cells) != 3 or cells[0] in ('送られる情報の内容', '---'):
+            continue
+        content, mode = conditional(cells[0])
+        row = {'content': content, 'destination': cells[1], 'purpose': cells[2]}
+        if mode:
+            row['mode'] = mode
+        outbound.append(row)
+    if not outbound:
+        raise ValueError('第12章 8 の表に行が無い')
+    for s in [title, lead, *bullets, *(v for r in outbound for v in r.values())]:
+        if '`' in s or '**' in s:
+            raise ValueError(f'利用者に見せる文に書式の記号がある：{s}')
+    items = []
+    for b in bullets:
+        t, mode = conditional(b)
+        items.append({'text': t, 'mode': mode} if mode else {'text': t})
+    out = {'title': title, 'lead': lead, 'items': items, 'outbound': outbound}
+    return json.dumps(out, ensure_ascii=False, indent=2) + '\n'
+
+
 def main(argv=None):
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     ap.add_argument('--check', action='store_true', help='作り直した結果とコミットした物の差分が 0 かを見る')
+    ap.add_argument('--disclosure-out', help='明示の文の生成ファイル（disclosure.json）を置くディレクトリ')
     a = ap.parse_args(argv)
     text = build(CHAPTER.read_text(encoding='utf-8'), yaml.safe_load(ERRORS.read_text(encoding='utf-8'))['rows'])
+    if a.disclosure_out:
+        out = pathlib.Path(a.disclosure_out)
+        out.mkdir(parents=True, exist_ok=True)
+        (out / 'disclosure.json').write_text(build_disclosure(DATA_CHAPTER.read_text(encoding='utf-8')), encoding='utf-8')
+        print(f'書いた：{out / "disclosure.json"}')
     if a.check:
         if not OUT.exists() or OUT.read_text(encoding='utf-8') != text:
             print(f'{OUT.relative_to(ROOT)} が第10章 9.2 の表と違う（python -m tools.gen_texts で作り直す）')
             return 1
         print(f'{OUT.relative_to(ROOT)} は第10章 9.2 の表と同じ')
         return 0
-    OUT.parent.mkdir(parents=True, exist_ok=True)
-    OUT.write_text(text, encoding='utf-8')
-    print(f'書いた：{OUT.relative_to(ROOT)}')
+    if not a.disclosure_out:
+        OUT.parent.mkdir(parents=True, exist_ok=True)
+        OUT.write_text(text, encoding='utf-8')
+        print(f'書いた：{OUT.relative_to(ROOT)}')
     return 0
 
 

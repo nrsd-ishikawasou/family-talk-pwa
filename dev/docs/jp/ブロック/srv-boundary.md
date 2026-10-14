@@ -39,7 +39,7 @@
   - srv-push、srv-calls、srv-admin
 - 依存の逆転：次の interface は本ブロックが定義し、srv-identity・srv-rooms・srv-keys・srv-admin が実装して渡す。
   - `SessionVerifier`（Cookie からセッションを得る）、`ShellTokenVerifier`、`WsTokenVerifier`
-  - `RoomMembership`（room_member の判定）、`DeviceApproval`（approved_device の判定）
+  - `RoomMembership`（room_member の判定）。端末の承認の有無は `SessionVerifier` が `Principal` の `DeviceApproved` で渡す（srv-identity の devices.state が正）
   - `ServerStateReader`（読み取り専用の判定）。値の型 `ServerState`（第1章 DD-1-15 の 5 つ）も本ブロックが定め、srv-admin の `Startup` が返す
 - 依存の逆転（本ブロックが上のブロックの処理を呼ぶ所）：次の interface も本ブロックが定義し、`Links` にまとめて受ける。
   - `Snapshotter`（srv-rooms `Timeline.Snapshot`。`/sync` の初回）
@@ -174,7 +174,6 @@ classDiagram
     +Shell ShellTokenVerifier
     +Ws WsTokenVerifier
     +Membership RoomMembership
-    +Approval DeviceApproval
     +State ServerStateReader
   }
   class SessionVerifier {
@@ -194,10 +193,6 @@ classDiagram
     <<interface>>
     +IsMember(ctx, userId, roomId) Result~bool~
     +RoomRole(ctx, userId, roomId) Result~RoomRole~
-  }
-  class DeviceApproval {
-    <<interface>>
-    +IsApproved(ctx, deviceId) Result~bool~
   }
   class ServerStateReader {
     <<interface>>
@@ -288,7 +283,6 @@ classDiagram
   Verifiers --> ShellTokenVerifier
   Verifiers --> WsTokenVerifier
   Verifiers --> RoomMembership
-  Verifiers --> DeviceApproval
   Verifiers --> ServerStateReader
   Hub --> WsConn
   WsHandler --> WsConn
@@ -360,7 +354,6 @@ classDiagram
 |WsTokenVerifier|`+Verify(ctx, token) Result~Principal, Event~`|60 秒の使い切り|
 |RoomMembership|`+IsMember(ctx, userId, roomId) Result~bool~`|現在の構成員（第2章 4.3）。DB の読みの失敗は error（Fault。SRV-003）|
 |RoomMembership|`+RoomRole(ctx, userId, roomId) Result~RoomRole~`|creator か member。構成員でなければ空|
-|DeviceApproval|`+IsApproved(ctx, deviceId) Result~bool~`|KEY-004 の判定。DB の読みの失敗は error|
 |ServerStateReader|`+ReadOnlyReason() string`|ReadOnly の時の理由（SRV-001 の params.reason：migration、capacity、storage、restore）。ReadOnlyGate と Health が使う|
 |ServerStateReader|`+State() ServerState`|初回、通常、読み取り専用など（第1章 DD-1-15 の 5 つ。srv-admin）|
 |AuthzTable|`+FromSpec(spec, membership) Result~AuthzTable, Fault~`|起動時に束ねた spec（`gen.Spec`）から全 operation の x- の欄を読む。x-authz の欠けと第2章 10 の表に無い値は Fault（I-12）|
@@ -397,7 +390,7 @@ classDiagram
 |---|---|---|---|
 |B-040|`Server::Build`／`ListenAndServe`／`Shutdown`|cmd/ft `serve`|全体実装設計書 2.1|
 |B-041|`Principal`（要求の文脈。`ctx` から取る `PrincipalFrom(ctx)`）|業務のブロックの全 operation|[第2章 4 認証と認可](../../../../docs/jp/design/02_基本設計書_境界.md#4-認証と認可)|
-|B-042|`Verifiers` と `Links` の各 interface と値の型（定義。`ServerState`、`UpMessage`、`HealthFacts`）|実装：srv-identity（`SessionVerifier`、`ShellTokenVerifier`、`WsTokenVerifier`）、srv-rooms（`RoomMembership`、`Snapshotter`、`TypingSink`）、srv-keys（`DeviceApproval`）、srv-admin（`ServerStateReader`、`HealthProbe`）、srv-push（`UpMailbox`）|[第2章 4.1 セッション](../../../../docs/jp/design/02_基本設計書_境界.md#41-セッション)、[第2章 4.3 認可の 3 つの基本](../../../../docs/jp/design/02_基本設計書_境界.md#43-認可の-3-つの基本)、[第2章 4.4 WebSocket と通知と SFU](../../../../docs/jp/design/02_基本設計書_境界.md#44-websocket-と通知と-sfu)|
+|B-042|`Verifiers` と `Links` の各 interface と値の型（定義。`ServerState`、`UpMessage`、`HealthFacts`）|実装：srv-identity（`SessionVerifier`、`ShellTokenVerifier`、`WsTokenVerifier`）、srv-rooms（`RoomMembership`、`Snapshotter`、`TypingSink`）、srv-admin（`ServerStateReader`、`HealthProbe`）、srv-push（`UpMailbox`）|[第2章 4.1 セッション](../../../../docs/jp/design/02_基本設計書_境界.md#41-セッション)、[第2章 4.3 認可の 3 つの基本](../../../../docs/jp/design/02_基本設計書_境界.md#43-認可の-3-つの基本)、[第2章 4.4 WebSocket と通知と SFU](../../../../docs/jp/design/02_基本設計書_境界.md#44-websocket-と通知と-sfu)|
 |B-043|`Hub::Connected`、`Hub::Broadcast`（`room.typing`、`bye`）、`Hub::Detach`（ログアウト・取り消しで切る）|srv-push（開いている端末の判定）、srv-rooms（入力中）、srv-identity（失効で切る）、srv-admin（再起動の前の `bye`）|[第2章 6.2 イベントの一覧（asyncapi.yaml の `channels`）](../../../../docs/jp/design/02_基本設計書_境界.md#62-イベントの一覧asyncapiyaml-の-channels)、[第2章 6.3 接続の規則](../../../../docs/jp/design/02_基本設計書_境界.md#63-接続の規則)、[第7章 3.2 送信（api）](../../../../docs/jp/design/07_基本設計書_通知.md#32-送信api)|
 |B-044|`SyncHandler`（`/sync`）|生成した operation（本ブロック）|[第2章 5.9 同期（第4章、第7章）](../../../../docs/jp/design/02_基本設計書_境界.md#59-同期第4章第7章)|
 |B-045|`UpWsHandler`（`/up/ws` の接続の器と `Deliver`。メールボックスの読みと ack は srv-push `UpBox` を `UpMailbox` として呼ぶ）|srv-push|[第7章 3.1 家族のサーバーの受け口（(i)）](../../../../docs/jp/design/07_基本設計書_通知.md#31-家族のサーバーの受け口i)|

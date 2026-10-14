@@ -5,6 +5,7 @@ import contextlib
 import io
 import json
 import pathlib
+import re
 import tempfile
 import unittest
 
@@ -184,6 +185,33 @@ class TestGenTexts(unittest.TestCase):
         with self.assertRaises(ValueError):
             gen_texts.build(doc.replace('|NET-001|a。|b。|', '|NET-001|a。|b。|\n|NET-001|c。|d。|'),
                             [{'code': 'NET-001', 'user_text_key': 'err.NET-001'}])
+
+    # R: R-12-5-1
+    def test_disclosure_from_chapter_12(self):
+        out = json.loads(gen_texts.build_disclosure(gen_texts.DATA_CHAPTER.read_text(encoding='utf-8')))
+        self.assertIn('{admin}', out['lead'])
+        self.assertTrue(out['items'] and out['outbound'])
+        vps = [i for i in out['items'] if i.get('mode') == 'D']
+        self.assertEqual(len(vps), 1)
+        self.assertIn('{provider}', vps[0]['text'])
+        self.assertFalse(vps[0]['text'].startswith(gen_texts.VPS))
+        self.assertEqual([r['mode'] for r in out['outbound'] if 'mode' in r], ['D'])
+        texts = [out['title'], out['lead'], *(i['text'] for i in out['items'])]
+        texts += [v for r in out['outbound'] for k, v in r.items() if k != 'mode']
+        for t in texts:
+            self.assertEqual(set(re.findall(r'\{(\w+)\}', t)) - {'admin', 'provider'}, set(), t)
+
+    def test_disclosure_shape_errors(self):
+        doc = ('### 7.1 文\n\n> **題**\n>\n> 前書き{admin}。\n>\n> - 項目。\n\n## 8. 表\n\n'
+               '|送られる情報の内容|送信先|利用の目的|\n|---|---|---|\n|（VPS の場合）全部|事業者|稼働|\n\n## 9. 次\n')
+        out = json.loads(gen_texts.build_disclosure(doc))
+        self.assertEqual(out['outbound'], [{'content': '全部', 'destination': '事業者', 'purpose': '稼働', 'mode': 'D'}])
+        with self.assertRaises(ValueError):
+            gen_texts.build_disclosure(doc.replace('> **題**', '> 題'))
+        with self.assertRaises(ValueError):
+            gen_texts.build_disclosure(doc.replace('項目。', '`項目`。'))
+        with self.assertRaises(ValueError):
+            gen_texts.build_disclosure(doc.replace('|（VPS の場合）全部|事業者|稼働|\n', ''))
 
 
 class TestNoPlaintext(unittest.TestCase):

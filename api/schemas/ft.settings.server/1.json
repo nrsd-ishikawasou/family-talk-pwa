@@ -109,6 +109,11 @@
       "default": "",
       "description": "第11章 3.2。形 C の時"
     },
+    "server.hosting_provider": {
+      "type": "string",
+      "default": "",
+      "description": "第11章 3.2、第12章 7.1。形 D の時。VPS の事業者の名前（空なら起動しない）"
+    },
     "server.admin_bind": {
       "type": "string",
       "default": "127.0.0.1",

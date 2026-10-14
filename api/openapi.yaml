@@ -289,6 +289,8 @@ paths:
       x-authz:
       - approved
       - invite_token
+      - setup_token
+      - reset_token
       x-reauth: conditional
       x-idempotency: natural
       x-idempotency-natural: challenge
@@ -743,6 +745,7 @@ paths:
       x-idempotency: natural
       x-idempotency-natural: version
       x-errors:
+      - MEM-008
       - AUTH-001
       - AUTH-002
       requestBody:
@@ -1265,7 +1268,7 @@ paths:
       description: 第2章 5.4
       x-authz:
       - approved
-      x-reauth: true
+      x-reauth: conditional
       x-idempotency: none
       x-errors:
       - AUTH-006
@@ -1332,7 +1335,8 @@ paths:
       description: 第2章 5.4
       x-authz:
       - approved
-      x-reauth: true
+      - device_self
+      x-reauth: conditional
       x-idempotency: natural
       x-idempotency-natural: id
       x-errors:
@@ -1343,7 +1347,6 @@ paths:
       - MEM-006
       - AUTH-001
       - AUTH-002
-      - KEY-004
       requestBody:
         required: true
         content:
@@ -4664,6 +4667,38 @@ paths:
                 $ref: '#/components/schemas/Family'
         default:
           $ref: '#/components/responses/Problem'
+  /admin/family/recovery-key/printed:
+    post:
+      operationId: markRecoveryCardPrinted
+      tags:
+      - admin
+      description: 第2章 5.10
+      x-authz:
+      - admin
+      x-idempotency: natural
+      x-idempotency-natural: repeat_safe
+      x-ratelimit:
+      - admin
+      x-errors:
+      - AUTH-001
+      - AUTH-002
+      - KEY-004
+      - ADM-001
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/MarkRecoveryCardPrintedRequest'
+      responses:
+        '200':
+          description: 成功
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/MarkRecoveryCardPrintedResponse'
+        default:
+          $ref: '#/components/responses/Problem'
   /admin/family/recovery-key/rotate:
     post:
       operationId: rotateFamilyRecoveryKey
@@ -5221,6 +5256,9 @@ components:
         approved: *id004
         expires_at: *id003
         idle_expires_at: *id003
+        disclosure_ack_version: &id011
+          type: string
+          pattern: ^[0-9a-f]{16}$
       required:
       - user_id
       - device_id
@@ -5682,17 +5720,23 @@ components:
       properties:
         family_name: *id001
         display_name: *id001
-        avatar: *id002
+        challenge_id: *id002
         passkey:
           $ref: '#/components/schemas/WebAuthnResponse'
-        recovery_code_written: *id004
-        card_printed: *id004
+        device_name: *id001
+        platform:
+          type: string
+          enum:
+          - iphone
+          - android
+          - pc
       required:
       - family_name
       - display_name
+      - challenge_id
       - passkey
-      - recovery_code_written
-      - card_printed
+      - device_name
+      - platform
       additionalProperties: false
     CreateInviteRequest:
       type: object
@@ -5753,7 +5797,7 @@ components:
       type: object
       properties:
         display_name: *id001
-        avatar: *id002
+        challenge_id: *id002
         passkey:
           $ref: '#/components/schemas/WebAuthnResponse'
         device_name: *id001
@@ -5765,6 +5809,7 @@ components:
           - pc
       required:
       - display_name
+      - challenge_id
       - passkey
       - device_name
       - platform
@@ -5773,8 +5818,11 @@ components:
       type: object
       properties:
         invite_token: *id001
+        setup_token: *id001
+        reset_token: *id001
       required: []
       additionalProperties: false
+      maxProperties: 1
     VerifyPasskeyRegisterRequest:
       type: object
       properties:
@@ -5802,6 +5850,7 @@ components:
         response:
           $ref: '#/components/schemas/WebAuthnResponse'
         device_hint: *id002
+        device_sig: *id007
         platform:
           type: string
           enum:
@@ -5813,6 +5862,11 @@ components:
       - response
       - platform
       additionalProperties: false
+      dependentRequired:
+        device_hint:
+        - device_sig
+        device_sig:
+        - device_hint
     StartQrLoginRequest:
       type: object
       properties:
@@ -5887,6 +5941,7 @@ components:
     ResetPasskeyRequest:
       type: object
       properties:
+        challenge_id: *id002
         passkey:
           $ref: '#/components/schemas/WebAuthnResponse'
         device_name: *id001
@@ -5897,6 +5952,7 @@ components:
           - android
           - pc
       required:
+      - challenge_id
       - passkey
       - device_name
       - platform
@@ -5920,7 +5976,7 @@ components:
     AckDisclosureRequest:
       type: object
       properties:
-        version: *id006
+        version: *id011
       required:
       - version
       additionalProperties: false
@@ -5928,14 +5984,37 @@ components:
     GetFamilyDisclosureResponse:
       type: object
       properties:
-        version: *id006
-        text_key: *id001
-        params:
+        version: *id011
+        notice:
           type: object
+          properties:
+            title: *id001
+            lead: *id001
+            items:
+              type: array
+              items: *id001
+          required:
+          - title
+          - lead
+          - items
+          additionalProperties: false
+        outbound:
+          type: array
+          items:
+            type: object
+            properties:
+              content: *id001
+              destination: *id001
+              purpose: *id001
+            required:
+            - content
+            - destination
+            - purpose
+            additionalProperties: false
       required:
       - version
-      - text_key
-      - params
+      - notice
+      - outbound
       additionalProperties: false
     GetMeResponse:
       type: object
@@ -6737,9 +6816,9 @@ components:
     GetAdminUpdateResponse:
       type: object
       properties:
-        current: &id011
+        current: &id012
           $ref: ./schemas/common/semver/1.json
-        latest: *id011
+        latest: *id012
         notes_url: *id001
         auto: *id004
       required:
@@ -6748,7 +6827,7 @@ components:
     ApplyAdminUpdateRequest:
       type: object
       properties:
-        version: *id011
+        version: *id012
       required:
       - version
       additionalProperties: false
@@ -6801,6 +6880,14 @@ components:
         name: *id001
         icon: *id002
       required: []
+      additionalProperties: false
+    MarkRecoveryCardPrintedRequest: *id010
+    MarkRecoveryCardPrintedResponse:
+      type: object
+      properties:
+        printed_at: *id003
+      required:
+      - printed_at
       additionalProperties: false
     RotateFamilyRecoveryKeyRequest:
       type: object

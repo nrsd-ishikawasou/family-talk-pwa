@@ -19,6 +19,9 @@
   - `GET /rooms/{id}/events` の `types`、relations の `rel_type`。
   - `GET /sync` の `since`・`timeout`、`GET /rooms/{id}/mls/commits` の `since_epoch`。
   - `PUT /me/keybackup/{group_id}/{epoch}` の `rewrap`、`DELETE /admin/users/{id}` の `erase_content`。
+- 0.1.0：`POST /admin/family/recovery-key/printed`（家族回復鍵のカードを印刷したことの記録。基本設計書 第3章 3.1 の 6、第2章 5.10）。
+- 0.1.0：`MEM-008`（409。明示の版が古い。params.version に今の版）。
+- 0.1.0：設定 `server.hosting_provider`（形 D の VPS の事業者の名前。第11章 3.2、第12章 7.1）。
 
 ### 変更
 
@@ -35,3 +38,10 @@
 - 0.1.0：`GET /manifest.webmanifest` のタグを family に、`POST /internal/sfu/webhook` のタグを calls にした。タグは実装するブロックを決めるので、1 つのタグに 2 つのブロックの操作を混ぜない（経路と認可は変えない）。
 - 0.1.0：`GET /sync` の応答に `has_more` を足し、`snapshot` を名前つきの形 `SyncSnapshot` にした（基本設計書 第2章 5.9）。
 - 0.1.0：`GET /me/keybackup` の要素を `KeyBackupEntry`（`pos` と `backup`）にした。`fkb-history/1` は pos を持たず、端末が次の `since` を知る手が無かった（基本設計書 第2章 5.4）。
+- 0.1.0：初回の管理者の作成と招待の受諾の要求から `avatar` を外した。作成の時点では鍵とトークが無く、写真は後でプロフィールのイベントで送る（基本設計書 第3章 3.1、3.3）。管理者の作成から `recovery_code_written` と `card_printed` も外した（回復コードとカードは作成の後の段）。
+- 0.1.0：初回の管理者の作成に `challenge_id`、`device_name`、`platform` を、招待の受諾とパスキーの作り直しに `challenge_id` を足した。
+- 0.1.0：登録の options（`POST /auth/passkey/register/options`）の要求に `setup_token` と `reset_token` を足した。`invite_token` と合わせて多くて 1 つ。
+- 0.1.0：`POST /auth/passkey/login/verify` の要求に `device_sig` を足した。`device_hint` と組で送る（基本設計書 第12章 5.3）。
+- 0.1.0：`DELETE /me/devices/{id}` の再認証を conditional にした（自分の端末の取り消しは要しない。基本設計書 第3章 4.5）。
+- 0.1.0：`POST /me/devices/{id}/approve` の認可に `device_self` を足し、再認証を conditional にした。未承認の端末が自分を承認できなかった（自己承認。基本設計書 第12章 5.5 の 2）。
+- 0.1.0：`GET /family/disclosure` の応答を、文の鍵から、サーバーが値を埋めた文（`notice`）と外へ送る情報の表（`outbound`）にした。版は 16 進 16 文字の文字列（基本設計書 第12章 7.1）。`POST /me/disclosure-ack` の version も同じ形にし、`Session` に `disclosure_ack_version` を足した。

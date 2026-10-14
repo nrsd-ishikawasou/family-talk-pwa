@@ -182,6 +182,14 @@ items:
     chapter: "第11章 3.2"
     locked_when_env_or_file: true
     note: "形 C の時"
+  - key: server.hosting_provider
+    type: string
+    default: ""
+    layers: [env, file, db]
+    env: FT_HOSTING_PROVIDER
+    chapter: "第11章 3.2、第12章 7.1"
+    locked_when_env_or_file: true
+    note: "形 D の時。VPS の事業者の名前（空なら起動しない）"
   - key: server.admin_bind
     type: string
     default: "127.0.0.1"

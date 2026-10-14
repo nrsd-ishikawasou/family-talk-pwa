@@ -81,6 +81,7 @@ classDiagram
     +static load(db) Promise~Option~DeviceKeys~~
     +publicFdev() Fdev
     +fingerprint() string
+    +proveLogin(challenge) Promise~bytes~
   }
   class KeyBundle {
     +S bytes
@@ -207,6 +208,7 @@ classDiagram
 |DeviceKeys|`+credential bytes`|MLS の basic credential（device_id、user_id）|
 |DeviceKeys|`+publicFdev() Fdev`|fdev/1（user_sig は KeyBundle が付ける）|
 |DeviceKeys|`+fingerprint() string`|承認の画面|
+|DeviceKeys|`+proveLogin(challenge) Promise~bytes~`|既知の端末の証 `device_sig`（第12章 5.3）。`ft.device_proof/1`、0、challenge の連結を sig で署名（ECDSA P-256、SHA-256。WebCrypto の r と s の 64 バイト）|
 |KeyBundle|`+S bytes`|256 ビット（記憶の上。IndexedDB には端末鍵で包んで）|
 |KeyBundle|`+userSigningKey CryptoKeyPair`|HKDF(S, "family-talk/v1/user-signing") から P-256 の秘密鍵を導く（RFC 6979 の手順で決定的）|
 |KeyBundle|`+keyBackupKey CryptoKey`|HKDF(S, "family-talk/v1/key-backup")|
@@ -260,7 +262,7 @@ classDiagram
 |番号|操作（上の図）|使う側|由来|
 |---|---|---|---|
 |B-220|`MlsEngine`（定義）、`CryptoProvider`|本ブロック、試験（T-L3-01 の 2 系統）|[第12章 5.2 群の暗号（MLS）](../../../../docs/jp/design/12_基本設計書_データと暗号化.md#52-群の暗号mls)、全体実装設計書 2.8|
-|B-221|`DeviceKeys`（作成、読み、`publicFdev`、`fingerprint`）|web-ui（参加、端末の追加、一覧の指紋）、web-shell（Android の端末鍵の包み）、web-sync（登録 `PUT /me/devices/{id}/keys`）|[第12章 5.3 端末の鍵（DD-12-3）](../../../../docs/jp/design/12_基本設計書_データと暗号化.md#53-端末の鍵dd-12-3)、[第3章 4.4 新しい端末の追加（DD-3-7）](../../../../docs/jp/design/03_基本設計書_認証_構成員_端末.md#44-新しい端末の追加dd-3-7)|
+|B-221|`DeviceKeys`（作成、読み、`publicFdev`、`fingerprint`、`proveLogin`）|web-ui（参加、端末の追加、一覧の指紋）、web-shell（Android の端末鍵の包み）、web-sync（登録 `PUT /me/devices/{id}/keys`）|[第12章 5.3 端末の鍵（DD-12-3）](../../../../docs/jp/design/12_基本設計書_データと暗号化.md#53-端末の鍵dd-12-3)、[第3章 4.4 新しい端末の追加（DD-3-7）](../../../../docs/jp/design/03_基本設計書_認証_構成員_端末.md#44-新しい端末の追加dd-3-7)|
 |B-222|`KeyBundle`、`Copies`、`Recovery`、`FamilyRecoveryKey`、`Wordlist`|web-ui（参加 3、回復の 4 段、承認、カードの印刷、「鍵を作り直す」）、web-sync（承認の後の Add）|[第12章 5.4 鍵バンドルと回復（DD-12-4、DD-12-5）](../../../../docs/jp/design/12_基本設計書_データと暗号化.md#54-鍵バンドルと回復dd-12-4dd-12-5)、[第12章 5.5 新しい端末の参加（第3章と往復）](../../../../docs/jp/design/12_基本設計書_データと暗号化.md#55-新しい端末の参加第3章と往復)、[第3章 4.6 回復（パスキーを失った）](../../../../docs/jp/design/03_基本設計書_認証_構成員_端末.md#46-回復パスキーを失った)、[第10章 10 語表（DD-10-9）](../../../../docs/jp/design/10_基本設計書_画面.md#10-語表dd-10-9)|
 |B-223|`KeyBackup`（`onEpochAdvanced`、`fetchAll`、`decryptAll`、`transferTo`、`missing`、`rewrapAll`）|web-sync（epoch が進んだ時、新しい端末の履歴の同期）|[第12章 5.6 鍵のバックアップ（履歴）（DD-12-6）](../../../../docs/jp/design/12_基本設計書_データと暗号化.md#56-鍵のバックアップ履歴dd-12-6)、全体実装設計書 4.6|
 |B-224|`GroupStore::withGroup`、`load`、`historic`|web-sync、web-push（SW の復号）|全体実装設計書 2.5|

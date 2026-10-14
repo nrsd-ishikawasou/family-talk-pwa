@@ -8,7 +8,7 @@
    照らす範囲は段階ごとに広げる（実装計画の WP ごとの閉じる条件）。
 3. --texts に挙げた文言の表（JSON。鍵から文）が、全部の行の user_text_key を持つ。
 
-使い方：python -m tools.errors_check [--tests NET,SRV-001] [--texts web/src/i18n/ja/errors.json]
+使い方：python -m tools.errors_check [--tests NET,SRV-001] [--texts web/src/ui/i18n/errors.json]
 """
 import argparse
 import json

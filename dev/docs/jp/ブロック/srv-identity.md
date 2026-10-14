@@ -42,6 +42,9 @@
   - `OnUserDeleted(tx, userId, eraseContent)`、`OnUserErased(tx, userId)`
   - `OnNotice(tx, kind, params, audience)`（知らせ）
   - 登録する側：srv-keys（鍵の失効）、srv-push（購読の削除、知らせ）、srv-rooms（leaf の削除待ち、削除済みの印）、srv-admin（監査）
+- 依存の逆転（interface を本ブロックが定め、上のブロックが実装して渡す）：
+  - `Audit`（srv-admin）
+  - `DeviceKeyReader`（srv-keys。端末の署名鍵の公開部で `device_sig` を確かめる。第12章 5.3）
 - 上：srv-boundary（`SessionVerifier` 等の実装を渡す）、srv-admin（管理者の操作は本ブロックの関数を呼ぶ）。
 
 ## クラス図
@@ -59,6 +62,7 @@ classDiagram
     +Color string
     +InstalledAt Time
     +RecoveryPub JWK
+    +CardPrintedAt Option~Time~
     +AdminNames() [string]
   }
   class Families {
@@ -66,6 +70,13 @@ classDiagram
     +Update(tx, name, icon)
     +Manifest() WebManifest
     +Disclosure(ctx) DisclosureDoc
+    +MarkCardPrinted(tx, by) Time
+    +ClearCardPrinted(tx)
+  }
+  class DisclosureDoc {
+    +Version string
+    +Notice Notice
+    +Outbound [OutboundRow]
   }
   class Icon {
     +Render(color, size, variant) PNG
@@ -134,7 +145,7 @@ classDiagram
     +Issue(tx, issuer, spec) Invite + token
     +Revoke(tx, id, by)
     +Peek(ctx, token) InvitePublic
-    +Accept(tx, token, name, photo, passkey) Result~AcceptResult, Event~
+    +Accept(tx, token, challengeId, name, passkey, device) Result~AcceptResult, Event~
     +ListMine(ctx, userId) [Invite]
     +ListAll(ctx) [Invite]
     +Prune(ctx)
@@ -142,16 +153,32 @@ classDiagram
   class SetupLink {
     +Create(tx) token
     +Status(ctx) SetupStatus
-    +Consume(tx, token, familyName, adminName, photo, passkey) Result~AcceptResult, Event~
+    +Consume(tx, token, challengeId, familyName, adminName, passkey, device) Result~AcceptResult, Event~
   }
   class Passkeys {
-    +RegisterOptions(ctx, userId Option, token Option) CreationOptions
-    +RegisterVerify(tx, userId, response) Credential
-    +LoginOptions(ctx) RequestOptions
-    +LoginVerify(tx, response, deviceHint) Result~LoginResult, Event~
+    +RegisterOptions(ctx, principal Option, token Option~RegToken~) Challenge
+    +RegisterVerify(tx, userId, challengeId, response) Credential
+    +LoginOptions(ctx) Challenge
+    +LoginVerify(tx, challengeId, response, proof Option~DeviceProof~) Result~LoginResult, Event~
     +List(ctx, userId) [Credential]
     +Delete(tx, userId, credId)
     +PrfEnabled(ctx, credId) bool
+  }
+  class Challenge {
+    +Id Uuid
+    +Bytes []byte
+    +Kind string
+    +UserId Option~Uuid~
+    +TokenSha256 Option~[]byte~
+    +ExpiresAt Time
+  }
+  class DeviceProof {
+    +DeviceId Uuid
+    +Sig []byte
+  }
+  class DeviceKeyReader {
+    <<interface>>
+    +VerifyProof(ctx, deviceId, message, sig) Result~bool~
   }
   class Credential {
     +Id []byte
@@ -168,7 +195,7 @@ classDiagram
     +Issue(tx, userId, deviceId) cookieValue
     +Verify(ctx, cookie) Result~Principal, Event~
     +Rotate(tx, sessionId) cookieValue
-    +Revoke(tx, sessionId, reason)
+    +Revoke(tx, sessionId, reason RevokeReason)
     +RevokeAllOfDevice(tx, deviceId, reason)
     +RevokeAllOfUser(tx, userId, reason)
     +IssueWsToken(tx, principal) token
@@ -192,7 +219,9 @@ classDiagram
     +Register(tx, userId, kind, name, ua) Device
     +List(ctx, userId) [DeviceView]
     +Rename(tx, userId, deviceId, name)
-    +Revoke(tx, deviceId, by)
+    +Approve(tx, deviceId, by)
+    +UnapproveAllOfUser(tx, userId)
+    +Revoke(tx, deviceId, by, self bool)
     +Touch(tx, deviceId, ip, now)
     +ExpireUnapproved(ctx, olderThan)
     +MarkDormant(tx, deviceId)
@@ -209,7 +238,7 @@ classDiagram
   }
   class ResetLink {
     +Create(tx, adminId, userId) token
-    +Consume(tx, token, passkeyResponse) Result~LoginResult, Event~
+    +Consume(tx, token, challengeId, passkeyResponse, device) Result~LoginResult, Event~
   }
   class IpLog {
     +Record(tx, deviceId, ip, at)
@@ -241,6 +270,10 @@ classDiagram
   Invites ..> Sessions
   SetupLink ..> Invites
   Passkeys --> Credential
+  Passkeys --> Challenge
+  Passkeys ..> DeviceKeyReader
+  Passkeys ..> DeviceProof
+  Families --> DisclosureDoc
   Sessions ..> Devices
   Devices --> Device
   Devices ..> Hooks
@@ -262,10 +295,14 @@ classDiagram
 |Family|`+Name string`|20 文字（書記素）|
 |Family|`+Color string`|家族の色（manifest の theme_color）|
 |Family|`+RecoveryPub JWK`|家族回復鍵の公開部（srv-keys が書く）|
-|Family|`+AdminNames() [string]`|明示の文に埋める|
+|Family|`+CardPrintedAt Option~Time~`|家族回復鍵のカードを印刷したことの記録（第3章 3.1 の 6）。空の間は管理者の画面に注意のバナー|
+|Family|`+AdminNames() [string]`|明示の文に埋める（2 人なら「、」で結ぶ）|
 |Families|`+Update(tx, name, icon)`|/admin/family。家族全員のトークにもイベント（srv-rooms SystemEvent）|
 |Families|`+Manifest() WebManifest`|第8章 3.1。api が返す。アイコンは Icon が作りキャッシュ|
-|Families|`+Disclosure(ctx) DisclosureDoc`|第12章 7・8 の文（P-8 の文言を埋め込み、版と管理者の名前と VPS の有無を差し込む）|
+|Families|`+Disclosure(ctx) DisclosureDoc`|第12章 7.1 の規則。生成ファイル `gen/disclosure.json`（全体実装設計書 5.1）を `go:embed` し、`{admin}`（AdminNames）と `{provider}`（設定 `server.hosting_provider`）を埋める。mode D の行は設定 `server.mode` が D の時だけ残す|
+|Families|`+MarkCardPrinted(tx, by) Time`|`POST /admin/family/recovery-key/printed`（srv-admin の operation から）。families.card_printed_at を今に。2 回目からは最初の時刻を返す。Audit|
+|Families|`+ClearCardPrinted(tx)`|カードの作り直し（srv-admin RotateRecoveryKey）で card_printed_at を空に戻す|
+|DisclosureDoc|`+Version string`|`notice` と `outbound` を RFC 8785 で正規化した JSON の SHA-256 の先頭 16 文字（16 進）。値は文字列と配列とオブジェクトだけなので、鍵を並べ HTML の escape をしない JSON で RFC 8785 と同じ列になる|
 |Icon|`+Render(color, size, variant) PNG`|同梱の絵柄を家族の色で着色（any、maskable、monochrome）。/data/www/family/icon-&lt;size&gt;-&lt;variant&gt;.png にキャッシュ|
 |User|`+DisplayName string`|20 文字|
 |User|`+Role string`|member か admin|
@@ -280,7 +317,8 @@ classDiagram
 |Users|`+List(ctx) [UserSummary]`|/users（識別子、表示名、アイコン、役割、状態、本人の署名鍵の公開部は srv-keys から）|
 |Users|`+UpdateProfile(tx, id, patch)`|/me PATCH。平文の欄は user.changed、暗号の欄は本人の端末が家族全員のトークへ|
 |Users|`+Settings(ctx, userId) UserSettings`|/me/settings。エンベロープを開く（srv-push の規則の判定もこれを呼ぶ）|
-|Users|`+Suspend(tx, id, by, reason)`|状態を suspended にする。hook OnUserSuspended。session.revoked(suspended)、SystemEvent、notice|
+|Users|`+Suspend(tx, id, by, reason)`|状態を suspended にする。Sessions.RevokeAllOfUser(suspended)、Devices.UnapproveAllOfUser（第3章 8.1）、hook OnUserSuspended、SystemEvent、notice|
+|Users|`+Unsuspend(tx, id, by)`|状態を normal にする。端末は未承認のまま（本人がコピー (a) で承認し直す。第12章 5.4）|
 |Users|`+Delete(tx, id, by, eraseContent)`|停止 + hook OnUserDeleted + 状態 deleted。最後の管理者は MEM-003|
 |Users|`+RequestErase(tx, id)`|erase_pending。24 時間の仕事（Jobs.Enqueue erasure）。子どもは保護者の承認（MEM-006）|
 |Users|`+CancelErase(tx, id)`|`DELETE /me/erase`：猶予の間なら erase_pending を外し、erasure の仕事を取り消す。全端末に知らせ。求めが無ければ何もしない|
@@ -288,7 +326,7 @@ classDiagram
 |Users|`+SetRole(tx, id, role, by)`|最後の 1 人の解除は MEM-003|
 |Users|`+Transfer(tx, from, to)`|/admin/transfer：admin_transfers に求めを置き（7 日。前の求めは取り消す。第3章 8.4）、相手に OnNotice で知らせる|
 |Users|`+AcceptTransfer(tx, principal, transferId)`|`POST /me/transfer/{id}/accept`（G-18）。指名された本人だけ。期限内なら役割を入れ替え、Audit と全員への知らせ。期限切れは 404|
-|Users|`+AckDisclosure(tx, userId, version)`|`POST /me/disclosure-ack`（G-09）。users.disclosure_ack_version に書く|
+|Users|`+AckDisclosure(tx, userId, version)`|`POST /me/disclosure-ack`（G-09）。version が Families.Disclosure の今の版でなければ MEM-008（params.version に今の版）。users.disclosure_ack_version に書く|
 |Users|`+BirthdayToday(ctx, today) [UserId]`|srv-worker の誕生日の知らせ（エンベロープを開く）|
 |Users|`+ChildTransitions(ctx, today) [Transition]`|16 歳・18 歳の解除|
 |Guardians|`+Settings(ctx, childId) ChildSettings`|時間帯、リンクの確認、端末の追加の承認、招待の可否（`GET /me/guardian/children/{id}/controls`。第2章 5.3）|
@@ -300,33 +338,38 @@ classDiagram
 |Invite|`+UsesLeft int`|1|
 |Invites|`+Issue(tx, issuer, spec) Invite + token`|同時に 20 まで（MEM-004）。子ども区分と「構成員も招待を出せる」の設定（MEM-007）|
 |Invites|`+Peek(ctx, token) InvitePublic`|未認証。家族の名前、招待者、期限。子ども区分の招待なら child.guardian_names（G-12）。誤りも同じ時間（constant-time の比較 + 固定の遅延）|
-|Invites|`+Accept(tx, token, name, photo, passkey) Result~AcceptResult, Event~`|AUTH-007。構成員の作成、最初の端末、セッションの順に作る|
+|Invites|`+Accept(tx, token, challengeId, name, passkey, device) Result~AcceptResult, Event~`|AUTH-007。challenge は kind invite で同じトークンのハッシュの物だけ。構成員の作成、最初の端末、セッションの順に作る。写真は受けない（第3章 3.3）|
 |Invites|`+ListAll(ctx) [Invite]`|/admin/invites|
 |Invites|`+Prune(ctx)`|1 年|
 |SetupLink|`+Create(tx) token`|1 回限り・7 日。`ft setup` の最後と `ft admin create-link` だけが呼ぶ（srv-admin HostTools。G-08）|
 |SetupLink|`+Status(ctx) SetupStatus`|/setup/status|
-|SetupLink|`+Consume(tx, token, familyName, adminName, photo, passkey) Result~AcceptResult, Event~`|設置の状態が初回でなければ 404|
-|Passkeys|`+RegisterOptions(ctx, userId Option, token Option) CreationOptions`|第3章 4.1 の値。excludeCredentials|
-|Passkeys|`+RegisterVerify(tx, userId, response) Credential`|credProps.rk、prf.enabled を記録|
+|SetupLink|`+Consume(tx, token, challengeId, familyName, adminName, passkey, device) Result~AcceptResult, Event~`|設置の状態が初回でなければ 404。challenge は kind setup。家族、管理者、最初の端末、セッションを作る。写真、回復コード、カードは作成の後（第3章 3.1）|
+|Passkeys|`+RegisterOptions(ctx, principal Option, token Option~RegToken~) Challenge`|第3章 4.1 の値。excludeCredentials。RegToken は invite、setup、reset のどれか 1 つ（要求に 2 つ以上は NET-001）。トークンが無効なら AUTH-007。challenge を login_challenges に置き id を返す|
+|Passkeys|`+RegisterVerify(tx, userId, challengeId, response) Credential`|credProps.rk、prf.enabled を記録。challenge は 1 回で消す|
+|Challenge|`+Kind string`|register、login、setup、invite、reset のいずれか。5 分|
 |Passkeys|`+LoginOptions(ctx) RequestOptions`|allowCredentials は空（条件付き UI）|
-|Passkeys|`+LoginVerify(tx, response, deviceHint) Result~LoginResult, Event~`|AUTH-003。失敗の回数（DD-3-9）を超えたら AUTH-004。既知の端末か新しい端末か|
+|Passkeys|`+LoginVerify(tx, challengeId, response, proof Option~DeviceProof~) Result~LoginResult, Event~`|AUTH-003。失敗の回数（DD-3-9）を超えたら AUTH-004。停止・削除は MEM-002。proof があり、端末が同じ構成員の物で取り消し・期限切れでなく、DeviceKeyReader.VerifyProof が通れば同じ端末。それ以外は新しい端末（未承認。第3章 4.2）|
+|DeviceKeyReader|`+VerifyProof(ctx, deviceId, message, sig) Result~bool~`|srv-keys が実装。message は第12章 5.3 の連結。公開鍵が無ければ false|
 |Passkeys|`+List(ctx, userId) [Credential]`|`GET /me/passkeys`（第2章 5.2）|
 |Passkeys|`+Delete(tx, userId, credId)`|`DELETE /me/passkeys/{id}`。最後の 1 つは AUTH-008|
 |Sessions|`+Issue(tx, userId, deviceId) cookieValue`|256 ビット。ハッシュを置く。絶対 90 日・無操作 30 日。UV のあるパスキーの登録・ログインの直後に出す時は reauth_at = 今（第3章 4.5）|
 |Sessions|`+Verify(ctx, cookie) Result~Principal, Event~`|AUTH-001 / AUTH-002。無操作の期限を延ばす（1 分に 1 回まで書く）|
 |Sessions|`+Rotate(tx, sessionId) cookieValue`|7 日前の静かな作り直し|
+|Sessions|`+Revoke(tx, sessionId, reason RevokeReason)`|RevokeReason は AUTH-002 の params.reason の 7 つ（logout、device_revoked、suspended、deleted、erased、key_rotation、expired）。sessions.revoked_reason も同じ|
 |Sessions|`+RevokeAllOfUser(tx, userId, reason)`|停止、鍵の交代|
 |Sessions|`+IssueWsToken(tx, principal) token`|60 秒、使い切り|
 |Sessions|`+IssueShellToken(tx, principal) token`|24 時間|
 |Sessions|`+Prune(ctx)`|失効から 90 日|
 |Device|`+Name Fenv`|エンベロープ|
 |Device|`+Kind string`|iphone、android、pc のいずれか|
-|Device|`+State string`|unapproved、approved、dormant、revoked、expired のいずれか|
+|Device|`+State string`|unapproved、approved、dormant、revoked、expired のいずれか。承認の正（device_keys.approved_at は署名の時刻の記録だけ）|
 |Device|`+LastIp Fenv`|エンベロープ。ip_log は別の表|
 |Device|`+HasPush bool`|srv-push から|
 |Devices|`+Register(tx, userId, kind, name, ua) Device`|ログイン・参加・QR の成功で。未承認|
 |Devices|`+List(ctx, userId) [DeviceView]`|名前、種類、最終の利用、IP の国と市（端末の中の地理のデータで求めるため、サーバーは国と市を知らない：生の IP をエンベロープから開いて返す）、承認、購読、鍵の指紋（srv-keys）|
-|Devices|`+Revoke(tx, deviceId, by)`|状態 revoked。Sessions.RevokeAllOfDevice。hook OnDeviceRevoked。device.changed（本人の全端末、家族の全員）。session.revoked をその端末へ|
+|Devices|`+Approve(tx, deviceId, by)`|未承認を承認済みにする。srv-keys が fdev/1 の user_sig を置いた同じトランザクションで呼ぶ。承認済みなら KEY-002。device.changed|
+|Devices|`+UnapproveAllOfUser(tx, userId)`|停止で、承認済みと休眠の端末を未承認に戻す（取り消しではない。hook は呼ばない）|
+|Devices|`+Revoke(tx, deviceId, by, self bool)`|状態 revoked。Sessions.RevokeAllOfDevice（device_revoked）。hook OnDeviceRevoked。device.changed（本人の全端末、家族の全員）。session.revoked をその端末へ。self は自分の端末（再認証なし、応答で Cookie を消す。第3章 4.5）|
 |Devices|`+Touch(tx, deviceId, ip, now)`|最終の利用と ip_log|
 |Devices|`+ExpireUnapproved(ctx, olderThan)`|7 日|
 |Devices|`+MarkDormant(tx, deviceId)`|srv-keys の休眠の提案から|
@@ -336,7 +379,7 @@ classDiagram
 |QrFlow|`+Info(ctx, principal, userCode) QrInfo`|`GET /auth/qr/{user_code}`（G-13）。本人の承認済みの端末だけ。新しい端末の種類、名前、IP（生の値）、鍵の指紋|
 |Reports|`+Create(tx, principal, kind, params)`|`POST /me/report`（G-05。シェルのトークンも可）。kind は update_failed など。本文なし。OnNotice で管理者に知らせる（第7章 9）|
 |ResetLink|`+Create(tx, adminId, userId) token`|24 時間、1 回。監査|
-|ResetLink|`+Consume(tx, token, passkeyResponse) Result~LoginResult, Event~`|パスキーを作り直し、未承認の端末として登録する。recovery.used(method: reset)|
+|ResetLink|`+Consume(tx, token, challengeId, passkeyResponse, device) Result~LoginResult, Event~`|challenge は kind reset。パスキーを作り直し、未承認の端末として登録する。recovery.used(method: reset)|
 |IpLog|`+Record(tx, deviceId, ip, at)`|生の IP。28 日で消す|
 |Audit|`+Record(tx, actor, action, target, params)`|実装は srv-admin|
 |Hooks|`+OnUserCreated [fn]`|家族全員のトークへの追加待ち（srv-rooms）|
@@ -346,14 +389,14 @@ classDiagram
 
 |番号|操作（上の図）|使う側|由来|
 |---|---|---|---|
-|B-060|`Families`（`Get`、`Update`、`Manifest`、`Disclosure`）、`Icon`|srv-admin（`/admin/family`）、srv-boundary（manifest、`/family`、`/family/disclosure` の operation は本ブロックが実装）、srv-push（通知の title の家族の名前）|[第3章 3.1 初回の管理者（DD-3-1）](../../../../docs/jp/design/03_基本設計書_認証_構成員_端末.md#31-初回の管理者dd-3-1)、[第8章 3.1 manifest（DD-8-1）](../../../../docs/jp/design/08_基本設計書_iPhoneとPCのシェル.md#31-manifestdd-8-1)、[第12章 7 読める人の明示（DD-12-14。第10章と往復）](../../../../docs/jp/design/12_基本設計書_データと暗号化.md#7-読める人の明示dd-12-14第10章と往復)|
+|B-060|`Families`（`Get`、`Update`、`Manifest`、`Disclosure`、`MarkCardPrinted`、`ClearCardPrinted`）、`Icon`|srv-admin（`/admin/family`、`/admin/family/recovery-key/printed`）、srv-boundary（manifest、`/family`、`/family/disclosure` の operation は本ブロックが実装）、srv-push（通知の title の家族の名前）|[第3章 3.1 初回の管理者（DD-3-1）](../../../../docs/jp/design/03_基本設計書_認証_構成員_端末.md#31-初回の管理者dd-3-1)、[第8章 3.1 manifest（DD-8-1）](../../../../docs/jp/design/08_基本設計書_iPhoneとPCのシェル.md#31-manifestdd-8-1)、[第12章 7 読める人の明示（DD-12-14。第10章と往復）](../../../../docs/jp/design/12_基本設計書_データと暗号化.md#7-読める人の明示dd-12-14第10章と往復)|
 |B-061|`Users`（作成、取得、一覧、プロフィール、設定、停止・再開・削除・抹消・役割・引き継ぎとその承認、明示の確認、誕生日、子どもの解除）|srv-admin（管理者の操作）、srv-push（`Settings` の規則）、srv-rooms（表示名、役割）、srv-worker（`Erase`、`BirthdayToday`、`ChildTransitions`、`AskAgeEveryTwoYears`）|[第3章 6 アカウントとプロフィール（DD-3-14）](../../../../docs/jp/design/03_基本設計書_認証_構成員_端末.md#6-アカウントとプロフィールdd-3-14)、[第3章 7 役割と権限（DD-3-10）](../../../../docs/jp/design/03_基本設計書_認証_構成員_端末.md#7-役割と権限dd-3-10)、[第3章 8 構成の変化（DD-3-11、DD-3-12）](../../../../docs/jp/design/03_基本設計書_認証_構成員_端末.md#8-構成の変化dd-3-11dd-3-12)、[第3章 9 子ども（DD-3-13。O-09 の結論）](../../../../docs/jp/design/03_基本設計書_認証_構成員_端末.md#9-子どもdd-3-13o-09-の結論)|
 |B-062|`Guardians`（承認の求めと承認を含む）|operation（`/me/guardian/*`）、srv-admin、srv-push（子どもの時間帯）、srv-keys（子どもの端末の承認は保護者）|[第3章 9 子ども（DD-3-13。O-09 の結論）](../../../../docs/jp/design/03_基本設計書_認証_構成員_端末.md#9-子どもdd-3-13o-09-の結論)|
 |B-063|`Invites`（`Issue`、`Revoke`、`Peek`、`Accept`、一覧、`Prune`）|operation（本ブロック）、srv-admin（`/admin/invites`）、srv-worker（`Prune`）|[第3章 3.2 招待（DD-3-2）](../../../../docs/jp/design/03_基本設計書_認証_構成員_端末.md#32-招待dd-3-2)、[第3章 3.3 参加の流れ（DD-3-3）](../../../../docs/jp/design/03_基本設計書_認証_構成員_端末.md#33-参加の流れdd-3-3)|
 |B-064|`SetupLink`|srv-admin `HostTools`（`ft setup` の最後、`ft admin create-link`）、operation（`/setup/*`）|[第3章 3.1 初回の管理者（DD-3-1）](../../../../docs/jp/design/03_基本設計書_認証_構成員_端末.md#31-初回の管理者dd-3-1)、[第11章 4 設置の流れ（DD-11-2、DD-11-3）](../../../../docs/jp/design/11_基本設計書_運用.md#4-設置の流れdd-11-2dd-11-3)|
 |B-065|`Passkeys`|operation（本ブロック）、srv-keys（PRF の有無でコピー (e)）|[第3章 4.1 パスキーの登録（DD-3-4）](../../../../docs/jp/design/03_基本設計書_認証_構成員_端末.md#41-パスキーの登録dd-3-4)、[第3章 4.2 ログイン（DD-3-4）](../../../../docs/jp/design/03_基本設計書_認証_構成員_端末.md#42-ログインdd-3-4)|
 |B-066|`Sessions`（発行、検証、作り直し、失効、ws/shell のトークン）。srv-boundary の `SessionVerifier`、`WsTokenVerifier`、`ShellTokenVerifier` の実装|srv-boundary、srv-keys（鍵の交代で `RevokeAllOfUser`）、srv-admin（セッションの署名鍵の交代で全失効）|[第2章 4.1 セッション](../../../../docs/jp/design/02_基本設計書_境界.md#41-セッション)、[第2章 4.4 WebSocket と通知と SFU](../../../../docs/jp/design/02_基本設計書_境界.md#44-websocket-と通知と-sfu)、[第3章 4.3 セッション（DD-3-5）](../../../../docs/jp/design/03_基本設計書_認証_構成員_端末.md#43-セッションdd-3-5)|
-|B-067|`Devices`（登録、一覧、名前、取り消し、`Touch`、`ExpireUnapproved`、`MarkDormant`）|operation、srv-admin（`/admin/users/{id}/devices/{did}`）、srv-keys（承認で状態を進める `Devices.Approve` は srv-keys が `fdev/1` の `user_sig` を置いた後に呼ぶ）、srv-worker（期限切れ）|[第3章 5 端末とセッション（DD-3-6）](../../../../docs/jp/design/03_基本設計書_認証_構成員_端末.md#5-端末とセッションdd-3-6)|
+|B-067|`Devices`（登録、一覧、名前、`Approve`、`UnapproveAllOfUser`、取り消し、`Touch`、`ExpireUnapproved`、`MarkDormant`）。`DeviceKeyReader` の定義|operation、srv-admin（`/admin/users/{id}/devices/{did}`）、srv-keys（承認で状態を進める `Devices.Approve` は srv-keys が `fdev/1` の `user_sig` を置いた同じトランザクションで呼ぶ。`DeviceKeyReader` を実装する）、srv-worker（期限切れ）|[第3章 5 端末とセッション（DD-3-6）](../../../../docs/jp/design/03_基本設計書_認証_構成員_端末.md#5-端末とセッションdd-3-6)|
 |B-068|`QrFlow`（`Info` を含む）|operation|[第3章 4.4 新しい端末の追加（DD-3-7）](../../../../docs/jp/design/03_基本設計書_認証_構成員_端末.md#44-新しい端末の追加dd-3-7)|
 |B-069|`ResetLink`|srv-admin（発行）、operation（消費）|[第3章 4.6 回復（パスキーを失った）](../../../../docs/jp/design/03_基本設計書_認証_構成員_端末.md#46-回復パスキーを失った)|
 |B-070|`Hooks`（定義。登録は srv-keys、srv-push、srv-rooms、srv-admin）|同左|[第12章 9 消すこと（DD-12-13、R-12-6-1）](../../../../docs/jp/design/12_基本設計書_データと暗号化.md#9-消すことdd-12-13r-12-6-1)、I-8|
@@ -373,7 +416,7 @@ classDiagram
 
 |記録|形|欄|由来|
 |---|---|---|---|
-|`families`|表（1 行）|`id`、`name`、`icon_media_id`、`color`、`installed_at`、`recovery_pub jsonb`|[第3章 3.1 初回の管理者（DD-3-1）](../../../../docs/jp/design/03_基本設計書_認証_構成員_端末.md#31-初回の管理者dd-3-1)|
+|`families`|表（1 行）|`id`、`name`、`icon_media_id`、`color`、`installed_at`、`recovery_pub jsonb`、`card_printed_at?`|[第3章 3.1 初回の管理者（DD-3-1）](../../../../docs/jp/design/03_基本設計書_認証_構成員_端末.md#31-初回の管理者dd-3-1)|
 |`users`|表|`id`、`display_name`、`role`、`state`、`is_child`、`child_declared`、`created_at`、`dek_id`、`deleted_at?`、`erase_at?`、`disclosure_ack_version?`|[第3章 6 アカウントとプロフィール（DD-3-14）](../../../../docs/jp/design/03_基本設計書_認証_構成員_端末.md#6-アカウントとプロフィールdd-3-14)、[第3章 8 構成の変化（DD-3-11、DD-3-12）](../../../../docs/jp/design/03_基本設計書_認証_構成員_端末.md#8-構成の変化dd-3-11dd-3-12)|
 |`user_dek`|表|`user_id PK`、`wrapped bytea`（`fdek/1`）|[第12章 6.2 エンベロープ暗号化（DD-12-12）](../../../../docs/jp/design/12_基本設計書_データと暗号化.md#62-エンベロープ暗号化dd-12-12)|
 |`user_private`|表|`user_id PK`、`birthday bytea?`、`aliases bytea`、`muted_users bytea`、`settings bytea`（すべて `fenv/1`）|[第3章 6 アカウントとプロフィール（DD-3-14）](../../../../docs/jp/design/03_基本設計書_認証_構成員_端末.md#6-アカウントとプロフィールdd-3-14)、[第4章 5.10 ミュートと管理者の対処（DD-4-12）](../../../../docs/jp/design/04_基本設計書_トークとメッセージ.md#510-ミュートと管理者の対処dd-4-12)|
@@ -383,9 +426,9 @@ classDiagram
 |`guardian_approvals`|表|`id`、`child_id`、`kind`（erase、device）、`target_id?`（device の時の端末のコード）、`state`（open、approved、expired）、`approved_by?`、`created_at`、`expires_at`|[第3章 9.2 保護者が設定できること（制限型）](../../../../docs/jp/design/03_基本設計書_認証_構成員_端末.md#92-保護者が設定できること制限型)|
 |`setup_links`|表|`token_sha256`、`expires_at`、`used_at?`|[第3章 3.1 初回の管理者（DD-3-1）](../../../../docs/jp/design/03_基本設計書_認証_構成員_端末.md#31-初回の管理者dd-3-1)|
 |`passkeys`|表|`cred_id bytea PK`、`user_id`、`public_key bytea`、`sign_count`、`rk`、`prf`、`transports`、`created_at`、`last_used_at`|[第3章 4.1 パスキーの登録（DD-3-4）](../../../../docs/jp/design/03_基本設計書_認証_構成員_端末.md#41-パスキーの登録dd-3-4)|
-|`login_challenges`|表|`challenge bytea PK`、`kind`（register、login、setup、invite）、`user_id?`、`token_sha256?`、`expires_at`（5 分）|[第3章 4 ログインと認証](../../../../docs/jp/design/03_基本設計書_認証_構成員_端末.md#4-ログインと認証)|
+|`login_challenges`|表|`id uuid PK`（UUIDv7。要求の challenge_id）、`challenge bytea UNIQUE`（32 バイト）、`kind`（register、login、setup、invite、reset）、`user_id?`、`token_sha256?`、`expires_at`（5 分）。検証で消す（1 回）|[第3章 4 ログインと認証](../../../../docs/jp/design/03_基本設計書_認証_構成員_端末.md#4-ログインと認証)|
 |`devices`|表|`id`、`user_id`、`name bytea`（エンベロープ）、`kind`、`state`、`last_seen_at`、`last_ip bytea`（エンベロープ）、`created_at`、`revoked_at?`、`revoked_by?`|[第3章 5.1 端末の状態](../../../../docs/jp/design/03_基本設計書_認証_構成員_端末.md#51-端末の状態)|
-|`sessions`|表|`id`、`token_sha256`、`user_id`、`device_id`、`created_at`、`absolute_expires_at`、`idle_expires_at`、`revoked_at?`、`revoked_reason?`、`reauth_at?`|[第2章 4.1 セッション](../../../../docs/jp/design/02_基本設計書_境界.md#41-セッション)|
+|`sessions`|表|`id`、`token_sha256`、`user_id`、`device_id`、`created_at`、`absolute_expires_at`、`idle_expires_at`、`revoked_at?`、`revoked_reason?`（AUTH-002 の 7 つ）、`reauth_at?`|[第2章 4.1 セッション](../../../../docs/jp/design/02_基本設計書_境界.md#41-セッション)|
 |`short_tokens`|表|`token_sha256`、`kind`（ws、shell）、`session_id`、`expires_at`、`used_at?`|[第2章 4.4 WebSocket と通知と SFU](../../../../docs/jp/design/02_基本設計書_境界.md#44-websocket-と通知と-sfu)|
 |`device_codes`|表|`device_code_sha256`、`user_code`、`kind`、`name`、`expires_at`、`state`、`approved_session_id?`、`last_poll_at`|[第3章 4.4 新しい端末の追加（DD-3-7）](../../../../docs/jp/design/03_基本設計書_認証_構成員_端末.md#44-新しい端末の追加dd-3-7)|
 |`reset_links`|表|`token_sha256`、`user_id`、`admin_id`、`expires_at`、`used_at?`|[第3章 4.6 回復（パスキーを失った）](../../../../docs/jp/design/03_基本設計書_認証_構成員_端末.md#46-回復パスキーを失った)|
@@ -393,3 +436,4 @@ classDiagram
 |`ip_log`|表|`device_id`、`ip inet`、`at`。28 日|[第12章 11 ログの秘匿（第1章 10.4 の具体）](../../../../docs/jp/design/12_基本設計書_データと暗号化.md#11-ログの秘匿第1章-104-の具体)|
 |`/data/www/manifest.webmanifest`、`/data/www/family/icon-*.png`|ファイル（生成ファイル）|第8章 3.1 の形|[第8章 3.1 manifest（DD-8-1）](../../../../docs/jp/design/08_基本設計書_iPhoneとPCのシェル.md#31-manifestdd-8-1)|
 |`AcceptResult`|構造|`user`、`device`、`session cookie`、`passkey`、`next: "keys"`（端末は鍵バンドルの作成へ）|[第3章 3.3 参加の流れ（DD-3-3）](../../../../docs/jp/design/03_基本設計書_認証_構成員_端末.md#33-参加の流れdd-3-3)|
+|`gen/disclosure.json`|生成ファイル（`go:embed`。コミットしない）|`title`、`lead`、`items[{text, mode?}]`、`outbound[{content, destination, purpose, mode?}]`|[第12章 7.1 文言（初回のログインと設定の画面。管理者の名前は設定から）](../../../../docs/jp/design/12_基本設計書_データと暗号化.md#71-文言初回のログインと設定の画面管理者の名前は設定から)|

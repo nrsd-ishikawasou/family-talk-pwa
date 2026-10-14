@@ -77,6 +77,7 @@ classDiagram
   }
   class I18n {
     +ja Json
+    +errors Json
     +t(key, params)
     +rules
   }
@@ -156,7 +157,8 @@ classDiagram
 |Theme|`+scale`|本文 16 px、4 段 + OS（web-shell FontScale）|
 |Theme|`+motion`|prefers-reduced-motion / 設定で止める|
 |Theme|`+backgrounds`|トークの背景（同梱の数種、自分の写真）|
-|I18n|`+ja Json`|web/src/ui/i18n/ja.json：画面の鍵、err.&lt;code&gt;.what/next、通知の文、知らせの文、明示の文（第12章 7.1、7.2、8）、免責（第13章 7）|
+|I18n|`+ja Json`|web/src/ui/i18n/ja.json（手で書く）：画面の鍵、通知の文、知らせの文、「データの取扱いについて」の画面の文（第12章 7.2 のうち 7.1 と 8 以外）、免責（第13章 7）。明示の文と外へ送る情報の表（第12章 7.1、8）はサーバーが返す物を示し、持たない|
+|I18n|`+errors Json`|web/src/ui/i18n/errors.json（tools/gen_texts が第10章 9.2 から作る。手で直さない）：err.&lt;code&gt;.what/next|
 |I18n|`+t(key, params)`|web-core Text の実体|
 |I18n|`+rules`|第10章 9.1：です・ます、40 文字、技術の語の禁止（tools/forbidden_words が検査）、数 + 半角空白 + 単位、時刻の形（Intl）|
 |A11y|`+feed`|メッセージの一覧は role=feed と article（aria-posinset/setsize、aria-busy）、日付は見出し|
@@ -165,9 +167,9 @@ classDiagram
 |A11y|`+labels`|アイコンだけのボタンにラベル|
 |A11y|`+keyboard`|Enter でメニュー、矢印で束の中、Escape で閉じる|
 |Screens_Onboarding|`+InviteLanding`|/i/:token：家族の名前と招待者、「参加する」。子ども区分の招待なら「保護者：{name}、{name}」（child.guardian_names。G-12）。AUTH-007 の理由|
-|Screens_Onboarding|`+Join1_Name / Join2_Passkey / Join3_RecoveryCode`|参加の 3 画面。QR「スマートフォンで続ける」。回復コードの「書き留めた」必須|
-|Screens_Onboarding|`+Disclosure（明示）/ DataHandling（取扱い）`|GET /family/disclosure を示し、「確認した」で POST /me/disclosure-ack {version}（G-09。第3章 3.1 の 7、3.3 の 6）|
-|Screens_Onboarding|`+SetupAdmin`|/setup/admin/:token：家族の名前、名前と写真、パスキー、回復コード、カードの印刷（PDF）、明示、2 人目の管理者とバックアップの案内|
+|Screens_Onboarding|`+Join1_Name / Join2_Passkey / Join3_RecoveryCode`|参加の 3 画面。QR「スマートフォンで続ける」。回復コードの「書き留めた」必須。写真は端末の保存の鍵ができた後に web-sync Users.holdProfile に渡し、家族全員のトークに入った後に送られる（第3章 3.3 の 2）|
+|Screens_Onboarding|`+Disclosure（明示）/ DataHandling（取扱い）`|GET /family/disclosure の notice と outbound を示し、「確認した」で POST /me/disclosure-ack {version}（G-09。第3章 3.1 の 7、3.3 の 6）。起動の時に /me/session の disclosure_ack_version と今の版が違えば示し直す。MEM-008 は取り直して示し直す|
+|Screens_Onboarding|`+SetupAdmin`|/setup/admin/:token：家族の名前、名前と写真、パスキー、回復コード、カードの印刷（PDF。「印刷した」で POST /admin/family/recovery-key/printed）、明示、2 人目の管理者とバックアップの案内。写真は Join1_Name と同じく holdProfile|
 |Screens_Auth|`+Login`|条件付き UI（autocomplete=username webauthn）+ ボタン。シェルはボタンだけ|
 |Screens_Auth|`+AddDevice`|/d/:code：QR と 8 文字。poll|
 |Screens_Auth|`+ApproveDevice`|既存の端末：QR を読むか 8 文字を入力し、ロックを解除する。GET /auth/qr/{user_code}（G-13）で種類・名前・場所・指紋を示し、承認する|
@@ -200,7 +202,7 @@ classDiagram
 
 ## 公開操作
 
-- 本ブロックは画面の側であり、他のブロックに操作を提供しない。文言の表（P-8）の持ち主として `ja.json` を所有し、web-core `Text` と and-shell（Kotlin の資源に生成）が読む（B-602）。
+- 本ブロックは画面の側であり、他のブロックに操作を提供しない。文言の表（P-8）の持ち主として `ja.json` と `errors.json`（生成）を所有し、web-core `Text` と and-shell（Kotlin の資源に生成）が読む（B-602）。
 
 ## アルゴリズム（画面の側に残るもの）
 
@@ -216,7 +218,8 @@ classDiagram
 
 |記録|形|欄|由来|
 |---|---|---|---|
-|`web/src/ui/i18n/ja.json`|JSON（P-8）|画面の鍵、`err.*`、通知、知らせ、明示、免責。鍵の一覧は `tools/errors_check` と `tools/forbidden_words` が検査|[第10章 9 文言（DD-10-8）](../../../../docs/jp/design/10_基本設計書_画面.md#9-文言dd-10-8)|
+|`web/src/ui/i18n/ja.json`|JSON（P-8。手で書く）|画面の鍵、通知、知らせ、免責。`tools/forbidden_words` が検査|[第10章 9 文言（DD-10-8）](../../../../docs/jp/design/10_基本設計書_画面.md#9-文言dd-10-8)|
+|`web/src/ui/i18n/errors.json`|JSON（P-8。生成してコミット）|`err.*`。`tools/gen_texts --check` と `tools/errors_check --texts` が検査|[第10章 9 文言（DD-10-8）](../../../../docs/jp/design/10_基本設計書_画面.md#9-文言dd-10-8)|
 |`web/src/ui/theme/tokens.css`|CSS 変数|第10章 3.1 の 9 トークン × 明暗|[第10章 3.1 配色（トークン）](../../../../docs/jp/design/10_基本設計書_画面.md#31-配色トークン)|
 |同梱の素材（P-7）|`web/public/assets/`|絵柄 32、着信音 3、アイコン（線）、背景の数種、案内の図（iOS 2 種、Android 4 画面）|[第10章 3.2 字と形](../../../../docs/jp/design/10_基本設計書_画面.md#32-字と形)、[第10章 7 案内と明示の置き場（DD-10-7）](../../../../docs/jp/design/10_基本設計書_画面.md#7-案内と明示の置き場dd-10-7)|
 |端末だけの設定|web-core `Settings`（外観、文字の大きさ、アニメーション）|第10章 8 の「端末だけの設定」|[第10章 8 設定の分類と項目（DD-10-4）](../../../../docs/jp/design/10_基本設計書_画面.md#8-設定の分類と項目dd-10-4)|
