@@ -143,6 +143,12 @@ func TestNextPosHasNoGapsUnderConcurrency(t *testing.T) {
 			t.Fatalf("欠番がある: %d 番目が %d", i+1, r.Pos)
 		}
 	}
+	if last, err := f.LastPos(ctx, user); err != nil || last != 90 {
+		t.Fatalf("最新の pos が違う: %d %v", last, err)
+	}
+	if last, err := f.LastPos(ctx, uuid.Must(uuid.NewV7())); err != nil || last != 0 {
+		t.Fatalf("行の無い利用者の最新の pos が 0 でない: %d %v", last, err)
+	}
 	if min, _ := f.MinPos(ctx, user); min != 1 {
 		t.Fatalf("MinPos が違う: %d", min)
 	}

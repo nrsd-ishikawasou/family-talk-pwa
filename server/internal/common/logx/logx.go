@@ -196,6 +196,12 @@ func Path(route string) Redactable {
 	return redacted{slog.StringValue(route)}
 }
 
+// Trace はコードの場所（fault.Fault の Stack と Error。関数、ファイル、行、型の名だけで、値は入らない）。
+// 他の文字列を渡さない（srv-boundary の Recover と誤りの口だけが使う）。
+func Trace(s string) Redactable {
+	return redacted{slog.StringValue(s)}
+}
+
 // Secret は常に "<redacted>" を出す。
 func Secret(any) Redactable {
 	return redacted{slog.StringValue("<redacted>")}

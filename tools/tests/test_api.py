@@ -156,6 +156,8 @@ class TestRoutes(unittest.TestCase):
                 want |= {'AUTH-001', 'AUTH-002'}
                 if a <= approved:
                     want.add('KEY-004')
+                if 'device_self' in a:
+                    want.add('KEY-001')
                 if 'room_member' in a:
                     want.add('ROOM-002')
                 if 'admin' in a:

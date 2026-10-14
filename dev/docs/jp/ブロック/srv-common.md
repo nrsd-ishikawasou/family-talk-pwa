@@ -140,6 +140,7 @@ classDiagram
     +Count(n) Redactable
     +Duration(d) Redactable
     +Path(route) Redactable
+    +Trace(s) Redactable
     +Secret(any) Redactable
     +Ip(ip) Redactable
     +Label(name LabelName) Redactable
@@ -177,6 +178,7 @@ classDiagram
     +RetryAfter Duration
     +Remaining int
     +Limit int
+    +Window int
     +Reset Time
   }
   class Deps {
@@ -328,6 +330,7 @@ classDiagram
 |Field|`+Value Redactable`|型で秘匿を強制。string を直接渡せない（lint）|
 |Redact|`+Id(uuid) Redactable`|そのまま|
 |Redact|`+Path(route) Redactable`|経路の雛形（/rooms/{id}/events）。実際の id は出さない|
+|Redact|`+Trace(s) Redactable`|コードの場所（fault.Fault の Stack と Error：関数、ファイル、行、型の名。値は入らない）。srv-boundary の Recover と誤りの口だけが使う|
 |Redact|`+Secret(any) Redactable`|常に "&lt;redacted&gt;"|
 |Redact|`+Ip(ip) Redactable`|常に "&lt;ip&gt;"（生の IP は ip_log へ。第12章 11）|
 |Redact|`+Label(name LabelName) Redactable`|定数の名（仕事の種類、結果の分類、秘密の種類）。第12章 11 の「書く」の認証の成否、認可の失敗、レート制限、裏の処理の結果、秘密の生成と交代の事実に使う。`LabelName` は専用の文字列の型で、変数の string は型が合わずに渡せない（明示の変換は lint で止める）|

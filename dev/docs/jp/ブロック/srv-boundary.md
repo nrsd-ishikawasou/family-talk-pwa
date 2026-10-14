@@ -75,6 +75,7 @@ classDiagram
     +Idempotency Idempotency
     +Jobs Jobs
     +WwwDir string
+    +ValidateResponses bool
   }
   class Links {
     +Snapshot Snapshotter
@@ -206,6 +207,7 @@ classDiagram
   class AuthzTable {
     +FromSpec(spec, membership) Result~AuthzTable, Fault~
     +Route(op) Option~Route~
+    +RouteByPattern(pattern) Option~Route~
     +Routes() [Route]
     +Check(ctx, op, principal, args) Result~Event~
   }
@@ -225,7 +227,6 @@ classDiagram
     +Send chan~Frame~
     +LastSentPos int64
     +LastPong Time
-    +MsgRate RateLimiter
     +Close(reason)
   }
   class WsHandler {
@@ -255,6 +256,7 @@ classDiagram
   }
   class Metrics {
     +Handler() http.Handler
+    +Observe(op, status, dur)
   }
   Server --> MiddlewareChain
   Server --> Implementations
@@ -300,6 +302,7 @@ classDiagram
 |---|---|---|
 |Server|`+Build(base Base, impls Implementations, verifiers Verifiers, links Links) Result~http.Handler, Fault~`|AuthzTable.FromSpec の欠け（I-12）は Fault で、起動を止める。生成した StrictServerInterface を束ね、middleware を順に（下の順）。static のタグ（caddy が配る）と WebSocket の 2 つ（`connectWs`、`connectUpWs`）は strict の生成から除き、WebSocket は WsHandler と UpWsHandler を直接登録する（認可は同じ AuthzTable）|
 |Base|（作り方）|下のブロックの部品（srv-common の Config、Deps、Logger、RateLimiter、Ids。srv-store の Pool、Feed、Notifier、Idempotency、Jobs）。cmd/ft が作って渡す|
+|Base|`+ValidateResponses bool`|応答を spec で検証する（試験と開発だけ真。運用の設定ではない）|
 |Base|`+WwwDir string`|SpaIndex が読む index.html の置き場（イメージの中の /srv/www）。version.json（AppVersion、VersionHandler）も同じ置き場の dl/ から読む|
 |Links|（作り方）|上のブロックの実装を cmd/ft が入れる。WP-1 の試験は偽物を入れる|
 |Snapshotter|`+Snapshot(ctx, userId) Result~SyncSnapshot, pos, Event~`|srv-rooms `Timeline.Snapshot`。`SyncSnapshot` は生成の型。snapshot と pos は 1 つの読みで取る（srv-rooms の SyncInitial）|
@@ -335,12 +338,12 @@ classDiagram
 |MiddlewareChain|（層と順）|2 つの層に分ける。全体の層（経路を引く前。外から順）：RequestId、Recover、FetchMetadata、AppVersion。圧縮は前段の caddy の encode（第2章 3。api は圧縮しない）。経路の層（operationId ごと。外から順）：Deprecation、BodyLimit、Session、ReadOnlyGate、Authz、RateLimit、Validate、Idempotency、生成の handler（引数の取り込みはこの後）。AppVersion を Session より前に置くのは、古いアプリに認証の誤りより更新を求めるため。Problem は層ではない（下の行）|
 |MiddlewareChain|`+Global(next) http.Handler`|全体の層をかける。WebSocket の 2 つ、SpaIndex、/metrics を含む全部の要求|
 |MiddlewareChain|`+ForRoute(op, next) http.Handler`|経路の層をかける。op は AuthzTable の Route|
-|RouteMux|（作り方）|生成の `ServeMux` の interface を満たす口。生成の HandlerWithOptions が `HandleFunc("GET /api/v1/sync", h)` を呼ぶと、動詞と path から AuthzTable の operationId を引き、`ForRoute` で包んで標準の ServeMux に登録する。引けない経路は Fault（起動を止める）|
+|RouteMux|（作り方）|生成の `ServeMux` の interface を満たす口。生成の HandlerWithOptions が `HandleFunc("GET /api/v1/sync", h)` を呼ぶと、動詞と path から AuthzTable の operationId を引き、`ForRoute` で包んで持ち、全部の後に標準の ServeMux に登録する。引けない経路は Fault（起動を止める）。標準の ServeMux は GET のパターンを HEAD にも当てるので、HEAD だけのパターンは他の GET とぶつかる（HEAD /media/{id} と GET /media/config）。同じ path の GET と HEAD は 1 つの GET の登録にまとめ、HEAD の要求を HEAD の操作へ振り分ける|
 |MiddlewareChain|`+RequestId`|要求ごとに UUIDv7 を発行する（端末の X-Request-Id は使わない。第2章 9.1）。ログの req_id と problem の instance|
 |MiddlewareChain|`+Recover`|panic を Fault にし、SRV-003 を返す（I-9 の後始末は Tx の rollback）|
 |MiddlewareChain|`+BodyLimit`|JSON 1 MiB、追記 64 MiB（経路で切り替え）|
 |MiddlewareChain|`+FetchMetadata`|状態を変える動詞は、Sec-Fetch-Site が same-origin か none で、かつ X-Requested-With: family-talk（違えば NET-003）。Sec-Fetch-Site の無い要求（ブラウザでない端末）は X-Requested-With の確かめに頼る（第2章 4.2）|
-|MiddlewareChain|`+Session`|Cookie __Host-session を SessionVerifier で確かめ、Principal を得る|
+|MiddlewareChain|`+Session`|Cookie __Host-session を SessionVerifier で、Bearer を ShellTokenVerifier で確かめ、Principal を得る。確かめの誤りを返すのは、経路の x-authz が全部セッションを要する値の時だけ（他は主体なしで続ける）|
 |MiddlewareChain|`+ReadOnlyGate`|ServerStateReader が読み取り専用なら、GET と HEAD と `x-readonly: allow` の経路（第2章 10）以外を SRV-001（params.reason は ReadOnlyReason、Retry-After 60）で拒む。Retry-After の 60 秒は、状態が変わるのが管理者の操作か worker の 5 分の monitor であるため|
 |MiddlewareChain|`+Authz`|x-authz の表（5.2）。Principal と経路の引数で判定|
 |MiddlewareChain|`+RateLimit`|x-ratelimit の policy。NET-004 + Retry-After + RateLimit-* ヘッダ（草案）|
@@ -361,9 +364,10 @@ classDiagram
 |ServerStateReader|`+ReadOnlyReason() string`|ReadOnly の時の理由（SRV-001 の params.reason：migration、capacity、storage、restore）。ReadOnlyGate と Health が使う|
 |ServerStateReader|`+State() ServerState`|初回、通常、読み取り専用など（第1章 DD-1-15 の 5 つ。srv-admin）|
 |AuthzTable|`+FromSpec(spec, membership) Result~AuthzTable, Fault~`|起動時に束ねた spec（`gen.Spec`）から全 operation の x- の欄を読む。x-authz の欠けと第2章 10 の表に無い値は Fault（I-12）|
+|AuthzTable|`+RouteByPattern(pattern) Option~Route~`|生成の HandleFunc の pattern（「動詞 path」）から引く（RouteMux）|
 |AuthzTable|`+Route(op) Option~Route~`|operationId の属性（x-authz、x-authz-rule、x-reauth、x-idempotency、x-idempotency-natural、x-ratelimit、x-websocket、x-internal、x-errors）|
 |AuthzTable|`+Check(ctx, op, principal, args) Result~Event~`|`x-authz` の配列のどれか 1 つ（値は第2章 10 の表）。本ブロックが判定するのは session、approved、device_self、room_member、admin、shell、ws_token（WebSocket は接続の後の auth）、none。トークン（setup_token、invite_token、reset_token、device_code）は経路を通し、使い切る操作（srv-identity）が同じトランザクションの中で確かめる。internal はネットワークの側で守る（全体実装設計書 5.2）。未承認の端末は `session`・`device_self` を含む経路だけ（他は KEY-004）。`x-authz-rule` はハンドラが資源を読んでから同じ表の名前で確かめる|
-|Hub|`+Run(ctx)`|Notifier.Listen を 1 本。通知を受けた利用者の接続に「キャッチアップ」。LISTEN が切れて戻ったら全接続を CatchUp（`uuid.Nil` の通知。srv-store）|
+|Hub|`+Run(ctx)`|Notifier.Listen を 1 本。通知を受けた利用者の接続に「キャッチアップ」。LISTEN が切れて戻ったら全接続を CatchUp（`uuid.Nil` の通知。srv-store）。最初に LISTEN を張り終えた直後も全接続を CatchUp し、待ちを起こす（受け付けは LISTEN より先に始まりうるため）|
 |Hub|`+Attach(conn, principal, lastPos)`|ready{pos} を送る。1 端末 1 接続（2 本目は古い方を切る）|
 |Hub|`+Broadcast(userIds, kind, payload)`|feed に無い種類（room.typing、bye）を利用者たちの接続へ。room.typing の宛先はトークの構成員（呼ぶ側が渡す）|
 |Hub|`+CatchUp(ctx, deviceId)`|Feed.ReadSince(lastSent) で読み、room.event の行は EventSource で payload を引いてフレーム（第2章 6.1）にして送り、lastSent を進める|
@@ -372,11 +376,11 @@ classDiagram
 |Hub|`+CloseAll(retryAfter)`|Shutdown：全接続に bye{retry_after}|
 |WsConn|`+Send chan~Frame~`|長さ 256。満杯で切る|
 |WsConn|`+LastPong Time`|30 秒の ping、60 秒で切る|
-|WsConn|`+MsgRate RateLimiter`|100 件/分。1 件の上限 64 KiB は WebSocket の部品の読みの上限（`SetReadLimit(65536)`。既定は 32768 バイト。超えると状態 1009 で閉じる。調査資料 1.17）|
+|WsConn|（メッセージの数と大きさ）|100 件/分は Base.Limiter の ws_messages（接続ごとの connection の鍵）で数え、超えたら 1008。1 件の上限 64 KiB は WebSocket の部品の読みの上限（`SetReadLimit(65536)`。既定は 32768 バイト。超えると状態 1009 で閉じる。調査資料 1.17）|
 |WsHandler|`+Upgrade(w, r)`|Origin が家族のサーバーのオリジン（`https://` と `server.domain`）と完全に一致することを、部品の Accept の前に本ブロックが確かめる。Origin の無い要求も拒む（ブラウザは必ず付ける。RFC 6455 4.1）。部品の Accept の確かめは host だけを比べ、Origin の無い要求を許すので、それだけには頼らない（調査資料 1.17）。失敗は 403|
 |WsHandler|`+Auth(conn)`|5 秒以内の {type: auth, token} を WsTokenVerifier で確かめる。失敗で切る|
 |WsHandler|`+ReadLoop(conn)`|typing は srv-rooms Typing へ。ping/pong|
-|SyncHandler|`+Get(ctx, principal, since, timeout, limit) Result~SyncResponse, Event~`|since なし：初回（srv-rooms Timeline.Snapshot）。since あり：Feed.ReadSince。保持の外は NET-005。timeout > 0 はロングポール（hub の通知を待つ。待ちの間に Shutdown が来たら 200 と空の配列：端末は再接続する。S-09）|
+|SyncHandler|`+Get(ctx, principal, since, timeout, limit) Result~SyncResponse, Event~`|since なし：初回（srv-rooms Timeline.Snapshot）。since あり：Feed.ReadSince。保持の外は NET-005。timeout > 0 はロングポール（hub の通知を待つ。起きても新しい物が無ければ期限まで待ち直す。待ちの間に Shutdown が来たら 200 と空の配列：端末は再接続する。S-09）|
 |UpWsHandler|`+Deliver(deviceId, msg UpMessage) bool`|srv-push `UpBox.Receive` が呼ぶ。その端末の接続があれば送りの channel に入れて true。無ければ false（メールボックスに残り、次の接続で Pending）|
 |UpWsHandler|`+Upgrade(w, r)`|/up/ws。シェルのトークン（`Authorization: Bearer`。形は第2章 6.4）。相手はネイティブの配布元なので Origin の無い要求を許し、ある時は WsHandler と同じ一致を求める（Bearer はブラウザが自動で付けないので、他のサイトからの接続は認証を通らない）。srv-push UpBox と結ぶ（未配信を順に、ack、ping 60 秒）|
 |Health|`+Get() HealthResponse`|checks: postgres(Ping)、sfu（`http://host.docker.internal:7880/` への GET が 200。SFU 本体の疎通の確かめの経路で、ノードの統計の更新が 4 秒を超えて遅れると 406。調査資料 1.17）、caddy_cert_days（srv-admin）、disk_free_pct、worker_last_job_at（Jobs.Stats）、ddns_last_ok_at、mode。503 なら reason の分類。秘密なし。外への確かめ（postgres、sfu）は並行に行い、各 2 秒で打ち切って false とする（応答しない相手を待って `/health` 自体が遅れないように。Compose の healthcheck の既定の待ち 30 秒より十分短い）|
@@ -384,7 +388,8 @@ classDiagram
 |VersionHandler|`+Get() VersionResponse`|ft.version/1：server、boundary、min_app、released_at は起動の時に dl/version.json（ft.release/1）から読む。deprecations[] は AuthzTable の `x-deprecation` を持つ経路（path と sunset）|
 |InternalAuth|`+Get(r) int`|forward auth：Cookie が有効なら 200 と X-User-Id、無効なら 401。本文なし|
 |SpaIndex|`+Get(w, r)`|/、`/r/*`、`/d/*`、`/i/*`、`/settings/*`、`/welcome/*`、/login、`/recover/*`、`/admin/*`、/calls、`/call/*`、`/albums/*`、`/stickers/*`、/new：応答ごとに暗号論的な乱数で 128 ビットの nonce を作り（CSP Level 2 の 4.2）、index.html の nonce の置き場に埋め、同じ nonce の CSP のヘッダ（第8章 6 の値）を付けて返す。Cache-Control は no-store。index.html はイメージの WwwDir から起動の時に読む。認証なし。画面の入口で API ではないため openapi.yaml には載せない（経路の一覧はこの注記と deploy の Caddyfile の routes。S-15）|
-|Metrics|`+Handler() http.Handler`|OpenMetrics の形式。FT_ADMIN_BIND の bind だけ。opt-in（FT_METRICS）|
+|Metrics|`+Observe(op, status, dur)`|RequestId の終わりに 1 要求を数える（ラベルは operationId と状態の数だけ）|
+|Metrics|`+Handler() http.Handler`|OpenMetrics の形式。opt-in（server.metrics。FT_METRICS）。同じ受け口の `/metrics` に登録し、caddy は回さない。api の 8080 はホストの FT_ADMIN_BIND（127.0.0.1）と Compose の内側だけで受けるので外から届かない|
 
 ## 公開操作（このブロックが所有する操作。番号は B-040〜）
 
@@ -412,13 +417,6 @@ classDiagram
 ## データ設計（このブロックが形を持つ記録）
 
 - 記録を持たない（接続の表は記憶の上。再起動で消え、端末が再接続する）。
-- `/health` の応答の形（第11章 11）：
-
-```text
-{status: "ok"|"degraded"|"readonly"|"setup",
- checks: {postgres: bool, sfu: bool, caddy_cert_days: int, disk_free_pct: int,
-          worker_last_job_at: rfc3339, ddns_last_ok_at: rfc3339?, mode: "A"|"B"|"C"|"D"},
- reason?: string}
-```
+- `/health` の応答の形は第11章 11 が正（status、reason、checks）。api の `GetHealthResponse` はそれに合わせる。
 
 - WebSocket のフレーム：第2章 6.1 の形。`ready`、`bye`、`ping`、`pong`、`room.typing` は pos を持たない。

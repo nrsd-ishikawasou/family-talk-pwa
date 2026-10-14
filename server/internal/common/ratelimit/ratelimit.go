@@ -50,7 +50,9 @@ type Decision struct {
 	RetryAfter time.Duration
 	Remaining  int
 	Limit      int
-	Reset      time.Time
+	// Window は Remaining と Limit の上限の窓（秒。RateLimit-Policy の w。第2章 9.3）。
+	Window int
+	Reset  time.Time
 }
 
 // Limiter は全 policy の bucket を持つ。
@@ -179,6 +181,7 @@ func (l *Limiter) Allow(policy string, s Subjects) Decision {
 		Allowed:   allowed,
 		Remaining: int(math.Max(0, math.Floor(tight.b.tokens))),
 		Limit:     tight.x.Limit,
+		Window:    tight.x.Window,
 		Reset:     now.Add(time.Duration(math.Ceil(full)) * time.Second),
 	}
 	if !allowed {

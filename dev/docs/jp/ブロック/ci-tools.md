@@ -111,7 +111,7 @@ classDiagram
 |クラス|メンバー|注記|
 |---|---|---|
 |CiWorkflow|`+jobs boundary`|L2：Spectral、AsyncAPI validate、生成の再現性（第14章 8：tools/gen_* と 4 つの生成を 2 回行って一致、生成した型でビルド）、oasdiff、AsyncAPI diff、tools/errors_check、tools/config_check、tools/trace_requirements|
-|CiWorkflow|`+jobs server`|生成と生成の再現性、gofmt、go vet、staticcheck、ftlint（自前の検査）、go build、go-licenses check（第14章 9.3 の部品と本システム自身を除く）、govulncheck、go test -race（L0）、integration（L1：testcontainers の postgres + tools/no_plaintext）、イメージのビルド（amd64、arm64。push しない）|
+|CiWorkflow|`+jobs server`|生成と生成の再現性、gofmt、go vet、staticcheck（生成の package `internal/boundary/gen` を除く。oapi-codegen の出力の文体の指摘は直さないため。integration の印つきも見る）、ftlint（自前の検査）、go build、go-licenses check（第14章 9.3 の部品と本システム自身を除く）、govulncheck、go test -race（L0）、integration（L1：testcontainers の postgres + tools/no_plaintext）、イメージのビルド（amd64、arm64。push しない）|
 |CiWorkflow|`+jobs web`|eslint、prettier、tsc、許可リストのスクリプト、pnpm audit、Vitest（L0、L3 ブラウザモード Chromium と WebKit、axe）、Playwright（L4。Compose を起動）、ビルド|
 |CiWorkflow|`+jobs android`|ktlint、detekt、Android Lint、kotlinc、fabrikt の生成の再現性、licensee、Gradle の依存検証、JUnit（L0）、Gradle Managed Devices（L4 のシェルの分。KVM）、未署名の APK（試験の鍵で署名した版も）|
 |CiWorkflow|`+jobs docs`|markdownlint-cli2、textlint、lychee、tools/forbidden_words（禁止語の一覧は secret。fork の PR では secret が無いため skip し、main への merge の前の run で必ず走る：Rulesets の必須の検査）|

@@ -29,7 +29,7 @@ func TestBurstThenDenyWithRetryAfter(t *testing.T) {
 	l, _ := newLimiter()
 	s := Subjects{User: "u1"}
 	for i := 0; i < 4; i++ {
-		if d := l.Allow("send", s); !d.Allowed || d.Limit != 2 || d.Remaining != 3-i {
+		if d := l.Allow("send", s); !d.Allowed || d.Limit != 2 || d.Window != 10 || d.Remaining != 3-i {
 			t.Fatalf("%d 回目：%+v", i, d)
 		}
 	}

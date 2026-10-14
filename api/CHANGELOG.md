@@ -25,8 +25,11 @@
 - 0.1.0：設定 `keys.kek_rotation`（KEK の 1 年ごとの自動の交代）を `keys.kek_rotation_reminder`（交代を勧める知らせ、2 年）に改めた。KEK は自動では交代しない（基本設計書 第12章 6.2）。
 - 0.1.0：設定 `keys.kek_rotation_reminder_repeat`（勧めの知らせを繰り返す間隔、30 日）を足した。
 - 0.1.0：属性 `x-readonly: allow`（読み取り専用でも通す書き込み。12 の操作）と `x-deprecation` の定め（基本設計書 第2章 10）。
+- 0.1.0：`GET /metrics` の応答の型を `application/openmetrics-text` にした（OpenMetrics の形式。第11章 11）。
+- 0.1.0：`GET /health` の応答を第11章 11 の形にした（status に setup と readonly、503 の reason、checks の型）。
 - 0.1.0：各経路の `x-errors` に、x- の属性から暗に返る番号（認可、冪等、再認証、レート制限）を足した（基本設計書 第2章 10）。
-- 0.1.0：`NET-009`（413。要求の本文が上限を超えた。params.limit）を足し、`NET-006` と `NET-009` を全 operation に掛かる番号（scope: global）にした（基本設計書 第2章 3、9.2）。
+- 0.1.0：`NET-009`（413。要求の本文が上限を超えた。params.limit）を足した（基本設計書 第2章 3、9.2）。
+- 0.1.0：`NET-006` と `NET-009` を全 operation に掛かる番号（scope: global）にした。
 - 0.1.0：`SRV-001` の params の reason に `storage`（置き場に書けない）を足した（基本設計書 第1章 7、第2章 9.2）。
 - 0.1.0：`GET /internal/auth` の 200 を本文なしにし、ヘッダ `X-User-Id` を載せた（全体実装設計書 2.1 の forward auth）。
 - 0.1.0：`GET /manifest.webmanifest` のタグを family に、`POST /internal/sfu/webhook` のタグを calls にした。タグは実装するブロックを決めるので、1 つのタグに 2 つのブロックの操作を混ぜない（経路と認可は変えない）。

@@ -115,3 +115,12 @@ func TestNewlineInValuesStaysOnOneLine(t *testing.T) {
 		t.Fatalf("1 件が複数の行になった: %q", buf.String())
 	}
 }
+
+func TestTraceWritesCodeLocation(t *testing.T) {
+	l, buf := newTest(LevelInfo)
+	l.Error("内部の誤り", Field{"stack", Trace("main.f /src/a.go:12\n")})
+	got := lines(t, buf)
+	if len(got) != 1 || got[0]["stack"] != "main.f /src/a.go:12\n" {
+		t.Fatalf("Trace の値が違う: %v", got)
+	}
+}

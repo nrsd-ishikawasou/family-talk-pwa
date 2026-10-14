@@ -153,6 +153,20 @@ func (f *Feed) MinPos(ctx context.Context, userId uuid.UUID) (int64, error) {
 	return next, nil
 }
 
+// LastPos は利用者の最新の pos（WebSocket の ready。第2章 6.3）。まだ 1 行も無ければ 0。
+// feed_cursor の次の pos から求める（rollback した採番は戻るので、次の pos − 1 が最後に書いた pos）。
+func (f *Feed) LastPos(ctx context.Context, userId uuid.UUID) (int64, error) {
+	var next int64
+	err := f.pool.QueryRow(ctx, `SELECT next_pos FROM feed_cursor WHERE user_id = $1`, userId).Scan(&next)
+	if errors.Is(err, pgx.ErrNoRows) {
+		return 0, nil
+	}
+	if err != nil {
+		return 0, unavailable(err)
+	}
+	return next - 1, nil
+}
+
 // Prune は olderThan より古い行を 10,000 行ずつ消す（持ち主の設定の値で srv-worker が呼ぶ）。
 func (f *Feed) Prune(ctx context.Context, olderThan time.Time) (int64, error) {
 	return deleteInBatches(ctx, f.pool, `DELETE FROM feed WHERE ctid IN (SELECT ctid FROM feed WHERE ts < $1 LIMIT 10000)`, olderThan)

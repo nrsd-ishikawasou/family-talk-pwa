@@ -65,6 +65,7 @@ classDiagram
     +Append(tx, userId, pos, ref FeedRef)
     +ReadSince(ctx, userId, since, limit) [FeedRow]
     +MinPos(ctx, userId) int64
+    +LastPos(ctx, userId) int64
     +Prune(ctx, olderThan)
   }
   class FeedRef {
@@ -177,6 +178,7 @@ classDiagram
 |Feed|`+Append(tx, userId, pos, ref FeedRef)`|同じ tx で|
 |Feed|`+ReadSince(ctx, userId, since, limit) [FeedRow]`|/sync と hub|
 |Feed|`+MinPos(ctx, userId) int64`|保持の外の判定（410）|
+|Feed|`+LastPos(ctx, userId) int64`|利用者の最新の pos（WebSocket の ready。第2章 6.3）。feed_cursor の次の pos − 1。行が無ければ 0|
 |Feed|`+Prune(ctx, olderThan)`|90 日（持ち主の設定の値で srv-worker が呼ぶ）|
 |FeedRef|`+Kind string`|第2章 6.2 の type のうち pos を持つ 18 のいずれか：room.event、room.receipt、room.member、room.settings、room.me、room.mls、room.scheduled、device.inbox、device.changed、user.changed、keybundle.changed、recovery.request、recovery.used、call.ring、call.state、session.revoked、notice、sync.gap|
 |FeedRef|`+Id Uuid`|フレームの id（第2章 6.1。必須）。room.event はイベントの識別子、他は本体の行の識別子か、積む側が作る UUIDv7|
@@ -217,7 +219,7 @@ classDiagram
 |---|---|---|---|
 |B-020|`Pool`（`Open`、`DefaultConnInfo`、`InTx`、`WithTx`、`TxFrom`）、`Tx`（`AfterCommit` を含む）|全ブロック（記録の読み書きは必ず本ブロックの接続で）|[第1章 10.2 保存](../../../../docs/jp/design/01_基本設計書_全体構成.md#102-保存)|
 |B-021|`Migrator`|srv-admin `Startup`（第1章 7.1 の 3）、cmd/ft `migrate`|[第1章 8.3 形式と版](../../../../docs/jp/design/01_基本設計書_全体構成.md#83-形式と版)、[第11章 10 更新（DD-11-9）](../../../../docs/jp/design/11_基本設計書_運用.md#10-更新dd-11-9)|
-|B-022|`Feed`（`NextPos`、`Append`、`ReadSince`、`MinPos`、`Prune`）と `FeedRef`|srv-rooms（イベントの記録と `/sync` の読み出し）、srv-identity・srv-keys・srv-calls・srv-push・srv-admin（自分の種類のイベントを feed に積む）、srv-boundary（hub のキャッチアップ）|[第2章 6.1 共通の形](../../../../docs/jp/design/02_基本設計書_境界.md#61-共通の形)、全体実装設計書 2.4|
+|B-022|`Feed`（`NextPos`、`Append`、`ReadSince`、`MinPos`、`LastPos`、`Prune`）と `FeedRef`|srv-rooms（イベントの記録と `/sync` の読み出し）、srv-identity・srv-keys・srv-calls・srv-push・srv-admin（自分の種類のイベントを feed に積む）、srv-boundary（hub のキャッチアップ）|[第2章 6.1 共通の形](../../../../docs/jp/design/02_基本設計書_境界.md#61-共通の形)、全体実装設計書 2.4|
 |B-023|`Notifier`（`Notify`、`Listen`）|書き込み担当の全部（`Notify`）、srv-boundary の hub（`Listen`）|全体実装設計書 2.4|
 |B-024|`Jobs`（`Enqueue`、`Claim`、`Complete`、`Fail`、`Heartbeat`、`Recover`、`Stats`）と `JobHandler`（定義）|積む側：srv-rooms（予約送信）、srv-identity（抹消の猶予）、srv-media（GC の候補）、srv-admin（バックアップ、更新、地図）。回す側：srv-worker|全体実装設計書 2.3|
 |B-025|`FileStore`（`OpenPart`、`Finalize`、`Open`、`Remove`、`SweepParts`、`Usage`）|srv-media、srv-worker（GC、容量）|[第1章 9.1 家族のサーバー](../../../../docs/jp/design/01_基本設計書_全体構成.md#91-家族のサーバー)、[第1章 10.2 保存](../../../../docs/jp/design/01_基本設計書_全体構成.md#102-保存)、[第5章 5.1 アップロード（DD-5-6）](../../../../docs/jp/design/05_基本設計書_メディア.md#51-アップロードdd-5-6)|

@@ -1379,6 +1379,7 @@ paths:
       - KEY-009
       - AUTH-001
       - AUTH-002
+      - KEY-001
       requestBody:
         required: true
         content:
@@ -1405,6 +1406,7 @@ paths:
       x-errors:
       - AUTH-001
       - AUTH-002
+      - KEY-001
       responses:
         '200':
           description: 成功
@@ -3344,6 +3346,7 @@ paths:
       - PUSH-001
       - AUTH-001
       - AUTH-002
+      - KEY-001
       requestBody:
         required: true
         content:
@@ -3370,6 +3373,7 @@ paths:
       x-errors:
       - AUTH-001
       - AUTH-002
+      - KEY-001
       responses:
         '200':
           description: 成功
@@ -3399,6 +3403,7 @@ paths:
       - PUSH-002
       - AUTH-001
       - AUTH-002
+      - KEY-001
       requestBody:
         required: true
         content:
@@ -5009,7 +5014,7 @@ paths:
         '200':
           description: 成功
           content:
-            text/plain:
+            application/openmetrics-text:
               schema:
                 $ref: '#/components/schemas/Text'
         default:
@@ -6838,9 +6843,53 @@ components:
           enum:
           - ok
           - degraded
+          - setup
+          - readonly
           - down
+        reason:
+          type: string
+          enum:
+          - stopped
+          - postgres
+          - migration
+          - capacity
+          - storage
+          - restore
         checks:
           type: object
+          properties:
+            postgres: *id004
+            sfu: *id004
+            caddy_cert_days:
+              type: integer
+            disk_free_pct:
+              type: integer
+              minimum: 0
+              maximum: 100
+            worker_last_job_at:
+              oneOf:
+              - *id003
+              - type: 'null'
+            ddns_last_ok_at:
+              oneOf:
+              - *id003
+              - type: 'null'
+            mode:
+              type: string
+              enum:
+              - A
+              - B
+              - C
+              - D
+          required:
+          - postgres
+          - sfu
+          - caddy_cert_days
+          - disk_free_pct
+          - worker_last_job_at
+          - ddns_last_ok_at
+          - mode
+          additionalProperties: false
       required:
       - status
       - checks
