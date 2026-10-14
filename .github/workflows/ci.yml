@@ -91,9 +91,9 @@ jobs:
       - name: staticcheck（生成の package を除く。結合の試験も見る）
         working-directory: server
         run: |
-          pkgs=$(go list ./... | grep -v '/internal/boundary/gen$')
-          go run honnef.co/go/tools/cmd/staticcheck@v0.8.2 $pkgs
-          go run honnef.co/go/tools/cmd/staticcheck@v0.8.2 -tags integration $pkgs
+          mapfile -t pkgs < <(go list ./... | grep -v '/internal/boundary/gen$')
+          go run honnef.co/go/tools/cmd/staticcheck@v0.8.2 "${pkgs[@]}"
+          go run honnef.co/go/tools/cmd/staticcheck@v0.8.2 -tags integration "${pkgs[@]}"
       - name: 自前の検査（ftlint）
         working-directory: server
         run: go run ./cmd/ftlint ./...
