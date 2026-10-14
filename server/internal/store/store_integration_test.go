@@ -418,3 +418,27 @@ func TestOpenUnreachableIsSRV004(t *testing.T) {
 		t.Fatalf("届かない DB を SRV-004 にしない: %v", err)
 	}
 }
+
+func TestInTxCommitsAndRollsBack(t *testing.T) {
+	ctx := context.Background()
+	if _, err := testPool.Exec(ctx, `CREATE TABLE intx (n int)`); err != nil {
+		t.Fatal(err)
+	}
+	_ = testPool.InTx(ctx, func(tx *Tx) error { _, err := tx.Exec(ctx, `INSERT INTO intx VALUES (1)`); return err })
+	_ = testPool.InTx(ctx, func(tx *Tx) error {
+		if _, err := tx.Exec(ctx, `INSERT INTO intx VALUES (2)`); err != nil {
+			return err
+		}
+		return errors.New("取り消す")
+	})
+	outer, _ := testPool.Begin(ctx)
+	_ = testPool.InTx(WithTx(ctx, outer), func(tx *Tx) error { _, err := tx.Exec(ctx, `INSERT INTO intx VALUES (3)`); return err })
+	outer.Rollback(ctx) // 外側が取り消せば中も消える
+	var n int
+	if err := testPool.QueryRow(ctx, `SELECT coalesce(sum(n), 0) FROM intx`).Scan(&n); err != nil {
+		t.Fatal(err)
+	}
+	if n != 1 {
+		t.Fatalf("残った行の和が違う: %d", n)
+	}
+}

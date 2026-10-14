@@ -33,6 +33,9 @@ classDiagram
     +Open(info ConnInfo) Result~Pool, Event~
     +DefaultConnInfo(password) ConnInfo
     +Begin(ctx) Tx
+    +InTx(ctx, fn) Result
+    +WithTx(ctx, tx) ctx
+    +TxFrom(ctx) Option~Tx~
     +Query(ctx, sql, args) Rows
     +Exec(ctx, sql, args) Result
     +Close()
@@ -164,6 +167,8 @@ classDiagram
 |Pool|`+DefaultConnInfo(password) ConnInfo`|ホスト postgres（Compose のサービスの名）、ポート 5432、DB と利用者は family_talk。パスワードは Secrets.DbPassword|
 |Pool|（接続の数）|接続の数は CPU×2（上限 16）。接続の失敗は SRV-004|
 |Pool|`+Ping(ctx) Result`|/health|
+|Pool|`+InTx(ctx, fn) Result`|業務の操作の書き込みはこれで行う。ctx に外側のトランザクション（WithTx）があればそれを使い、コミットと rollback は外側に任せる（srv-boundary の冪等の middleware が冪等の記録と操作を 1 つのトランザクションにする。第2章 11）。無ければ自分で開き、fn が誤りなら rollback|
+|Pool|`+WithTx(ctx, tx) ctx`、`+TxFrom(ctx) Option~Tx~`|外側のトランザクションを ctx で渡す口|
 |Tx|`+AfterCommit(fn)`|コミットの後に走る付け足し（プロセスの中の channel への投入。例：通知の送信）。rollback なら捨てる。NOTIFY には使わない（Notifier）|
 |Migrator|`+Current(ctx) int`|schema_migrations|
 |Migrator|`+Apply(ctx) Result~MigrationReport, Event~`|tern。1 つずつトランザクション。失敗は SRV-001 の状態（srv-admin が読み取り専用に）|
@@ -210,7 +215,7 @@ classDiagram
 
 |番号|操作（上の図）|使う側|由来|
 |---|---|---|---|
-|B-020|`Pool`（`Open`、`DefaultConnInfo`）、`Tx`（`AfterCommit` を含む）|全ブロック（記録の読み書きは必ず本ブロックの接続で）|[第1章 10.2 保存](../../../../docs/jp/design/01_基本設計書_全体構成.md#102-保存)|
+|B-020|`Pool`（`Open`、`DefaultConnInfo`、`InTx`、`WithTx`、`TxFrom`）、`Tx`（`AfterCommit` を含む）|全ブロック（記録の読み書きは必ず本ブロックの接続で）|[第1章 10.2 保存](../../../../docs/jp/design/01_基本設計書_全体構成.md#102-保存)|
 |B-021|`Migrator`|srv-admin `Startup`（第1章 7.1 の 3）、cmd/ft `migrate`|[第1章 8.3 形式と版](../../../../docs/jp/design/01_基本設計書_全体構成.md#83-形式と版)、[第11章 10 更新（DD-11-9）](../../../../docs/jp/design/11_基本設計書_運用.md#10-更新dd-11-9)|
 |B-022|`Feed`（`NextPos`、`Append`、`ReadSince`、`MinPos`、`Prune`）と `FeedRef`|srv-rooms（イベントの記録と `/sync` の読み出し）、srv-identity・srv-keys・srv-calls・srv-push・srv-admin（自分の種類のイベントを feed に積む）、srv-boundary（hub のキャッチアップ）|[第2章 6.1 共通の形](../../../../docs/jp/design/02_基本設計書_境界.md#61-共通の形)、全体実装設計書 2.4|
 |B-023|`Notifier`（`Notify`、`Listen`）|書き込み担当の全部（`Notify`）、srv-boundary の hub（`Listen`）|全体実装設計書 2.4|

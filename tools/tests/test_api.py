@@ -145,6 +145,29 @@ class TestRoutes(unittest.TestCase):
         rule = re.search(r'`limit` は (\d+)〜(\d+)、既定 (\d+)', section(CH2, '## 3. やり取りの分類と規則', '\n## 4. '))
         self.assertEqual((limit['minimum'], limit['maximum'], limit['default']), tuple(int(x) for x in rule.groups()))
 
+    def test_implied_errors_are_listed(self):
+        """x- の属性から暗に返る番号が x-errors にある（第2章 10）。"""
+        on_exceed = {p['name']: p.get('on_exceed') for p in RATES['policies']}
+        session = {'session', 'approved', 'device_self', 'room_member', 'admin', 'shell'}
+        approved = {'approved', 'room_member', 'admin'}
+        for m, p, o in operations():
+            a, errs, want = set(o['x-authz']), set(o.get('x-errors', [])), set()
+            if a <= session:
+                want |= {'AUTH-001', 'AUTH-002'}
+                if a <= approved:
+                    want.add('KEY-004')
+                if 'room_member' in a:
+                    want.add('ROOM-002')
+                if 'admin' in a:
+                    want.add('ADM-001')
+            if o.get('x-idempotency') == 'key':
+                want |= {'NET-007', 'NET-008'}
+            if o.get('x-reauth'):
+                want.add('AUTH-006')
+            want |= {on_exceed[r] for r in o.get('x-ratelimit', []) if on_exceed.get(r) and on_exceed[r] != 'NET-004'}
+            with self.subTest(op=o['operationId']):
+                self.assertLessEqual(want, errs)
+
     def test_readonly_allow_is_documented(self):
         """x-readonly は allow だけで、書き込みの動詞に付き、第2章 10 が対象を挙げる（第1章 DD-1-15）。"""
         rule = section(CH2, '- 読み取り専用（第1章 DD-1-15）の時', '\n')

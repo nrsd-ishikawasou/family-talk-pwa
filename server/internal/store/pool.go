@@ -206,3 +206,34 @@ func (t *Tx) Rollback(ctx context.Context) {
 func (t *Tx) AfterCommit(fn func()) {
 	t.after = append(t.after, fn)
 }
+
+type txKey struct{}
+
+// WithTx は外側で開いたトランザクションを ctx に入れる（srv-boundary の冪等の middleware。第2章 11）。
+func WithTx(ctx context.Context, tx *Tx) context.Context {
+	return context.WithValue(ctx, txKey{}, tx)
+}
+
+// TxFrom は ctx のトランザクションを返す。無ければ nil。
+func TxFrom(ctx context.Context) *Tx {
+	tx, _ := ctx.Value(txKey{}).(*Tx)
+	return tx
+}
+
+// InTx は fn をトランザクションの中で走らせる。ctx に外側のトランザクションがあればそれを使い、
+// コミットと rollback は外側に任せる（冪等の記録と操作を 1 つのトランザクションにするため）。
+// 無ければ自分で開き、fn が nil を返せばコミット、誤りなら rollback する。
+func (p *Pool) InTx(ctx context.Context, fn func(tx *Tx) error) error {
+	if tx := TxFrom(ctx); tx != nil {
+		return fn(tx)
+	}
+	tx, err := p.Begin(ctx)
+	if err != nil {
+		return err
+	}
+	defer tx.Rollback(ctx)
+	if err := fn(tx); err != nil {
+		return err
+	}
+	return tx.Commit(ctx)
+}

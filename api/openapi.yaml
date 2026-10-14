@@ -135,6 +135,9 @@ paths:
       x-idempotency: none
       x-errors:
       - MEM-007
+      - AUTH-001
+      - AUTH-002
+      - KEY-004
       parameters:
       - $ref: '#/components/parameters/Limit'
       - $ref: '#/components/parameters/Before'
@@ -160,6 +163,11 @@ paths:
       x-errors:
       - MEM-004
       - MEM-007
+      - AUTH-001
+      - AUTH-002
+      - KEY-004
+      - NET-007
+      - NET-008
       parameters:
       - $ref: '#/components/parameters/IdempotencyKey'
       requestBody:
@@ -195,6 +203,9 @@ paths:
       x-idempotency: none
       x-errors:
       - MEM-001
+      - AUTH-001
+      - AUTH-002
+      - KEY-004
       responses:
         '200':
           description: 成功
@@ -283,6 +294,7 @@ paths:
       x-idempotency-natural: challenge
       x-errors:
       - AUTH-007
+      - AUTH-006
       requestBody:
         required: true
         content:
@@ -312,6 +324,7 @@ paths:
       x-idempotency-natural: challenge
       x-errors:
       - AUTH-003
+      - AUTH-006
       requestBody:
         required: true
         content:
@@ -425,6 +438,7 @@ paths:
       x-errors:
       - AUTH-005
       - AUTH-007
+      - AUTH-004
       requestBody:
         required: true
         content:
@@ -456,6 +470,9 @@ paths:
       - AUTH-006
       - AUTH-007
       - KEY-003
+      - AUTH-001
+      - AUTH-002
+      - KEY-004
       requestBody:
         required: true
         content:
@@ -488,6 +505,9 @@ paths:
       x-idempotency: none
       x-errors:
       - AUTH-007
+      - AUTH-001
+      - AUTH-002
+      - KEY-004
       responses:
         '200':
           description: 成功
@@ -537,6 +557,7 @@ paths:
       x-errors:
       - AUTH-003
       - AUTH-007
+      - AUTH-004
       requestBody:
         required: true
         content:
@@ -561,6 +582,10 @@ paths:
       x-authz:
       - approved
       x-idempotency: none
+      x-errors:
+      - AUTH-001
+      - AUTH-002
+      - KEY-004
       parameters:
       - $ref: '#/components/parameters/Limit'
       - $ref: '#/components/parameters/Before'
@@ -593,6 +618,9 @@ paths:
       x-errors:
       - AUTH-006
       - AUTH-008
+      - AUTH-001
+      - AUTH-002
+      - KEY-004
       responses:
         '200':
           description: 成功
@@ -613,6 +641,9 @@ paths:
       x-idempotency: natural
       x-idempotency-natural: repeat_safe
       x-readonly: allow
+      x-errors:
+      - AUTH-001
+      - AUTH-002
       requestBody:
         required: true
         content:
@@ -639,6 +670,9 @@ paths:
       x-idempotency: natural
       x-idempotency-natural: repeat_safe
       x-readonly: allow
+      x-errors:
+      - AUTH-001
+      - AUTH-002
       requestBody:
         required: true
         content:
@@ -665,6 +699,9 @@ paths:
       x-idempotency: natural
       x-idempotency-natural: repeat_safe
       x-readonly: allow
+      x-errors:
+      - AUTH-001
+      - AUTH-002
       responses:
         '200':
           description: 成功
@@ -683,6 +720,9 @@ paths:
       x-authz:
       - session
       x-idempotency: none
+      x-errors:
+      - AUTH-001
+      - AUTH-002
       responses:
         '200':
           description: 成功
@@ -702,6 +742,9 @@ paths:
       - session
       x-idempotency: natural
       x-idempotency-natural: version
+      x-errors:
+      - AUTH-001
+      - AUTH-002
       requestBody:
         required: true
         content:
@@ -745,6 +788,9 @@ paths:
       x-authz:
       - session
       x-idempotency: none
+      x-errors:
+      - AUTH-001
+      - AUTH-002
       responses:
         '200':
           description: 成功
@@ -763,6 +809,10 @@ paths:
       x-authz:
       - approved
       x-idempotency: none
+      x-errors:
+      - AUTH-001
+      - AUTH-002
+      - KEY-004
       responses:
         '200':
           description: 成功
@@ -782,6 +832,9 @@ paths:
       x-idempotency: none
       x-errors:
       - MEM-005
+      - AUTH-001
+      - AUTH-002
+      - KEY-004
       requestBody:
         required: true
         content:
@@ -806,6 +859,10 @@ paths:
       x-authz:
       - approved
       x-idempotency: none
+      x-errors:
+      - AUTH-001
+      - AUTH-002
+      - KEY-004
       parameters:
       - $ref: '#/components/parameters/Limit'
       - $ref: '#/components/parameters/Before'
@@ -836,6 +893,9 @@ paths:
       x-idempotency: none
       x-errors:
       - MEM-001
+      - AUTH-001
+      - AUTH-002
+      - KEY-004
       responses:
         '200':
           description: 成功
@@ -863,6 +923,9 @@ paths:
       x-errors:
       - MEM-001
       - MEM-005
+      - AUTH-001
+      - AUTH-002
+      - KEY-004
       requestBody:
         required: true
         content:
@@ -886,6 +949,10 @@ paths:
       x-authz:
       - approved
       x-idempotency: none
+      x-errors:
+      - AUTH-001
+      - AUTH-002
+      - KEY-004
       responses:
         '200':
           description: 成功
@@ -904,6 +971,10 @@ paths:
       x-authz:
       - approved
       x-idempotency: none
+      x-errors:
+      - AUTH-001
+      - AUTH-002
+      - KEY-004
       responses:
         '200':
           description: 成功
@@ -921,6 +992,10 @@ paths:
       x-authz:
       - approved
       x-idempotency: none
+      x-errors:
+      - AUTH-001
+      - AUTH-002
+      - KEY-004
       requestBody:
         required: true
         content:
@@ -950,6 +1025,11 @@ paths:
       - AUTH-006
       - MEM-003
       - MEM-006
+      - AUTH-001
+      - AUTH-002
+      - KEY-004
+      - NET-007
+      - NET-008
       parameters:
       - $ref: '#/components/parameters/IdempotencyKey'
       requestBody:
@@ -975,6 +1055,10 @@ paths:
       x-authz:
       - approved
       x-idempotency: none
+      x-errors:
+      - AUTH-001
+      - AUTH-002
+      - KEY-004
       responses:
         '200':
           description: 成功
@@ -1003,6 +1087,9 @@ paths:
       x-idempotency-natural: id
       x-errors:
       - MEM-001
+      - AUTH-001
+      - AUTH-002
+      - KEY-004
       requestBody:
         required: true
         content:
@@ -1036,6 +1123,9 @@ paths:
       x-idempotency: none
       x-errors:
       - MEM-001
+      - AUTH-001
+      - AUTH-002
+      - KEY-004
       responses:
         '200':
           description: 成功
@@ -1058,6 +1148,9 @@ paths:
       x-errors:
       - AUTH-006
       - MEM-001
+      - AUTH-001
+      - AUTH-002
+      - KEY-004
       requestBody:
         required: true
         content:
@@ -1083,6 +1176,11 @@ paths:
       - approved
       - shell
       x-idempotency: key
+      x-errors:
+      - AUTH-001
+      - AUTH-002
+      - NET-007
+      - NET-008
       parameters:
       - $ref: '#/components/parameters/IdempotencyKey'
       requestBody:
@@ -1109,6 +1207,9 @@ paths:
       x-authz:
       - session
       x-idempotency: none
+      x-errors:
+      - AUTH-001
+      - AUTH-002
       parameters:
       - $ref: '#/components/parameters/Limit'
       - $ref: '#/components/parameters/Before'
@@ -1139,6 +1240,9 @@ paths:
       x-idempotency: none
       x-errors:
       - KEY-001
+      - AUTH-001
+      - AUTH-002
+      - KEY-004
       requestBody:
         required: true
         content:
@@ -1166,6 +1270,9 @@ paths:
       x-errors:
       - AUTH-006
       - KEY-001
+      - AUTH-001
+      - AUTH-002
+      - KEY-004
       responses:
         '200':
           description: 成功
@@ -1194,6 +1301,8 @@ paths:
       x-errors:
       - KEY-001
       - KEY-009
+      - AUTH-001
+      - AUTH-002
       requestBody:
         required: true
         content:
@@ -1232,6 +1341,9 @@ paths:
       - KEY-002
       - KEY-003
       - MEM-006
+      - AUTH-001
+      - AUTH-002
+      - KEY-004
       requestBody:
         required: true
         content:
@@ -1265,6 +1377,8 @@ paths:
       x-idempotency-natural: ref
       x-errors:
       - KEY-009
+      - AUTH-001
+      - AUTH-002
       requestBody:
         required: true
         content:
@@ -1288,6 +1402,9 @@ paths:
       x-authz:
       - device_self
       x-idempotency: none
+      x-errors:
+      - AUTH-001
+      - AUTH-002
       responses:
         '200':
           description: 成功
@@ -1321,6 +1438,9 @@ paths:
       x-errors:
       - KEY-001
       - MEM-001
+      - AUTH-001
+      - AUTH-002
+      - KEY-004
       requestBody:
         required: true
         content:
@@ -1345,6 +1465,9 @@ paths:
       x-authz:
       - session
       x-idempotency: none
+      x-errors:
+      - AUTH-001
+      - AUTH-002
       responses:
         '200':
           description: 成功
@@ -1378,6 +1501,8 @@ paths:
       x-errors:
       - KEY-004
       - KEY-005
+      - AUTH-001
+      - AUTH-002
       responses:
         '200':
           description: 成功
@@ -1399,6 +1524,9 @@ paths:
       x-errors:
       - AUTH-006
       - KEY-009
+      - AUTH-001
+      - AUTH-002
+      - KEY-004
       requestBody:
         required: true
         content:
@@ -1426,6 +1554,9 @@ paths:
       x-errors:
       - AUTH-006
       - KEY-005
+      - AUTH-001
+      - AUTH-002
+      - KEY-004
       responses:
         '200':
           description: 成功
@@ -1450,6 +1581,8 @@ paths:
       x-errors:
       - KEY-005
       - KEY-008
+      - AUTH-001
+      - AUTH-002
       requestBody:
         required: true
         content:
@@ -1478,6 +1611,8 @@ paths:
       x-idempotency: none
       x-errors:
       - AUTH-006
+      - AUTH-001
+      - AUTH-002
       requestBody:
         required: true
         content:
@@ -1506,6 +1641,8 @@ paths:
       x-errors:
       - AUTH-006
       - KEY-009
+      - AUTH-001
+      - AUTH-002
       requestBody:
         required: true
         content:
@@ -1532,6 +1669,10 @@ paths:
       x-idempotency: key
       x-errors:
       - KEY-004
+      - AUTH-001
+      - AUTH-002
+      - NET-007
+      - NET-008
       parameters:
       - $ref: '#/components/parameters/IdempotencyKey'
       requestBody:
@@ -1571,6 +1712,9 @@ paths:
       - AUTH-006
       - AUTH-007
       - KEY-009
+      - AUTH-001
+      - AUTH-002
+      - KEY-004
       requestBody:
         required: true
         content:
@@ -1595,6 +1739,10 @@ paths:
       x-authz:
       - approved
       x-idempotency: none
+      x-errors:
+      - AUTH-001
+      - AUTH-002
+      - KEY-004
       responses:
         '200':
           description: 成功
@@ -1617,6 +1765,10 @@ paths:
       - recovery
       x-errors:
       - KEY-008
+      - AUTH-001
+      - AUTH-002
+      - NET-007
+      - NET-008
       parameters:
       - $ref: '#/components/parameters/IdempotencyKey'
       requestBody:
@@ -1643,6 +1795,10 @@ paths:
       x-authz:
       - approved
       x-idempotency: none
+      x-errors:
+      - AUTH-001
+      - AUTH-002
+      - KEY-004
       parameters:
       - $ref: '#/components/parameters/Since'
       - $ref: '#/components/parameters/Limit'
@@ -1680,6 +1836,9 @@ paths:
       x-errors:
       - AUTH-006
       - KEY-009
+      - AUTH-001
+      - AUTH-002
+      - KEY-004
       parameters:
       - name: rewrap
         in: query
@@ -1725,6 +1884,11 @@ paths:
       x-errors:
       - KEY-001
       - KEY-010
+      - AUTH-001
+      - AUTH-002
+      - KEY-004
+      - NET-007
+      - NET-008
       parameters:
       - $ref: '#/components/parameters/IdempotencyKey'
       requestBody:
@@ -1751,6 +1915,9 @@ paths:
       x-authz:
       - session
       x-idempotency: none
+      x-errors:
+      - AUTH-001
+      - AUTH-002
       parameters:
       - $ref: '#/components/parameters/Since'
       - $ref: '#/components/parameters/Limit'
@@ -1778,6 +1945,9 @@ paths:
       x-authz:
       - session
       x-idempotency: none
+      x-errors:
+      - AUTH-001
+      - AUTH-002
       responses:
         '200':
           description: 成功
@@ -1796,6 +1966,10 @@ paths:
       x-authz:
       - approved
       x-idempotency: none
+      x-errors:
+      - AUTH-001
+      - AUTH-002
+      - KEY-004
       parameters:
       - $ref: '#/components/parameters/Limit'
       - $ref: '#/components/parameters/Before'
@@ -1820,6 +1994,11 @@ paths:
       x-errors:
       - MEM-001
       - ROOM-004
+      - AUTH-001
+      - AUTH-002
+      - KEY-004
+      - NET-007
+      - NET-008
       parameters:
       - $ref: '#/components/parameters/IdempotencyKey'
       requestBody:
@@ -1854,6 +2033,10 @@ paths:
       x-idempotency: none
       x-errors:
       - ROOM-001
+      - AUTH-001
+      - AUTH-002
+      - KEY-004
+      - ROOM-002
       responses:
         '200':
           description: 成功
@@ -1880,6 +2063,10 @@ paths:
       x-idempotency: none
       x-errors:
       - ROOM-001
+      - AUTH-001
+      - AUTH-002
+      - KEY-004
+      - ROOM-002
       parameters:
       - $ref: '#/components/parameters/Limit'
       - $ref: '#/components/parameters/Before'
@@ -1908,6 +2095,10 @@ paths:
       - MEM-002
       - ROOM-001
       - ROOM-003
+      - AUTH-001
+      - AUTH-002
+      - KEY-004
+      - ROOM-002
       requestBody:
         required: true
         content:
@@ -1949,6 +2140,10 @@ paths:
       - ROOM-003
       - ROOM-011
       - MEM-001
+      - AUTH-001
+      - AUTH-002
+      - KEY-004
+      - ROOM-002
       responses:
         '200':
           description: 成功
@@ -1975,6 +2170,10 @@ paths:
       x-idempotency: none
       x-errors:
       - ROOM-001
+      - AUTH-001
+      - AUTH-002
+      - KEY-004
+      - ROOM-002
       requestBody:
         required: true
         content:
@@ -2007,6 +2206,10 @@ paths:
       x-idempotency: none
       x-errors:
       - ROOM-001
+      - AUTH-001
+      - AUTH-002
+      - KEY-004
+      - ROOM-002
       parameters:
       - $ref: '#/components/parameters/Limit'
       - $ref: '#/components/parameters/Before'
@@ -2053,6 +2256,12 @@ paths:
       - ROOM-006
       - ROOM-012
       - MEDIA-002
+      - AUTH-001
+      - AUTH-002
+      - KEY-004
+      - ROOM-002
+      - NET-007
+      - NET-008
       parameters:
       - $ref: '#/components/parameters/IdempotencyKey'
       requestBody:
@@ -2093,6 +2302,10 @@ paths:
       x-errors:
       - ROOM-001
       - ROOM-007
+      - AUTH-001
+      - AUTH-002
+      - KEY-004
+      - ROOM-002
       responses:
         '200':
           description: 成功
@@ -2130,6 +2343,10 @@ paths:
       - ROOM-007
       - ROOM-008
       - ROOM-009
+      - AUTH-001
+      - AUTH-002
+      - KEY-004
+      - ROOM-002
       requestBody:
         required: true
         content:
@@ -2168,6 +2385,10 @@ paths:
       x-errors:
       - ROOM-001
       - ROOM-007
+      - AUTH-001
+      - AUTH-002
+      - KEY-004
+      - ROOM-002
       parameters:
       - $ref: '#/components/parameters/Limit'
       - $ref: '#/components/parameters/Before'
@@ -2211,6 +2432,10 @@ paths:
       x-errors:
       - ROOM-001
       - ROOM-007
+      - AUTH-001
+      - AUTH-002
+      - KEY-004
+      - ROOM-002
       requestBody:
         required: true
         content:
@@ -2244,6 +2469,10 @@ paths:
       x-idempotency-natural: repeat_safe
       x-errors:
       - ROOM-001
+      - AUTH-001
+      - AUTH-002
+      - KEY-004
+      - ROOM-002
       requestBody:
         required: true
         content:
@@ -2276,6 +2505,10 @@ paths:
       x-idempotency: none
       x-errors:
       - ROOM-001
+      - AUTH-001
+      - AUTH-002
+      - KEY-004
+      - ROOM-002
       parameters:
       - $ref: '#/components/parameters/Limit'
       - $ref: '#/components/parameters/Before'
@@ -2301,6 +2534,12 @@ paths:
       - ROOM-001
       - ROOM-005
       - ROOM-010
+      - AUTH-001
+      - AUTH-002
+      - KEY-004
+      - ROOM-002
+      - NET-007
+      - NET-008
       parameters:
       - $ref: '#/components/parameters/IdempotencyKey'
       requestBody:
@@ -2342,6 +2581,10 @@ paths:
       x-errors:
       - ROOM-001
       - ROOM-007
+      - AUTH-001
+      - AUTH-002
+      - KEY-004
+      - ROOM-002
       responses:
         '200':
           description: 成功
@@ -2368,6 +2611,10 @@ paths:
       x-idempotency: none
       x-errors:
       - ROOM-001
+      - AUTH-001
+      - AUTH-002
+      - KEY-004
+      - ROOM-002
       parameters:
       - $ref: '#/components/parameters/Limit'
       - $ref: '#/components/parameters/Before'
@@ -2398,6 +2645,10 @@ paths:
       x-idempotency: none
       x-errors:
       - ROOM-001
+      - AUTH-001
+      - AUTH-002
+      - KEY-004
+      - ROOM-002
       responses:
         '200':
           description: 成功
@@ -2424,6 +2675,10 @@ paths:
       x-idempotency: none
       x-errors:
       - ROOM-001
+      - AUTH-001
+      - AUTH-002
+      - KEY-004
+      - ROOM-002
       parameters:
       - name: since_epoch
         in: query
@@ -2465,6 +2720,10 @@ paths:
       - ROOM-001
       - KEY-007
       - KEY-009
+      - AUTH-001
+      - AUTH-002
+      - KEY-004
+      - ROOM-002
       requestBody:
         required: true
         content:
@@ -2499,6 +2758,10 @@ paths:
       x-errors:
       - ROOM-001
       - KEY-009
+      - AUTH-001
+      - AUTH-002
+      - KEY-004
+      - ROOM-002
       requestBody:
         required: true
         content:
@@ -2523,6 +2786,10 @@ paths:
       x-authz:
       - approved
       x-idempotency: none
+      x-errors:
+      - AUTH-001
+      - AUTH-002
+      - KEY-004
       responses:
         '200':
           description: 成功
@@ -2546,6 +2813,11 @@ paths:
       x-errors:
       - MEDIA-001
       - SRV-002
+      - AUTH-001
+      - AUTH-002
+      - KEY-004
+      - NET-007
+      - NET-008
       parameters:
       - $ref: '#/components/parameters/IdempotencyKey'
       requestBody:
@@ -2581,6 +2853,9 @@ paths:
       x-idempotency: none
       x-errors:
       - MEDIA-002
+      - AUTH-001
+      - AUTH-002
+      - KEY-004
       responses:
         '200':
           description: 本文なし
@@ -2604,6 +2879,9 @@ paths:
       - MEDIA-004
       - MEDIA-001
       - SRV-002
+      - AUTH-001
+      - AUTH-002
+      - KEY-004
       requestBody:
         required: true
         content:
@@ -2633,6 +2911,9 @@ paths:
       - MEDIA-002
       - MEDIA-005
       - MEDIA-006
+      - AUTH-001
+      - AUTH-002
+      - KEY-004
       responses:
         '200':
           description: 成功
@@ -2653,6 +2934,9 @@ paths:
       x-idempotency: none
       x-errors:
       - MEDIA-002
+      - AUTH-001
+      - AUTH-002
+      - KEY-004
       responses:
         '200':
           description: 成功
@@ -2676,6 +2960,9 @@ paths:
       - preview
       x-errors:
       - MEDIA-010
+      - AUTH-001
+      - AUTH-002
+      - KEY-004
       requestBody:
         required: true
         content:
@@ -2709,6 +2996,9 @@ paths:
       x-idempotency: none
       x-errors:
       - MEDIA-002
+      - AUTH-001
+      - AUTH-002
+      - KEY-004
       responses:
         '200':
           description: 成功
@@ -2741,6 +3031,10 @@ paths:
       - approved
       x-idempotency: none
       x-served-by: caddy
+      x-errors:
+      - AUTH-001
+      - AUTH-002
+      - KEY-004
       responses:
         '200':
           description: 成功
@@ -2771,6 +3065,12 @@ paths:
       - CALL-003
       - CALL-004
       - CALL-005
+      - AUTH-001
+      - AUTH-002
+      - KEY-004
+      - ROOM-002
+      - NET-007
+      - NET-008
       parameters:
       - $ref: '#/components/parameters/IdempotencyKey'
       requestBody:
@@ -2806,6 +3106,9 @@ paths:
       x-idempotency: none
       x-errors:
       - CALL-001
+      - AUTH-001
+      - AUTH-002
+      - KEY-004
       responses:
         '200':
           description: 成功
@@ -2837,6 +3140,9 @@ paths:
       - CALL-002
       - CALL-004
       - CALL-006
+      - AUTH-001
+      - AUTH-002
+      - KEY-004
       requestBody:
         required: true
         content:
@@ -2871,6 +3177,9 @@ paths:
       x-idempotency-natural: id
       x-errors:
       - CALL-001
+      - AUTH-001
+      - AUTH-002
+      - KEY-004
       requestBody:
         required: true
         content:
@@ -2905,6 +3214,9 @@ paths:
       x-idempotency-natural: id
       x-errors:
       - CALL-001
+      - AUTH-001
+      - AUTH-002
+      - KEY-004
       requestBody:
         required: true
         content:
@@ -2939,6 +3251,9 @@ paths:
       x-idempotency-natural: id
       x-errors:
       - CALL-001
+      - AUTH-001
+      - AUTH-002
+      - KEY-004
       requestBody:
         required: true
         content:
@@ -2972,6 +3287,9 @@ paths:
       x-idempotency: none
       x-errors:
       - CALL-001
+      - AUTH-001
+      - AUTH-002
+      - KEY-004
       responses:
         '200':
           description: 成功
@@ -2990,6 +3308,10 @@ paths:
       x-authz:
       - approved
       x-idempotency: none
+      x-errors:
+      - AUTH-001
+      - AUTH-002
+      - KEY-004
       parameters:
       - $ref: '#/components/parameters/Limit'
       - $ref: '#/components/parameters/Before'
@@ -3020,6 +3342,8 @@ paths:
       x-idempotency: none
       x-errors:
       - PUSH-001
+      - AUTH-001
+      - AUTH-002
       requestBody:
         required: true
         content:
@@ -3043,6 +3367,9 @@ paths:
       x-authz:
       - device_self
       x-idempotency: none
+      x-errors:
+      - AUTH-001
+      - AUTH-002
       responses:
         '200':
           description: 成功
@@ -3070,6 +3397,8 @@ paths:
       x-idempotency-natural: repeat_safe
       x-errors:
       - PUSH-002
+      - AUTH-001
+      - AUTH-002
       requestBody:
         required: true
         content:
@@ -3094,6 +3423,9 @@ paths:
       x-authz:
       - session
       x-idempotency: none
+      x-errors:
+      - AUTH-001
+      - AUTH-002
       responses:
         '200':
           description: 成功
@@ -3112,6 +3444,10 @@ paths:
       x-authz:
       - approved
       x-idempotency: none
+      x-errors:
+      - AUTH-001
+      - AUTH-002
+      - KEY-004
       requestBody:
         required: true
         content:
@@ -3137,6 +3473,9 @@ paths:
       - shell
       x-idempotency: natural
       x-idempotency-natural: repeat_safe
+      x-errors:
+      - AUTH-001
+      - AUTH-002
       requestBody:
         required: true
         content:
@@ -3200,6 +3539,7 @@ paths:
       x-websocket: upWs
       x-errors:
       - AUTH-002
+      - AUTH-001
       responses:
         '101':
           description: WebSocket に切り替える（メッセージは asyncapi.yaml）
@@ -3216,6 +3556,8 @@ paths:
       x-idempotency: none
       x-errors:
       - NET-005
+      - AUTH-001
+      - AUTH-002
       parameters:
       - name: since
         in: query
@@ -3270,6 +3612,11 @@ paths:
       x-idempotency: none
       x-ratelimit:
       - admin
+      x-errors:
+      - AUTH-001
+      - AUTH-002
+      - KEY-004
+      - ADM-001
       responses:
         '200':
           description: 成功
@@ -3295,6 +3642,10 @@ paths:
       - ADM-002
       - ADM-004
       - AUTH-006
+      - AUTH-001
+      - AUTH-002
+      - KEY-004
+      - ADM-001
       requestBody:
         required: true
         content:
@@ -3321,6 +3672,11 @@ paths:
       x-idempotency: none
       x-ratelimit:
       - admin
+      x-errors:
+      - AUTH-001
+      - AUTH-002
+      - KEY-004
+      - ADM-001
       parameters:
       - $ref: '#/components/parameters/Limit'
       - $ref: '#/components/parameters/Before'
@@ -3359,6 +3715,10 @@ paths:
       - MEM-001
       - MEM-002
       - MEM-003
+      - AUTH-001
+      - AUTH-002
+      - KEY-004
+      - ADM-001
       requestBody:
         required: true
         content:
@@ -3396,6 +3756,10 @@ paths:
       x-errors:
       - AUTH-006
       - MEM-001
+      - AUTH-001
+      - AUTH-002
+      - KEY-004
+      - ADM-001
       requestBody:
         required: true
         content:
@@ -3434,6 +3798,12 @@ paths:
       - AUTH-006
       - MEM-001
       - MEM-003
+      - AUTH-001
+      - AUTH-002
+      - KEY-004
+      - ADM-001
+      - NET-007
+      - NET-008
       parameters:
       - $ref: '#/components/parameters/IdempotencyKey'
       - name: erase_content
@@ -3477,6 +3847,10 @@ paths:
       x-errors:
       - MEM-001
       - KEY-001
+      - AUTH-001
+      - AUTH-002
+      - KEY-004
+      - ADM-001
       responses:
         '200':
           description: 成功
@@ -3506,6 +3880,12 @@ paths:
       x-errors:
       - MEM-001
       - MEM-002
+      - AUTH-001
+      - AUTH-002
+      - KEY-004
+      - ADM-001
+      - NET-007
+      - NET-008
       parameters:
       - $ref: '#/components/parameters/IdempotencyKey'
       requestBody:
@@ -3546,6 +3926,10 @@ paths:
       - AUTH-006
       - MEM-001
       - MEM-003
+      - AUTH-001
+      - AUTH-002
+      - KEY-004
+      - ADM-001
       requestBody:
         required: true
         content:
@@ -3582,6 +3966,10 @@ paths:
       x-errors:
       - AUTH-006
       - MEM-001
+      - AUTH-001
+      - AUTH-002
+      - KEY-004
+      - ADM-001
       requestBody:
         required: true
         content:
@@ -3618,6 +4006,10 @@ paths:
       x-errors:
       - AUTH-006
       - MEM-001
+      - AUTH-001
+      - AUTH-002
+      - KEY-004
+      - ADM-001
       requestBody:
         required: true
         content:
@@ -3644,6 +4036,11 @@ paths:
       x-idempotency: none
       x-ratelimit:
       - admin
+      x-errors:
+      - AUTH-001
+      - AUTH-002
+      - KEY-004
+      - ADM-001
       parameters:
       - $ref: '#/components/parameters/Limit'
       - $ref: '#/components/parameters/Before'
@@ -3679,6 +4076,10 @@ paths:
       - ROOM-001
       - ROOM-003
       - ROOM-011
+      - AUTH-001
+      - AUTH-002
+      - KEY-004
+      - ADM-001
       responses:
         '200':
           description: 成功
@@ -3704,6 +4105,10 @@ paths:
       x-readonly: allow
       x-errors:
       - AUTH-006
+      - AUTH-001
+      - AUTH-002
+      - KEY-004
+      - ADM-001
       requestBody:
         required: true
         content:
@@ -3735,6 +4140,12 @@ paths:
       x-errors:
       - ADM-003
       - AUTH-006
+      - AUTH-001
+      - AUTH-002
+      - KEY-004
+      - ADM-001
+      - NET-007
+      - NET-008
       parameters:
       - $ref: '#/components/parameters/IdempotencyKey'
       requestBody:
@@ -3763,6 +4174,11 @@ paths:
       x-idempotency: none
       x-ratelimit:
       - admin
+      x-errors:
+      - AUTH-001
+      - AUTH-002
+      - KEY-004
+      - ADM-001
       parameters:
       - $ref: '#/components/parameters/Limit'
       - $ref: '#/components/parameters/Before'
@@ -3787,6 +4203,11 @@ paths:
       x-idempotency: none
       x-ratelimit:
       - admin
+      x-errors:
+      - AUTH-001
+      - AUTH-002
+      - KEY-004
+      - ADM-001
       parameters:
       - $ref: '#/components/parameters/Limit'
       - $ref: '#/components/parameters/Before'
@@ -3811,6 +4232,11 @@ paths:
       x-idempotency: none
       x-ratelimit:
       - admin
+      x-errors:
+      - AUTH-001
+      - AUTH-002
+      - KEY-004
+      - ADM-001
       responses:
         '200':
           description: 成功
@@ -3831,6 +4257,11 @@ paths:
       x-idempotency: none
       x-ratelimit:
       - admin
+      x-errors:
+      - AUTH-001
+      - AUTH-002
+      - KEY-004
+      - ADM-001
       responses:
         '200':
           description: 成功
@@ -3855,6 +4286,10 @@ paths:
       x-errors:
       - ADM-004
       - AUTH-006
+      - AUTH-001
+      - AUTH-002
+      - KEY-004
+      - ADM-001
       requestBody:
         required: true
         content:
@@ -3881,6 +4316,11 @@ paths:
       x-idempotency: none
       x-ratelimit:
       - admin
+      x-errors:
+      - AUTH-001
+      - AUTH-002
+      - KEY-004
+      - ADM-001
       responses:
         '200':
           description: 成功
@@ -3903,6 +4343,12 @@ paths:
       x-readonly: allow
       x-errors:
       - ADM-003
+      - AUTH-001
+      - AUTH-002
+      - KEY-004
+      - ADM-001
+      - NET-007
+      - NET-008
       parameters:
       - $ref: '#/components/parameters/IdempotencyKey'
       requestBody:
@@ -3934,6 +4380,12 @@ paths:
       x-readonly: allow
       x-errors:
       - ADM-003
+      - AUTH-001
+      - AUTH-002
+      - KEY-004
+      - ADM-001
+      - NET-007
+      - NET-008
       parameters:
       - $ref: '#/components/parameters/IdempotencyKey'
       requestBody:
@@ -3962,6 +4414,11 @@ paths:
       x-idempotency: none
       x-ratelimit:
       - admin
+      x-errors:
+      - AUTH-001
+      - AUTH-002
+      - KEY-004
+      - ADM-001
       responses:
         '200':
           description: 成功
@@ -3986,6 +4443,12 @@ paths:
       x-errors:
       - ADM-003
       - AUTH-006
+      - AUTH-001
+      - AUTH-002
+      - KEY-004
+      - ADM-001
+      - NET-007
+      - NET-008
       parameters:
       - $ref: '#/components/parameters/IdempotencyKey'
       requestBody:
@@ -4014,6 +4477,11 @@ paths:
       x-idempotency: none
       x-ratelimit:
       - admin
+      x-errors:
+      - AUTH-001
+      - AUTH-002
+      - KEY-004
+      - ADM-001
       responses:
         '200':
           description: 成功
@@ -4034,6 +4502,11 @@ paths:
       x-idempotency: none
       x-ratelimit:
       - admin
+      x-errors:
+      - AUTH-001
+      - AUTH-002
+      - KEY-004
+      - ADM-001
       responses:
         '200':
           description: 成功
@@ -4055,6 +4528,12 @@ paths:
       - admin
       x-errors:
       - ADM-003
+      - AUTH-001
+      - AUTH-002
+      - KEY-004
+      - ADM-001
+      - NET-007
+      - NET-008
       parameters:
       - $ref: '#/components/parameters/IdempotencyKey'
       requestBody:
@@ -4088,6 +4567,12 @@ paths:
       - AUTH-006
       - MEM-001
       - MEM-002
+      - AUTH-001
+      - AUTH-002
+      - KEY-004
+      - ADM-001
+      - NET-007
+      - NET-008
       parameters:
       - $ref: '#/components/parameters/IdempotencyKey'
       requestBody:
@@ -4124,6 +4609,9 @@ paths:
       x-idempotency-natural: id
       x-errors:
       - AUTH-007
+      - AUTH-001
+      - AUTH-002
+      - KEY-004
       requestBody:
         required: true
         content:
@@ -4152,6 +4640,10 @@ paths:
       - admin
       x-errors:
       - MEM-005
+      - AUTH-001
+      - AUTH-002
+      - KEY-004
+      - ADM-001
       requestBody:
         required: true
         content:
@@ -4181,6 +4673,12 @@ paths:
       - admin
       x-errors:
       - AUTH-006
+      - AUTH-001
+      - AUTH-002
+      - KEY-004
+      - ADM-001
+      - NET-007
+      - NET-008
       parameters:
       - $ref: '#/components/parameters/IdempotencyKey'
       requestBody:
@@ -4209,6 +4707,11 @@ paths:
       x-idempotency: none
       x-ratelimit:
       - admin
+      x-errors:
+      - AUTH-001
+      - AUTH-002
+      - KEY-004
+      - ADM-001
       responses:
         '200':
           description: 成功
@@ -4229,6 +4732,11 @@ paths:
       x-idempotency: none
       x-ratelimit:
       - admin
+      x-errors:
+      - AUTH-001
+      - AUTH-002
+      - KEY-004
+      - ADM-001
       responses:
         '200':
           description: 成功

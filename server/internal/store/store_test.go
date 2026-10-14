@@ -211,3 +211,24 @@ func TestFeedCheckRef(t *testing.T) {
 		}()
 	}
 }
+
+func TestTxFromCtx(t *testing.T) {
+	if TxFrom(context.Background()) != nil {
+		t.Fatal("空の ctx でトランザクションが返る")
+	}
+	tx := &Tx{}
+	if TxFrom(WithTx(context.Background(), tx)) != tx {
+		t.Fatal("入れたトランザクションが返らない")
+	}
+}
+
+func TestInTxUsesOuterTx(t *testing.T) {
+	outer := &Tx{}
+	var got *Tx
+	if err := (&Pool{}).InTx(WithTx(context.Background(), outer), func(tx *Tx) error { got = tx; return nil }); err != nil {
+		t.Fatal(err)
+	}
+	if got != outer {
+		t.Fatal("外側のトランザクションを使わない")
+	}
+}
