@@ -64,8 +64,14 @@ classDiagram
     +leafIndexOf(state, sigPub) Option~number~
     +members(state) [LeafInfo]
   }
-  class TsMlsEngine
-  class WasmMlsEngine
+  class TsMlsEngine {
+    +cs CiphersuiteImpl
+    +signHandle bytes
+  }
+  class WasmMlsEngine {
+    +provider CipherSuiteProvider
+    +signHandle bytes
+  }
   class CryptoProvider {
     +primary MlsEngine
     +secondary Option~MlsEngine~
@@ -207,6 +213,10 @@ classDiagram
 |クラス|メンバー|注記|
 |---|---|---|
 |MlsEngine|`+capabilities() Caps`|{historic: bool}|
+|TsMlsEngine|`+cs CiphersuiteImpl`|一次の実装に渡す暗号の実装。署名鍵は端末の署名鍵（DeviceKeys.sig。WebCrypto の抽出不可の CryptoKey。DD-12-3）で、一次の実装に秘密鍵のバイト列は渡さない。一次の実装の署名は公開の型 CiphersuiteImpl.signature（`sign(signKey, message)`）に集約されているので、既定の実装を包んで `sign` だけを差し替える。差し替えた `sign` は WebCrypto の ECDSA（P-256、SHA-256）で署名し、r と s の 64 バイトを RFC 9420 5.1.2 の DER（ECDSA-Sig-Value）に直して返す（一次の実装の既定の P-256 は DER を出し、`verify` も DER を受ける）。`verify` と `keygen` は既定のまま（公開鍵だけ。署名鍵の生成は呼ばない）。HPKE の鍵（init_key、encryption_key、path の秘密）は一次の実装が自分で作って状態に持つ（端末の鍵合意鍵 DeviceKeys.kem はメールボックスの HPKE にだけ使う）。2026-10-15 に Node の WebCrypto の抽出不可の鍵で、KeyPackage・Add の Commit・Welcome・path の Commit・本文の往復と、サーバーの確かめ（srv-keys の試験）を通ることを確かめた|
+|TsMlsEngine|`+signHandle bytes`|一次の実装に `signKey` として渡すバイト列。鍵ではなく「どの CryptoKey か」を指す札で、値は署名鍵の公開部（SEC 1 非圧縮の 65 バイト）の SHA-256。状態の保存と復元で同じ値になり、復元の後に札から DeviceKeys.sig を引ける。札は状態（`serialize`）に入るが秘密ではない|
+|WasmMlsEngine|`+provider CipherSuiteProvider`|二次の実装に渡す暗号の提供者。二次の実装の WebCrypto の提供者は、署名の秘密鍵のバイト列を署名のたびに pkcs8 で import する作りで、抽出不可の CryptoKey をそのまま渡せない。暗号の提供者は公開の trait なので、WASM の包み（Rust）で WebCrypto の提供者を包み、`sign` と `signature_key_derive_public` だけを JS の呼び出し（CryptoKey を持つ）に差し替える。確かめは本ブロックの内側の設計の時に、包みを組んで T-L3-01 を通す|
+|WasmMlsEngine|`+signHandle bytes`|TsMlsEngine と同じ札|
 |MlsEngine|`+createGroup(roomId, credential, sigKey) GroupState`|group_id はトークの識別子の 16 バイトと世代の 4 バイト（第12章 5.2。トークの作成は世代 0。再初期化は `POST /rooms/{id}/mls/reinit` の応答の group_id）。作成者は leaf 0|
 |MlsEngine|`+addMembers(state, keyPackages[]) CommitResult`|{state', commit, welcome}。commit は PublicMessage の MLSMessage（一次の実装は `wireAsPublicMessage`。第12章 5.2。サーバーが Add と Remove を読む）。welcome は `ratchet_tree` の拡張を含む Welcome の MLSMessage（一次の実装は `ratchetTreeExtension`）。Add と Remove は Commit の中に値で入れる（提案を別に送らない）|
 |MlsEngine|`+removeMembers(state, leafIndices[]) CommitResult`|同上。leaf の番号は `leafIndexOf` か `members` で端末から求める|

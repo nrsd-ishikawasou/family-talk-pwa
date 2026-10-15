@@ -210,7 +210,7 @@ classDiagram
 |Members|`+IsMember(ctx, userId, roomId) bool`|現在の構成員（srv-boundary RoomMembership）|
 |Members|`+IsMemberOrPending(ctx, tx, roomId, userId) bool`|active か pending_add の構成員か（srv-keys RoomReader の実装。Commit の Add の端末の本人の確かめ）|
 |Members|`+PendingAdds(ctx) [(roomId, userId)]`|7 日残れば知らせ（srv-worker monitor）|
-|Members|`+Takeover(ctx, roomId) Option~DeviceId~`|追加待ちを次の端末が引き継ぐ判定（第4章 4.1）。構成員の追加待ち（room_members）と端末の追加待ち・削除待ち・再参加待ち（srv-keys mls_pending。第12章 5.5、5.2 の復旧）の全部。再参加待ちは、その端末の Remove と新しい KeyPackage の Add を 1 つの Commit で行う|
+|Members|`+Takeover(ctx, roomId) Option~DeviceId~`|追加待ちを次の端末が引き継ぐ判定（第4章 4.1）。構成員の追加待ち（room_members）と端末の追加待ち・削除待ち・再参加待ち（srv-keys mls_pending。第12章 5.5、5.2 の復旧）の全部。再参加待ちは、その端末の Remove と新しい KeyPackage の Add を 1 つの Commit で行う。KeyPackage が取れなければ（KEY-001）Remove だけでよく、サーバーがその端末を追加待ちに替える|
 |Member|`+State string`|pending_add、active、pending_remove、removed、left のいずれか|
 |RoomMe|`+HiddenBeforePos Option~int64~`|端末から消した位置（新着で戻る）|
 |RoomMeStore|`+Put(tx, userId, roomId, me)`|room.me を本人の全端末へ|
