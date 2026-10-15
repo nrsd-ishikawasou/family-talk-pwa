@@ -162,7 +162,7 @@ func (a *InvitesApi) ListInvites(ctx context.Context, request gen.ListInvitesReq
 	if err != nil {
 		return nil, err
 	}
-	usr, err := a.id.Users.Get(ctx, me)
+	usr, err := a.id.Users.Get(ctx, a.id.d.Pool, me)
 	if err != nil {
 		return nil, err
 	}
@@ -660,7 +660,7 @@ func (a *MeApi) GetChildControls(ctx context.Context, request gen.GetChildContro
 	if err := a.id.Guardians.authorize(ctx, me, child); err != nil {
 		return nil, err
 	}
-	s, err := a.id.Guardians.Settings(ctx, child)
+	s, err := a.id.Guardians.Settings(ctx, a.id.d.Pool, child)
 	if err != nil {
 		return nil, err
 	}
@@ -710,7 +710,7 @@ func (a *MeApi) PutChildControls(ctx context.Context, request gen.PutChildContro
 	if err := a.id.d.inTx(ctx, func(tx *store.Tx) error { return a.id.Guardians.PutSettings(ctx, tx, child, me, *request.Body) }); err != nil {
 		return nil, err
 	}
-	s, err := a.id.Guardians.Settings(ctx, child)
+	s, err := a.id.Guardians.Settings(ctx, a.id.d.Pool, child)
 	if err != nil {
 		return nil, err
 	}

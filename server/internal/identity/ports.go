@@ -20,14 +20,15 @@ import (
 type DeviceKeyReader interface {
 	// VerifyProof は端末の署名鍵（fdev/1）で message への sig を確かめる。message は第12章 5.3 の連結。
 	// 公開鍵が無ければ false。
-	VerifyProof(ctx context.Context, deviceId uuid.UUID, message, sig []byte) (bool, error)
+	// q は ctx のトランザクションか Pool（トランザクションの中ではそれを渡す。全体実装設計書 2.4。4 つとも同じ）。
+	VerifyProof(ctx context.Context, q store.Querier, deviceId uuid.UUID, message, sig []byte) (bool, error)
 	// SigningKeys は構成員ごとの fusr/1（/users の user_sig_pub。srv-keys UserSigningKeys.Get）。
-	SigningKeys(ctx context.Context, userIds []uuid.UUID) (map[uuid.UUID]gen.Fusr1, error)
+	SigningKeys(ctx context.Context, q store.Querier, userIds []uuid.UUID) (map[uuid.UUID]gen.Fusr1, error)
 	// DevicesOf は構成員の承認済みの端末の fdev/1（/users/{id}。srv-keys DeviceKeys.ListOfUser）。
-	DevicesOf(ctx context.Context, userId uuid.UUID) ([]gen.Fdev1, error)
+	DevicesOf(ctx context.Context, q store.Querier, userId uuid.UUID) ([]gen.Fdev1, error)
 	// KeysOf は構成員の登録のある全端末（未承認と休眠を含む）の fdev/1 を端末の識別子から引く（GET /me/devices の keys。
 	// 既存の端末が承認の前に新しい端末の鍵の指紋を求める。第3章 4.4、第12章 5.3）。
-	KeysOf(ctx context.Context, userId uuid.UUID) (map[uuid.UUID]gen.Fdev1, error)
+	KeysOf(ctx context.Context, q store.Querier, userId uuid.UUID) (map[uuid.UUID]gen.Fdev1, error)
 }
 
 // PushReader は端末の通知の購読の有無を読む（srv-push が Subscriptions.OfUser で実装する。GET /me/devices の push）。

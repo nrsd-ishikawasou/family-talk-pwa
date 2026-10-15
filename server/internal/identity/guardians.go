@@ -122,8 +122,8 @@ WHERE gd.child_id = $1 AND gd.guardian_id = $2 AND u.is_child)`, childId, userId
 }
 
 // Settings は子の制限（child_controls の 1 行。無ければ ft.settings.guardian/1 の既定。生成の gen.Items）。
-func (g *Guardians) Settings(ctx context.Context, childId uuid.UUID) (gen.FtSettingsGuardian1, error) {
-	return g.settings(ctx, g.d.Pool, childId)
+func (g *Guardians) Settings(ctx context.Context, q store.Querier, childId uuid.UUID) (gen.FtSettingsGuardian1, error) {
+	return g.settings(ctx, q, childId)
 }
 
 func (g *Guardians) settings(ctx context.Context, q querier, childId uuid.UUID) (gen.FtSettingsGuardian1, error) {

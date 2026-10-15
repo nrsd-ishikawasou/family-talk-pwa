@@ -279,7 +279,7 @@ func TestBirthdaysAndAgeTransitions(t *testing.T) {
 		return e.tx(func(tx *store.Tx) error { return e.id.Guardians.SetBirthday(e.ctx, tx, child.id, s) })
 	}
 	settings := func(child *member) gen.FtSettingsGuardian1 {
-		s, err := e.id.Guardians.Settings(e.ctx, child.id)
+		s, err := e.id.Guardians.Settings(e.ctx, e.pool, child.id)
 		e.must(err)
 		return s
 	}

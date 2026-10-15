@@ -85,12 +85,12 @@ func TestReadsForKeysAndDormancy(t *testing.T) {
 	if len(list) != 1 || list[0].Id != a.device || list[0].State != DeviceApproved {
 		t.Fatalf("OfUser が違う: %+v", list)
 	}
-	name, err := e.id.Devices.NameOf(e.ctx, a.device)
+	name, err := e.id.Devices.NameOf(e.ctx, e.pool, a.device)
 	e.must(err)
 	if name != "太郎の電話" {
 		t.Fatalf("NameOf = %q", name)
 	}
-	e.wantCode(func() error { _, err := e.id.Devices.NameOf(e.ctx, uuid.Must(uuid.NewV7())); return err }(), cgen.KEY001)
+	e.wantCode(func() error { _, err := e.id.Devices.NameOf(e.ctx, e.pool, uuid.Must(uuid.NewV7())); return err }(), cgen.KEY001)
 
 	// 休眠の判定：太郎の端末だけを 100 日前に最後に使ったことにする。
 	if _, err := e.pool.Exec(e.ctx, `UPDATE devices SET last_seen_at = $2 WHERE id = $1`, a.device, e.clk.Now().Add(-100*24*time.Hour)); err != nil {
@@ -101,7 +101,33 @@ func TestReadsForKeysAndDormancy(t *testing.T) {
 	if len(old) != 1 || old[0].Id != a.device {
 		t.Fatalf("ApprovedSeenBefore が違う: %+v", old)
 	}
-	e.must(e.tx(func(tx *store.Tx) error { return e.id.Devices.MarkDormant(e.ctx, tx, a.device) }))
+	// 判定の後に使われた端末（管理者の端末は最近使った）は休眠にしない。
+	cutoff := e.clk.Now().Add(-90 * 24 * time.Hour)
+	var changed bool
+	e.must(e.tx(func(tx *store.Tx) error {
+		var err error
+		changed, err = e.id.Devices.MarkDormant(e.ctx, tx, admin.device, cutoff)
+		return err
+	}))
+	if changed {
+		t.Fatal("最近使った端末を休眠にした")
+	}
+	e.must(e.tx(func(tx *store.Tx) error {
+		var err error
+		changed, err = e.id.Devices.MarkDormant(e.ctx, tx, a.device, cutoff)
+		return err
+	}))
+	if !changed {
+		t.Fatal("古い承認済みの端末を休眠にしなかった")
+	}
+	e.must(e.tx(func(tx *store.Tx) error {
+		var err error
+		changed, err = e.id.Devices.MarkDormant(e.ctx, tx, a.device, cutoff)
+		return err
+	}))
+	if changed {
+		t.Fatal("休眠の端末をもう一度休眠にした（変えたと返した）")
+	}
 	old, err = e.id.Devices.ApprovedSeenBefore(e.ctx, e.clk.Now().Add(-90*24*time.Hour))
 	e.must(err)
 	if len(old) != 0 {
@@ -126,12 +152,12 @@ func TestReadsForKeysAndDormancy(t *testing.T) {
 		t.Fatalf("取り消し済みの端末が MarkActive で戻った: %s", s)
 	}
 
-	o, err := e.id.Passkeys.OwnerOf(e.ctx, a.cred.id)
+	o, err := e.id.Passkeys.OwnerOf(e.ctx, e.pool, a.cred.id)
 	e.must(err)
 	if o.UserId != a.id || o.Prf {
 		t.Fatalf("OwnerOf が違う: %+v", o)
 	}
-	e.wantCode(func() error { _, err := e.id.Passkeys.OwnerOf(e.ctx, []byte("unknown")); return err }(), cgen.KEY009)
+	e.wantCode(func() error { _, err := e.id.Passkeys.OwnerOf(e.ctx, e.pool, []byte("unknown")); return err }(), cgen.KEY009)
 }
 
 // R: R-12-3-2

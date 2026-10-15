@@ -14,10 +14,11 @@ type deviceInbox struct {
 	Count int `json:"count"`
 }
 
-// roomMls は room.mls（新しい Commit がある）。
+// roomMls は room.mls（新しい Commit がある。再初期化では新しい世代の epoch 0 で commit_ref は無い）。
 type roomMls struct {
+	Generation      int    `json:"generation"`
 	Epoch           int64  `json:"epoch"`
-	CommitRef       string `json:"commit_ref"`
+	CommitRef       string `json:"commit_ref,omitempty"`
 	HasWelcomeForMe bool   `json:"has_welcome_for_me"`
 }
 
@@ -29,12 +30,13 @@ type roomMember struct {
 	By       *uuid.UUID `json:"by,omitempty"`
 }
 
-// room.member の change のうち本ブロックが書く 4 つ（left は srv-rooms）。
+// room.member の change のうち本ブロックが書く 5 つ（left は srv-rooms）。
 const (
 	memberAdded         = "added"
 	memberRemoved       = "removed"
 	memberPendingAdd    = "pending_add"
 	memberPendingRemove = "pending_remove"
+	memberPendingReadd  = "pending_readd"
 )
 
 // keybundleChanged は keybundle.changed（変わった系統）。
@@ -73,4 +75,6 @@ const (
 	noticeRecoveryUsed      = "recovery_used"
 	noticeFamilyKeyUsed     = "family_key_used"
 	noticeRecoveryRequested = "recovery_requested"
+	noticeMlsReinit         = "mls_reinit"
+	noticeMlsReinitLimit    = "mls_reinit_limit"
 )

@@ -25,16 +25,15 @@ import (
 
 // 固定の値（第12章と第2章の本文の値。設定の項目が無い物）。
 const (
-	keyPackageMax       = 20                  // 使い切りの KeyPackage の上限（第12章 5.2、第2章 5.4）。最後の手段は別に 1
-	keyPackageTtl       = 90 * 24 * time.Hour // 置いてから（第12章 5.2）
-	inboxItemMax        = 64 << 10            // メールボックスの 1 件の暗号文（base64url を解いた後。第2章 5.4）
-	inboxDeviceMax      = 1000                // 1 端末の件数（KEY-010。第2章 5.4）
-	inboxTtl            = 30 * 24 * time.Hour // 第12章 5.2
-	recoveryRequestTtl  = 24 * time.Hour      // 第12章 5.4 (c)、第2章 6.2
-	shareThreshold      = 2                   // 秘密分散のしきい値（第12章 5.4 (c)）
-	commitListMax       = 100                 // Commit の一覧の上限（第2章 5.5）
-	pendingAddNoticeAge = 7 * 24 * time.Hour  // 端末の追加待ちが残った時の知らせ（全体実装設計書 4.2）
-	mlsSuite            = 0x0002              // 暗号スイート（DD-12-2）
+	keyPackageMax      = 20                  // 使い切りの KeyPackage の上限（第12章 5.2、第2章 5.4）。最後の手段は別に 1
+	keyPackageTtl      = 90 * 24 * time.Hour // 置いてから（第12章 5.2）
+	inboxItemMax       = 64 << 10            // メールボックスの 1 件の暗号文（base64url を解いた後。第2章 5.4）
+	inboxDeviceMax     = 1000                // 1 端末の件数（KEY-010。第2章 5.4）
+	inboxTtl           = 30 * 24 * time.Hour // 第12章 5.2
+	recoveryRequestTtl = 24 * time.Hour      // 第12章 5.4 (c)、第2章 6.2
+	shareThreshold     = 2                   // 秘密分散のしきい値（第12章 5.4 (c)）
+	commitListMax      = 100                 // Commit の一覧の上限（第2章 5.5）
+	mlsSuite           = 0x0002              // 暗号スイート（DD-12-2）
 )
 
 // RoomReader はトークの一覧と構成員を読む（依存の逆転。本ブロックが定め、srv-rooms が実装して Keys.SetRooms で渡す。B-088）。
@@ -92,10 +91,12 @@ func New(d Deps) *Keys {
 	k.UserSigningKeys.devices = k.DeviceKeys
 	k.KeyBundles = &KeyBundles{d: dp, devices: k.DeviceKeys, signing: k.UserSigningKeys}
 	k.UserSigningKeys.bundles = k.KeyBundles
-	k.KeyPackages = &KeyPackages{d: dp, reader: k.reader, devices: k.DeviceKeys}
+	retention := store.NewRetention(d.Pool)
+	k.KeyPackages = &KeyPackages{d: dp, reader: k.reader, devices: k.DeviceKeys, retention: retention}
 	k.RecoveryCode = &RecoveryCode{d: dp, bundles: k.KeyBundles, recovery: k.Recovery}
-	k.Inbox = &Inbox{d: dp, devices: k.DeviceKeys}
+	k.Inbox = &Inbox{d: dp, devices: k.DeviceKeys, retention: retention}
 	k.Shares = &Shares{d: dp, inbox: k.Inbox, bundles: k.KeyBundles, recovery: k.Recovery}
+	k.DeviceKeys.shares = k.Shares
 	k.FamilyRecoveryKey = &FamilyRecoveryKey{d: dp, bundles: k.KeyBundles, recovery: k.Recovery}
 	k.KeyBackup = &KeyBackup{d: dp, signing: k.UserSigningKeys}
 	k.Groups = &Groups{d: dp, keys: k, reader: k.reader, inbox: k.Inbox, bundles: k.KeyBundles, devices: k.DeviceKeys}

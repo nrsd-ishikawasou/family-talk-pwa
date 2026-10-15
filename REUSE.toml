@@ -1,10 +1,10 @@
 # SPDX-FileCopyrightText: 2026 株式会社流山ソフトウェア開発 (Nagareyama Software Development Co., Ltd.)
 # SPDX-License-Identifier: Apache-2.0
-# REUSE 3.3（基本設計書 第14章 9.2）。ファイルの中に SPDX の行を書けない物（文書、図、境界の正本の JSON と YAML、境界の正本から作る生成ファイル）の著作権とライセンス。
+# REUSE 3.3（基本設計書 第14章 9.2）。ファイルの中に SPDX の行を書けない物（文書、図、境界の正本の JSON と YAML、境界の正本から作る生成ファイル、試験のデータの JSON）の著作権とライセンス。
 version = 1
 
 [[annotations]]
-path = ["README.md", "CHANGELOG.md", "SECURITY.md", "NOTICE", "docs/**", "dev/**", "api/**", "tools/requirements.txt", "tools/node/package.json", "tools/node/package-lock.json", "tools/node/.textlintrc.json", "server/go.mod", "server/go.sum", "server/internal/boundary/gen/**", "web/src/ui/i18n/errors.json"]
+path = ["README.md", "CHANGELOG.md", "SECURITY.md", "NOTICE", "docs/**", "dev/**", "api/**", "tools/requirements.txt", "tools/node/package.json", "tools/node/package-lock.json", "tools/node/.textlintrc.json", "server/go.mod", "server/go.sum", "server/internal/boundary/gen/**", "server/internal/keys/testdata/**", "web/src/ui/i18n/errors.json", "web/src/ui/i18n/notices.json"]
 precedence = "aggregate"
 SPDX-FileCopyrightText = "2026 株式会社流山ソフトウェア開発 (Nagareyama Software Development Co., Ltd.)"
 SPDX-License-Identifier = "Apache-2.0"

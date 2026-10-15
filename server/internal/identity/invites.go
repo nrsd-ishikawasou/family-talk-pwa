@@ -270,7 +270,7 @@ func (i *Invites) Peek(ctx context.Context, token string) (gen.GetInviteTokenRes
 	if err != nil {
 		return gen.GetInviteTokenResponse{}, err
 	}
-	inviter, err := i.users.Get(ctx, r.issuer)
+	inviter, err := i.users.Get(ctx, i.d.Pool, r.issuer)
 	if err != nil {
 		return gen.GetInviteTokenResponse{}, err
 	}
@@ -278,7 +278,7 @@ func (i *Invites) Peek(ctx context.Context, token string) (gen.GetInviteTokenRes
 	if r.child != nil && r.child.IsChild {
 		names := []string{}
 		for _, g := range r.child.Guardians {
-			gu, err := i.users.Get(ctx, g)
+			gu, err := i.users.Get(ctx, i.d.Pool, g)
 			if err != nil {
 				return gen.GetInviteTokenResponse{}, err
 			}

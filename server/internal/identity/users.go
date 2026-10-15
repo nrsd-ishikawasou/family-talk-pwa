@@ -135,9 +135,9 @@ VALUES ($1, $2, $3, $4, 'normal', $5, $6, $7, $8)`, usr.Id, handle, usr.DisplayN
 	return usr, nil
 }
 
-// Get は構成員を返す。無ければ MEM-001。
-func (u *Users) Get(ctx context.Context, id uuid.UUID) (User, error) {
-	return u.get(ctx, u.d.Pool, id, false)
+// Get は構成員を返す。無ければ MEM-001。q は ctx のトランザクションか Pool（トランザクションの中ではそれを渡す。全体実装設計書 2.4）。
+func (u *Users) Get(ctx context.Context, q store.Querier, id uuid.UUID) (User, error) {
+	return u.get(ctx, q, id, false)
 }
 
 // get は 1 行を読む。lock なら FOR NO KEY UPDATE（キーの列は書かないので足り、外部キーで指す INSERT の FOR KEY SHARE を
@@ -224,7 +224,7 @@ func (u *Users) List(ctx context.Context, p boundary.Principal, page Page) ([]ge
 	for i, usr := range list {
 		ids[i] = usr.Id
 	}
-	sigs, err := u.d.Keys.SigningKeys(ctx, ids)
+	sigs, err := u.d.Keys.SigningKeys(ctx, u.d.Pool, ids)
 	if err != nil {
 		return nil, false, wrap(err)
 	}
@@ -245,14 +245,14 @@ func (u *Users) Detail(ctx context.Context, p boundary.Principal, id uuid.UUID) 
 	if err != nil {
 		return gen.UserDetail{}, err
 	}
-	usr, err := u.Get(ctx, id)
+	usr, err := u.Get(ctx, u.d.Pool, id)
 	if err != nil {
 		return gen.UserDetail{}, err
 	}
 	if !usr.State.inFamily() {
 		return gen.UserDetail{}, ev(cgen.MEM001)
 	}
-	sigs, err := u.d.Keys.SigningKeys(ctx, []uuid.UUID{id})
+	sigs, err := u.d.Keys.SigningKeys(ctx, u.d.Pool, []uuid.UUID{id})
 	if err != nil {
 		return gen.UserDetail{}, wrap(err)
 	}
@@ -260,7 +260,7 @@ func (u *Users) Detail(ctx context.Context, p boundary.Principal, id uuid.UUID) 
 	if k, ok := sigs[id]; ok {
 		sig = &k
 	}
-	devs, err := u.d.Keys.DevicesOf(ctx, id)
+	devs, err := u.d.Keys.DevicesOf(ctx, u.d.Pool, id)
 	if err != nil {
 		return gen.UserDetail{}, wrap(err)
 	}
@@ -379,11 +379,11 @@ func (u *Users) readBirthday(ctx context.Context, q querier, id uuid.UUID) (*bir
 
 // Me は /me の応答（誕生日を開いて返す）。
 func (u *Users) Me(ctx context.Context, id uuid.UUID) (gen.GetMeResponse, error) {
-	usr, err := u.Get(ctx, id)
+	usr, err := u.Get(ctx, u.d.Pool, id)
 	if err != nil {
 		return gen.GetMeResponse{}, err
 	}
-	sigs, err := u.d.Keys.SigningKeys(ctx, []uuid.UUID{id})
+	sigs, err := u.d.Keys.SigningKeys(ctx, u.d.Pool, []uuid.UUID{id})
 	if err != nil {
 		return gen.GetMeResponse{}, wrap(err)
 	}

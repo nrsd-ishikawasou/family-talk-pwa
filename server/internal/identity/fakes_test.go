@@ -25,7 +25,7 @@ type fakeKeyReader struct {
 	pubs *sync.Map // uuid.UUID から *ecdsa.PublicKey
 }
 
-func (k fakeKeyReader) VerifyProof(_ context.Context, deviceId uuid.UUID, message, sig []byte) (bool, error) {
+func (k fakeKeyReader) VerifyProof(_ context.Context, _ store.Querier, deviceId uuid.UUID, message, sig []byte) (bool, error) {
 	if k.pubs == nil {
 		return false, nil
 	}
@@ -37,13 +37,15 @@ func (k fakeKeyReader) VerifyProof(_ context.Context, deviceId uuid.UUID, messag
 	return ecdsa.VerifyASN1(v.(*ecdsa.PublicKey), h[:], sig), nil
 }
 
-func (fakeKeyReader) SigningKeys(context.Context, []uuid.UUID) (map[uuid.UUID]gen.Fusr1, error) {
+func (fakeKeyReader) SigningKeys(context.Context, store.Querier, []uuid.UUID) (map[uuid.UUID]gen.Fusr1, error) {
 	return map[uuid.UUID]gen.Fusr1{}, nil
 }
 
-func (fakeKeyReader) DevicesOf(context.Context, uuid.UUID) ([]gen.Fdev1, error) { return nil, nil }
+func (fakeKeyReader) DevicesOf(context.Context, store.Querier, uuid.UUID) ([]gen.Fdev1, error) {
+	return nil, nil
+}
 
-func (fakeKeyReader) KeysOf(context.Context, uuid.UUID) (map[uuid.UUID]gen.Fdev1, error) {
+func (fakeKeyReader) KeysOf(context.Context, store.Querier, uuid.UUID) (map[uuid.UUID]gen.Fdev1, error) {
 	return map[uuid.UUID]gen.Fdev1{}, nil
 }
 

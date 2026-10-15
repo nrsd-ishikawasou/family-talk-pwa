@@ -34,8 +34,9 @@
   - [srv-common](srv-common.md)
   - [srv-store](srv-store.md)（`Tx`、`Feed`、`Notifier`、`RoomLock`、`Jobs`）
   - [srv-identity](srv-identity.md)（`Users`、役割、`Hooks` の登録）
-  - [srv-keys](srv-keys.md)（`Groups` の `Create`、`CheckSender`、`Epoch`、`CommitsSince`、`Commit`、`Reject`、`Reinit`、`PendingDevices`。`Inbox.Put`）
-    - タグ rooms の `/rooms/{id}/mls/*` の 5 操作（epoch、commits、commit、reject、reinit）は本ブロックが受けて srv-keys の `Groups` を呼ぶ。`reject` と `reinit` は構成員の確かめ（ROOM-002）の後にそのまま `Groups.Reject`、`Groups.Reinit` を呼ぶ（第12章 5.2 の復旧）。`POST /rooms/{id}/mls/commit` は同じトランザクションで `Groups.Commit`、`Members.Resolve` の順。`Groups.Commit` の前に RoomLock を取らない（`Groups.Commit` は、休眠の端末を承認済みへ戻す devices の行の錠を RoomLock より先に取る）。サーバーが Commit の Add と Remove を読む（第12章 5.2）。`GET /rooms/{id}/mls/epoch` は `Groups.Epoch` に構成員の追加待ち（`pending_add`）を足す
+  - [srv-keys](srv-keys.md)（`Groups` と `Inbox.Put`）
+    - `Groups` の 8 つ：`Create`・`CheckSender`・`Epoch`・`CommitsSince`・`Commit`・`Reject`・`Reinit`・`PendingDevices`
+    - タグ rooms の `/rooms/{id}/mls/*` の 5 操作は本ブロックが受けて srv-keys の `Groups` を呼ぶ。5 操作は epoch、commits、commit、reject、reinit。`reject` と `reinit` は構成員の確かめ（ROOM-002）の後にそのまま `Groups.Reject`、`Groups.Reinit` を呼ぶ（第12章 5.2 の復旧）。`POST /rooms/{id}/mls/commit` は同じトランザクションで `Groups.Commit`、`Members.Resolve` の順。`Groups.Commit` の前に RoomLock を取らない（`Groups.Commit` は、休眠の端末を承認済みへ戻す devices の行の錠を RoomLock より先に取る）。サーバーが Commit の Add と Remove を読む（第12章 5.2）。`GET /rooms/{id}/mls/epoch` は `Groups.Epoch` に構成員の追加待ち（`pending_add`）を足す
 - 依存の逆転：
   - `Notifier`（イベントの後の通知の判定と送信）と `MediaBinder`（添付の結び付き）を本ブロックが定義し、srv-push と srv-media が実装して渡す。
   - srv-boundary の `RoomMembership` を実装する。

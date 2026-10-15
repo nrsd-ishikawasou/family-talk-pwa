@@ -6,14 +6,14 @@
 
 ### 追加
 
-- 0.1.0：基本設計書 第12章 5.2「拒まれた Commit からの戻し」と第2章 5.5 の経路と欄。
-  - `POST /rooms/{id}/mls/reject`（受け手の端末が処理できなかった Commit か Welcome の報告。`{generation, epoch?, commit_ref?, reason}`。応答 `{reinit_allowed_at}`。`KEY-007`、`KEY-009`）
+- 0.1.0：基本設計書 第12章 5.2「拒まれた Commit からの復旧」と第2章 5.5 の経路と欄。
+  - `POST /rooms/{id}/mls/reject`（受け手の端末が処理できなかった Commit か Welcome の報告）。要求は `{generation, epoch?, commit_ref?, reason}`、応答は `{reinit_allowed_at}`。番号は `KEY-007`、`KEY-009`
   - `POST /rooms/{id}/mls/reinit`（グループの再初期化。応答 `{generation, group_id, epoch}`。`KEY-013`）
   - `GET /rooms/{id}/mls/epoch` に `generation`、`group_id`、`pending_readd`。`GET /rooms/{id}/mls/commits` に `generation` と項目の `commit_ref`。`POST /rooms/{id}/mls/commit` の応答に `commit_ref`
   - `room.mls` に `generation`（`commit_ref` は任意に。epoch 0 には無い）。`room.member` の `change` に `pending_readd`
   - `KEY-013`（409。MLS のグループの再初期化を許さない。params.reason は `not_pending`、`too_early`、`limit`。params.allowed_at）
   - `fkb-history/1` と `ft.event.mls/1` の `group_id` はグループの識別子（トークの識別子の 16 バイトと世代の 4 バイト）の base64url
-- 0.1.0：`GET /recovery/{request_id}/share`（承認する端末が自分宛ての片のコピーを取る。規則 `share_holder`。`AUTH-007`、`KEY-005`。基本設計書 第12章 5.4 (c)、第2章 5.4）。
+- 0.1.0：`GET /recovery/{request_id}/share`（承認する端末が自分宛ての片のコピーを取る。基本設計書 第12章 5.4 (c)、第2章 5.4）。規則は `share_holder`、番号は `AUTH-007`、`KEY-005`。
 - 0.1.0：`KEY-012`（403。回復コードの照合の値が合わない。基本設計書 第12章 5.4 (b)、第2章 9.2）。`POST /me/keybundle/recovery-code/verify` の x-errors に加えた。
 - 0.1.0：`ft.push/1` に `reason`（`call_end` の時に必須。`missed`、`answered`、`declined`、`cancelled`。基本設計書 第7章 7）。
 - 0.1.0：`ft.push.declarative/1` の `notification` に `mutable: true`（必須。外側と両方に置く。基本設計書 第2章 7）。
@@ -60,8 +60,8 @@
 
 ### 削除
 
-- 0.1.0：`POST /devices/{did}/inbox` の `kind` から `share` を外した（片は `POST /recovery/{request_id}/approve` だけが置く。基本設計書 第12章 5.2）。
-- 0.1.0：`ft.push.declarative/1` の `notification.renotify` を外した（WebKit は実装せず、tag の置き換えに頼らない。基本設計書 第7章 DD-7-7）。
+- 0.1.0：`POST /devices/{did}/inbox` の `kind` から `share` を外した（基本設計書 第12章 5.2）。片は `POST /recovery/{request_id}/approve` だけが置く。
+- 0.1.0：`ft.push.declarative/1` の `notification.renotify` を外した（基本設計書 第7章 DD-7-7）。WebKit は実装せず、tag の置き換えに頼らない。
 - 0.1.0：`recovery.used` の `method` の `device`（基本設計書 第2章 6.2、第12章 5.4）。既存の端末による承認は端末の追加であって回復ではなく、書く操作が無かった。知らせは `device.changed` と `notice`（`new_device`）が担う。`ft.event.system/1` の `recovery_used` の `params.method` も同じ列挙にした（`reset` を足し `device` を外した）。
 - 0.1.0：`POST /rooms/{id}/mls/proposals`（基本設計書 第12章 5.2、第2章 5.5）。サーバーは提案を作らず（外部提案は署名鍵を要する）、端末の提案を配る経路も無かった。Add と Remove は Commit の中に値で入れる。
 - 0.1.0：`GET /rooms/{id}/mls/epoch` の `tree_hash`（基本設計書 第2章 5.5。出どころが無かった）。
@@ -70,7 +70,8 @@
 
 ### 変更
 
-- 0.1.0：`POST /me/devices/{id}/keypackages` の `key_packages` の `maxItems` を 21 から 20 に正した（基本設計書 第2章 5.4 の「最大 20 + 最後の手段 1」。最後の手段は別の欄 `last_resort`）。
+- 0.1.0：`GET /family/recovery-key/public` の x-errors に `KEY-005` を足した（家族回復鍵の公開部がまだ無い時。基本設計書 第12章 5.4 (d)）。
+- 0.1.0：`POST /me/devices/{id}/keypackages` の `key_packages` の `maxItems` を 21 から 20 に正した。基本設計書 第2章 5.4 は「最大 20 + 最後の手段 1」で、最後の手段は別の欄 `last_resort`。
 - 0.1.0：MLS の配送サービスの形を、サーバーが Commit を読む形にした（基本設計書 第12章 5.2、第2章 5.5）。
   - `POST /rooms/{id}/mls/commit` の `commit` は PublicMessage の MLSMessage、`welcome` は Welcome の MLSMessage。サーバーが Add と Remove を読み、規則に合わなければ `KEY-009`。
   - `POST /me/devices/{id}/keypackages` の要素は MLSMessage（`mls_key_package`）。サーバーが credential と署名を確かめる（x-errors の `KEY-009`）。

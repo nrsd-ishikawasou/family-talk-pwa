@@ -521,7 +521,7 @@ func (k *Passkeys) knownDevice(ctx context.Context, tx *store.Tx, userId uuid.UU
 	if dv.UserId != userId || !slices.Contains([]DeviceState{DeviceUnapproved, DeviceApproved, DeviceDormant}, dv.State) {
 		return uuid.Nil, false, nil
 	}
-	ok, err := k.d.Keys.VerifyProof(ctx, dv.Id, deviceProofMessage(challenge), proof.Sig)
+	ok, err := k.d.Keys.VerifyProof(ctx, tx, dv.Id, deviceProofMessage(challenge), proof.Sig)
 	if err != nil {
 		return uuid.Nil, false, wrap(err)
 	}
@@ -666,9 +666,9 @@ type CredOwner struct {
 
 // OwnerOf は資格情報の持ち主と PRF の有無。無ければ KEY-009（srv-keys がコピー (e) の対象を確かめる。
 // PUT /me/keybundle/prf/{cred_id}。第12章 5.4 (e)）。
-func (k *Passkeys) OwnerOf(ctx context.Context, credId []byte) (CredOwner, error) {
+func (k *Passkeys) OwnerOf(ctx context.Context, q store.Querier, credId []byte) (CredOwner, error) {
 	var o CredOwner
-	err := k.d.Pool.QueryRow(ctx, `SELECT user_id, prf FROM passkeys WHERE cred_id = $1`, credId).Scan(&o.UserId, &o.Prf)
+	err := q.QueryRow(ctx, `SELECT user_id, prf FROM passkeys WHERE cred_id = $1`, credId).Scan(&o.UserId, &o.Prf)
 	if noRows(err) {
 		return CredOwner{}, ev(cgen.KEY009)
 	}

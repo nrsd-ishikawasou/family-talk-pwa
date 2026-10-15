@@ -10,6 +10,7 @@ import (
 
 	"github.com/nrsd-ishikawasou/family-talk-pwa/server/internal/boundary/gen"
 	"github.com/nrsd-ishikawasou/family-talk-pwa/server/internal/identity"
+	"github.com/nrsd-ishikawasou/family-talk-pwa/server/internal/store"
 )
 
 // reader は srv-identity の DeviceKeyReader の実装（B-081。Keys.Reader）。
@@ -20,16 +21,16 @@ type reader struct {
 
 var _ identity.DeviceKeyReader = reader{}
 
-// VerifyProof は DeviceKeys.VerifyProof（第12章 5.3 の device_sig）。
-func (r reader) VerifyProof(ctx context.Context, deviceId uuid.UUID, message, sig []byte) (bool, error) {
-	return r.devices.VerifyProof(ctx, deviceId, message, sig)
+// VerifyProof は DeviceKeys.VerifyProof（第12章 5.3 の device_sig）。q は ctx のトランザクションか Pool（LoginVerify はトランザクション）。
+func (r reader) VerifyProof(ctx context.Context, q store.Querier, deviceId uuid.UUID, message, sig []byte) (bool, error) {
+	return r.devices.VerifyProof(ctx, q, deviceId, message, sig)
 }
 
 // SigningKeys は構成員ごとの fusr/1（/users の user_sig_pub。行の無い構成員は入れない）。
-func (r reader) SigningKeys(ctx context.Context, userIds []uuid.UUID) (map[uuid.UUID]gen.Fusr1, error) {
+func (r reader) SigningKeys(ctx context.Context, q store.Querier, userIds []uuid.UUID) (map[uuid.UUID]gen.Fusr1, error) {
 	out := make(map[uuid.UUID]gen.Fusr1, len(userIds))
 	for _, u := range userIds {
-		f, err := r.signing.Get(ctx, u)
+		f, err := r.signing.Get(ctx, q, u)
 		if err != nil {
 			return nil, err
 		}
@@ -41,23 +42,11 @@ func (r reader) SigningKeys(ctx context.Context, userIds []uuid.UUID) (map[uuid.
 }
 
 // DevicesOf は承認済みと休眠の端末の fdev/1（/users/{id}）。
-func (r reader) DevicesOf(ctx context.Context, userId uuid.UUID) ([]gen.Fdev1, error) {
-	return r.devices.ListOfUser(ctx, userId, true)
+func (r reader) DevicesOf(ctx context.Context, q store.Querier, userId uuid.UUID) ([]gen.Fdev1, error) {
+	return r.devices.ListOfUser(ctx, q, userId, true)
 }
 
 // KeysOf は登録のある全端末の fdev/1 を端末の識別子から引く（GET /me/devices の keys）。
-func (r reader) KeysOf(ctx context.Context, userId uuid.UUID) (map[uuid.UUID]gen.Fdev1, error) {
-	list, err := r.devices.ListOfUser(ctx, userId, false)
-	if err != nil {
-		return nil, err
-	}
-	out := make(map[uuid.UUID]gen.Fdev1, len(list))
-	for _, f := range list {
-		id, err := uuid.FromString(f.DeviceId)
-		if err != nil {
-			return nil, err
-		}
-		out[id] = f
-	}
-	return out, nil
+func (r reader) KeysOf(ctx context.Context, q store.Querier, userId uuid.UUID) (map[uuid.UUID]gen.Fdev1, error) {
+	return r.devices.listOfUser(ctx, q, userId)
 }

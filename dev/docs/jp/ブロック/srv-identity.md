@@ -263,6 +263,7 @@ classDiagram
     +ExpireUnapproved(ctx, olderThan) int
     +MarkDormant(tx, deviceId, olderThan) bool
     +MarkActive(tx, deviceId)
+    +LockShared(tx, deviceId) Result~Device, Event~
     +GuardianCleared(ctx, q, deviceId) bool
     +MarkGuardianCleared(tx, deviceId)
     +OfUser(ctx, q, userId) [Device]
@@ -456,6 +457,7 @@ classDiagram
 |Devices|`+Touch(tx, deviceId, ip, now)`|最終の利用と ip_log|
 |Devices|`+ExpireUnapproved(ctx, olderThan) int`|7 日。期限切れにした端末のセッションを失効（expired）させ、hook OnDeviceRevoked で他のブロックの記録を消す。自分のトランザクションで 1,000 台ずつ。戻りは数|
 |Devices|`+MarkDormant(tx, deviceId, olderThan) bool`|srv-keys Groups.RetireDormant から。承認済みで last_seen_at が olderThan より古い時だけ休眠にし、変えたかを返す（1 つの UPDATE。休眠の判定の後に使われた端末を休眠にしない）|
+|Devices|`+LockShared(tx, deviceId) Result~Device, Event~`|端末の行を共有の錠（FOR SHARE）で読む。無ければ KEY-001。srv-keys が端末を MLS のグループに加える前（Groups.Commit の Add の端末、RequestAdd、Reinit の入るべき端末）に、トークの錠より先に取る。取り消しの行の錠と直列になり、取り消しの hook が新しい leaf と追加待ちを見落とさない（全体実装設計書 I-8）|
 |Devices|`+MarkActive(tx, deviceId)`|srv-keys Groups.Commit から。休眠の端末が Add で leaf を得た時に承認済みへ戻す（第3章 5.1。休眠の時だけで、他の状態は変えない）。device.changed は出さない（change に当たる値が無く、家族は room.member の added で知る）|
 |Devices|`+GuardianCleared(ctx, q, deviceId) bool`|`devices.guardian_approved_at` があるか（保護者が承認した端末。第3章 4.4）。srv-keys DeviceKeys.Approve が子の端末で確かめる|
 |Devices|`+MarkGuardianCleared(tx, deviceId)`|`devices.guardian_approved_at` を置く。QrFlow.Poll（保護者が承認した device_codes から登録した時）と Guardians.Approve（対象が端末の識別子の時）から|
@@ -489,7 +491,7 @@ classDiagram
 |B-064|`SetupLink`|srv-admin `HostTools`（`ft setup` の最後、`ft admin create-link`）、operation（`/setup/*`）|[第3章 3.1 初回の管理者（DD-3-1）](../../../../docs/jp/design/03_基本設計書_認証_構成員_端末.md#31-初回の管理者dd-3-1)、[第11章 4 設置の流れ（DD-11-2、DD-11-3）](../../../../docs/jp/design/11_基本設計書_運用.md#4-設置の流れdd-11-2dd-11-3)|
 |B-065|`Passkeys`|operation（本ブロック）、srv-keys（`OwnerOf`：コピー (e) の対象の資格情報の持ち主と PRF の有無）|[第3章 4.1 パスキーの登録（DD-3-4）](../../../../docs/jp/design/03_基本設計書_認証_構成員_端末.md#41-パスキーの登録dd-3-4)、[第3章 4.2 ログイン（DD-3-4）](../../../../docs/jp/design/03_基本設計書_認証_構成員_端末.md#42-ログインdd-3-4)|
 |B-066|`Sessions`（発行、検証、作り直し、失効、期限切れの掃除 `ExpireDue`、ws/shell のトークン）。srv-boundary の `SessionVerifier`、`WsTokenVerifier`、`ShellTokenVerifier` の実装|srv-boundary、srv-keys（鍵の交代で `RevokeAllOfUser`）、srv-admin（セッションの署名鍵の交代で全失効）、srv-worker（`ExpireDue`。1 時間）|[第2章 4.1 セッション](../../../../docs/jp/design/02_基本設計書_境界.md#41-セッション)、[第2章 4.4 WebSocket と通知と SFU](../../../../docs/jp/design/02_基本設計書_境界.md#44-websocket-と通知と-sfu)、[第3章 4.3 セッション（DD-3-5）](../../../../docs/jp/design/03_基本設計書_認証_構成員_端末.md#43-セッションdd-3-5)|
-|B-067|`Devices`（登録、一覧、名前、`Approve`、`UnapproveAllOfUser`、取り消し、`Touch`、`ExpireUnapproved`、`MarkDormant`、`MarkActive`、`GuardianCleared`、`MarkGuardianCleared`、読みの `OfUser`、`NameOf`、`ApprovedSeenBefore`）。`DeviceKeyReader` の定義|operation、srv-admin（`/admin/users/{id}/devices/{did}`）、srv-keys（承認で状態を進める `Devices.Approve` は srv-keys が `fdev/1` の `user_sig` を置いた同じトランザクションで呼ぶ。`DeviceKeyReader` を実装する）、srv-worker（期限切れ）|[第3章 5 端末とセッション（DD-3-6）](../../../../docs/jp/design/03_基本設計書_認証_構成員_端末.md#5-端末とセッションdd-3-6)|
+|B-067|`Devices`（登録、一覧、名前、`Approve`、`UnapproveAllOfUser`、取り消し、`Touch`、`ExpireUnapproved`、`MarkDormant`、`MarkActive`、`LockShared`、`GuardianCleared`、`MarkGuardianCleared`、読みの `OfUser`、`NameOf`、`ApprovedSeenBefore`）。`DeviceKeyReader` の定義|operation、srv-admin（`/admin/users/{id}/devices/{did}`）、srv-keys（承認で状態を進める `Devices.Approve` は srv-keys が `fdev/1` の `user_sig` を置いた同じトランザクションで呼ぶ。`DeviceKeyReader` を実装する）、srv-worker（期限切れ）|[第3章 5 端末とセッション（DD-3-6）](../../../../docs/jp/design/03_基本設計書_認証_構成員_端末.md#5-端末とセッションdd-3-6)|
 |B-068|`QrFlow`（`Start`、`Poll`、`Approve`、`Info`。本人が断る操作は無い：第3章 4.4）|operation|[第3章 4.4 新しい端末の追加（DD-3-7）](../../../../docs/jp/design/03_基本設計書_認証_構成員_端末.md#44-新しい端末の追加dd-3-7)|
 |B-069|`ResetLink`|srv-admin（発行）、operation（消費）|[第3章 4.6 回復（パスキーを失った）](../../../../docs/jp/design/03_基本設計書_認証_構成員_端末.md#46-回復パスキーを失った)|
 |B-070|`Hooks`（`OnDeviceRevoked`、`OnUserSuspended`、`OnUserDeleted`、`OnUserErased`、`OnUserCreated`、`OnNotice`、`OnPasskeyDeleted`、`OnPasskeyReset` の定義と、`Notify` の公開。登録は srv-keys、srv-push、srv-rooms、srv-admin）|同左。`Notify` は srv-keys（回復の使用の知らせ）|[第12章 9 消すこと（DD-12-13、R-12-6-1）](../../../../docs/jp/design/12_基本設計書_データと暗号化.md#9-消すことdd-12-13r-12-6-1)、I-8|

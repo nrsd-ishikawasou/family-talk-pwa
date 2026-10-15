@@ -2014,6 +2014,7 @@ paths:
       - approved
       x-idempotency: none
       x-errors:
+      - KEY-005
       - AUTH-001
       - AUTH-002
       - KEY-004

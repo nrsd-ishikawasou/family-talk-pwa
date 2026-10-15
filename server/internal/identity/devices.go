@@ -107,9 +107,20 @@ func scanDevice(row interface{ Scan(...any) error }) (Device, error) {
 	return dv, nil
 }
 
-// Get は端末を返す。無ければ KEY-001。
-func (v *Devices) Get(ctx context.Context, deviceId uuid.UUID) (Device, error) {
-	return v.get(ctx, v.d.Pool, deviceId, false)
+// Get は端末を返す。無ければ KEY-001。q は ctx のトランザクションか Pool（トランザクションの中ではそれを渡す。全体実装設計書 2.4）。
+func (v *Devices) Get(ctx context.Context, q store.Querier, deviceId uuid.UUID) (Device, error) {
+	return v.get(ctx, q, deviceId, false)
+}
+
+// LockShared は端末を共有の錠（FOR SHARE）で読む。srv-keys が端末を MLS のグループに加える前（Groups.Commit の Add、RequestAdd、
+// Reinit）に、トークの錠より先に取る。取り消し（行の FOR UPDATE）と直列になり、取り消しの hook が新しい leaf と待ちを見落とさない
+// （I-8）。無ければ KEY-001。
+func (v *Devices) LockShared(ctx context.Context, tx *store.Tx, deviceId uuid.UUID) (Device, error) {
+	dv, err := scanDevice(tx.QueryRow(ctx, `SELECT `+deviceCols+` FROM devices WHERE id = $1 FOR SHARE`, deviceId))
+	if noRows(err) {
+		return Device{}, ev(cgen.KEY001)
+	}
+	return dv, wrap(err)
 }
 
 func (v *Devices) get(ctx context.Context, q querier, deviceId uuid.UUID, lock bool) (Device, error) {
@@ -177,7 +188,7 @@ func (v *Devices) views(ctx context.Context, userId, thisDevice uuid.UUID, list 
 	for _, s := range subs {
 		subscribed[s] = true
 	}
-	keys, err := v.d.Keys.KeysOf(ctx, userId)
+	keys, err := v.d.Keys.KeysOf(ctx, v.d.Pool, userId)
 	if err != nil {
 		return nil, wrap(err)
 	}
@@ -351,10 +362,14 @@ func (v *Devices) ExpireUnapproved(ctx context.Context, olderThan time.Time) (in
 	}
 }
 
-// MarkDormant は srv-keys Groups.RetireDormant から状態を休眠にする（承認済みの時だけ。他の状態は何もしない。第12章 5.2）。
-func (v *Devices) MarkDormant(ctx context.Context, tx *store.Tx, deviceId uuid.UUID) error {
-	_, err := tx.Exec(ctx, `UPDATE devices SET state = 'dormant' WHERE id = $1 AND state = 'approved'`, deviceId)
-	return wrap(err)
+// MarkDormant は srv-keys Groups.RetireDormant から状態を休眠にする。承認済みで last_seen_at が olderThan より古い時だけ休眠にし、
+// 変えたかを返す（1 つの UPDATE。休眠の判定の後に使われた端末を休眠にしない。第12章 5.2）。
+func (v *Devices) MarkDormant(ctx context.Context, tx *store.Tx, deviceId uuid.UUID, olderThan time.Time) (bool, error) {
+	tag, err := tx.Exec(ctx, `UPDATE devices SET state = 'dormant' WHERE id = $1 AND state = 'approved' AND last_seen_at < $2`, deviceId, olderThan)
+	if err != nil {
+		return false, wrap(err)
+	}
+	return tag.RowsAffected() == 1, nil
 }
 
 // MarkActive は srv-keys Groups.Commit から。休眠の端末が Add で leaf を得た時に承認済みへ戻す（休眠の時だけ。他の状態は何もしない。
@@ -388,12 +403,13 @@ func (v *Devices) OfUser(ctx context.Context, q store.Querier, userId uuid.UUID)
 }
 
 // NameOf は端末の名前（本人の DEK で開く）。srv-keys の recovery.request の device_name と知らせの params。端末が無ければ KEY-001。
-func (v *Devices) NameOf(ctx context.Context, deviceId uuid.UUID) (string, error) {
-	dv, err := v.get(ctx, v.d.Pool, deviceId, false)
+// q は ctx のトランザクションか Pool。
+func (v *Devices) NameOf(ctx context.Context, q store.Querier, deviceId uuid.UUID) (string, error) {
+	dv, err := v.get(ctx, q, deviceId, false)
 	if err != nil {
 		return "", err
 	}
-	name, err := v.keys.open(ctx, v.d.Pool, dv.UserId, dv.Name.Encode(), aad("devices", "name", dv.Id.String()))
+	name, err := v.keys.open(ctx, q, dv.UserId, dv.Name.Encode(), aad("devices", "name", dv.Id.String()))
 	if err != nil {
 		return "", err
 	}
