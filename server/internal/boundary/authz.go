@@ -52,20 +52,21 @@ const (
 	authzDeviceCode  = "device_code"
 	authzWsToken     = "ws_token"
 	authzInternal    = "internal"
+	authzUpSecret    = "up_secret"
 )
 
 // knownAuthz は Check が扱う値。表に無い値は FromSpec が Fault にする（I-12）。
 var knownAuthz = map[string]bool{
 	authzNone: true, authzSession: true, authzApproved: true, authzDeviceSelf: true, authzRoomMember: true,
 	authzAdmin: true, authzShell: true, authzSetupToken: true, authzInviteToken: true, authzResetToken: true,
-	authzDeviceCode: true, authzWsToken: true, authzInternal: true,
+	authzDeviceCode: true, authzWsToken: true, authzInternal: true, authzUpSecret: true,
 }
 
 // passThrough は本ブロックが通す値。トークンは使い切る操作（srv-identity）、ws_token は接続の後の auth、
-// internal はネットワークの側が確かめる（全体実装設計書 5.2）。
+// internal はネットワークの側が確かめる（全体実装設計書 5.2）。up_secret は /up/ws の受け口が Verifiers.UpWs で確かめる（第2章 4.4）。
 var passThrough = map[string]bool{
 	authzSetupToken: true, authzInviteToken: true, authzResetToken: true, authzDeviceCode: true,
-	authzWsToken: true, authzInternal: true,
+	authzWsToken: true, authzInternal: true, authzUpSecret: true,
 }
 
 // Route は 1 つの operation の属性（openapi の x- の欄。全体実装設計書 5.2）。

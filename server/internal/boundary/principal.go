@@ -7,6 +7,7 @@ package boundary
 
 import (
 	"context"
+	"net/netip"
 	"time"
 
 	"github.com/gofrs/uuid/v5"
@@ -65,6 +66,8 @@ type reqInfo struct {
 	origin string
 	log    *logx.Logger
 	start  time.Time
+	// ip は端末の IP（clientIp と同じ規則。形が読めなければ空の値）。
+	ip netip.Addr
 }
 
 type ctxKey int
@@ -116,4 +119,13 @@ func RequestIdFrom(ctx context.Context) uuid.UUID {
 		return ri.id
 	}
 	return uuid.Nil
+}
+
+// ClientIpFrom は ctx の端末の IP を返す（B-041。RequestId の middleware が置く。レート制限と同じ値）。
+// RequestId を通っていない、または形が読めなければ空の値（IsValid が偽）。
+func ClientIpFrom(ctx context.Context) netip.Addr {
+	if ri := reqFrom(ctx); ri != nil {
+		return ri.ip
+	}
+	return netip.Addr{}
 }

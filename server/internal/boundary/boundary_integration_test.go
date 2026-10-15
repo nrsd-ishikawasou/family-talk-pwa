@@ -90,7 +90,7 @@ func (f *fakeImpl) RequestRecovery(ctx context.Context, _ gen.RequestRecoveryReq
 	return gen.RequestRecovery200JSONResponse{RequestId: "01890a5d-ac96-774b-bcce-b302099a8077", ExpiresAt: testNow}, nil
 }
 
-// UseFamilyRecoveryKey は本文の違う同じ鍵の再送（NET-008）の試験に使う。
+// UseFamilyRecoveryKey は要求の本文を持たない（第2章 5.4）。試験では呼ばない（応答のコピー (d) は srv-keys が作る）。
 func (f *fakeImpl) UseFamilyRecoveryKey(context.Context, gen.UseFamilyRecoveryKeyRequestObject) (gen.UseFamilyRecoveryKeyResponseObject, error) {
 	return gen.UseFamilyRecoveryKey200JSONResponse{}, nil
 }
@@ -160,6 +160,7 @@ type itEnv struct {
 	state  *mutableState
 	base   Base
 	user   uuid.UUID
+	dev    uuid.UUID
 	cancel context.CancelFunc
 	server *Server
 }
@@ -186,7 +187,7 @@ func newItEnv(t *testing.T) *itEnv {
 	dev := uuid.Must(uuid.NewV7())
 	pr := Principal{Kind: KindUser, UserId: &user, DeviceId: &dev, Role: RoleMember, DeviceApproved: true}
 	state := &mutableState{s: StateNormal}
-	v := Verifiers{Session: fakeSession{p: pr}, Shell: fakeToken{ev: fault.New(cgen.AUTH001, nil)}, Ws: fakeToken{p: pr},
+	v := Verifiers{Session: fakeSession{p: pr}, Shell: fakeToken{ev: fault.New(cgen.AUTH001, nil)}, Ws: fakeToken{p: pr}, UpWs: fakeUpWs{ev: fault.New(cgen.AUTH001, nil)},
 		Membership: fakeMembership{}, State: state}
 	impl := &fakeImpl{pool: itPool}
 	impls := gen.Implementations{Setup: impl, Invites: impl, Auth: impl, Me: impl, Family: impl, Users: impl, Devices: impl,
@@ -200,7 +201,7 @@ func newItEnv(t *testing.T) *itEnv {
 	go func() { _ = s.Hub().Run(ctx) }()
 	srv := httptest.NewServer(h)
 	t.Cleanup(func() { cancel(); srv.Close() })
-	return &itEnv{srv: srv, impl: impl, state: state, base: base, user: user, cancel: cancel, server: s}
+	return &itEnv{srv: srv, impl: impl, state: state, base: base, user: user, dev: dev, cancel: cancel, server: s}
 }
 
 // do は端末の要求（Cookie、X-Requested-With、Sec-Fetch-Site）を送る。
@@ -228,32 +229,36 @@ func (e *itEnv) do(t *testing.T, method, path, body string, hdr map[string]strin
 // appendFeed は利用者の feed に notice を 1 行書き、コミットで NOTIFY する（他のブロックの書き込みの代わり）。
 func (e *itEnv) appendFeed(t *testing.T, kind string) int64 {
 	t.Helper()
+	return e.appendFeedTo(t, kind, uuid.Nil)
+}
+
+// appendFeedTo は宛先の端末を添えて feed に 1 行積む（session.revoked と device.inbox は必須。sync.gap は任意。全体実装設計書 2.4）。
+func (e *itEnv) appendFeedTo(t *testing.T, kind string, deviceId uuid.UUID) int64 {
+	t.Helper()
 	ctx := context.Background()
 	tx, err := itPool.Begin(ctx)
 	if err != nil {
 		t.Fatal(err)
 	}
 	defer tx.Rollback(ctx)
-	pos, err := e.base.Feed.NextPos(ctx, tx, e.user)
-	if err != nil {
-		t.Fatal(err)
-	}
-	ref := store.FeedRef{Kind: kind, Id: uuid.Must(uuid.NewV7()), Ts: testNow}
-	if kind == kindRoomEvent {
+	ref := store.FeedRef{Kind: kind, Id: uuid.Must(uuid.NewV7()), DeviceId: deviceId, Ts: testNow}
+	switch kind {
+	case kindRoomEvent:
 		ref.RoomId = roomA
-	} else {
+	case "device.inbox":
+		ref.Payload = json.RawMessage(`{"count":1}`)
+	case kindSessionRevoked:
+		ref.Payload = json.RawMessage(`{"reason":"logout"}`)
+	case "sync.gap":
+		ref.Payload = json.RawMessage(`{"reason":"restore"}`)
+	default:
 		ref.Payload = json.RawMessage(`{"kind":"capacity","level":"info","text_key":"k","params":{}}`)
 	}
-	if err := e.base.Feed.Append(ctx, tx, e.user, pos, ref); err != nil {
-		t.Fatal(err)
-	}
-	if err := e.base.Notifier.Notify(ctx, tx, e.user); err != nil {
-		t.Fatal(err)
-	}
+	p := e.base.Feed.Append(tx, e.user, ref)
 	if err := tx.Commit(ctx); err != nil {
 		t.Fatal(err)
 	}
-	return pos
+	return p.Pos
 }
 
 // R: R-11-8-1
@@ -404,6 +409,68 @@ func TestIntegrationWebSocketAuthReadyAndCatchUp(t *testing.T) {
 	}
 }
 
+// R: R-2-2-4
+func TestIntegrationSyncDeviceTargetedRowsAndPos(t *testing.T) {
+	e := newItEnv(t)
+	other := uuid.Must(uuid.NewV7())
+	mine := e.appendFeedTo(t, "device.inbox", e.dev)
+	e.appendFeedTo(t, "device.inbox", other)
+	last := e.appendFeedTo(t, "sync.gap", uuid.Nil)
+	resp, body := e.do(t, "GET", "/api/v1/sync?since=0", "", nil)
+	var s gen.GetSyncResponse
+	if err := json.Unmarshal(body, &s); err != nil || resp.StatusCode != 200 || s.Events == nil || len(*s.Events) != 2 {
+		t.Fatalf("他の端末宛ての行を除いた差分でない：%d %s", resp.StatusCode, body)
+	}
+	if (*s.Events)[0]["pos"] != float64(mine) || (*s.Events)[1]["type"] != "sync.gap" || s.Pos != int(last) {
+		t.Fatalf("自分宛てと全端末宛ての行、応答の pos が違う：%s", body)
+	}
+	// 最新の行が他の端末宛てだけの時も、応答の pos は利用者の最新（第2章 5.9）。
+	latest := e.appendFeedTo(t, kindSessionRevoked, other)
+	resp, body = e.do(t, "GET", "/api/v1/sync?since="+strconv.FormatInt(last, 10), "", nil)
+	if err := json.Unmarshal(body, &s); err != nil || resp.StatusCode != 200 || (s.Events != nil && len(*s.Events) != 0) || s.HasMore || s.Pos != int(latest) {
+		t.Fatalf("他の端末宛ての行だけの時の応答：%d %s", resp.StatusCode, body)
+	}
+}
+
+// R: R-2-3-2
+func TestIntegrationWebSocketSessionRevokedCloses4001(t *testing.T) {
+	e := newItEnv(t)
+	url := "ws" + strings.TrimPrefix(e.srv.URL, "http") + "/api/v1/ws"
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+	c, _, err := websocket.Dial(ctx, url, &websocket.DialOptions{HTTPHeader: http.Header{"Origin": {"https://" + testHost}}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer c.CloseNow()
+	_ = c.Write(ctx, websocket.MessageText, []byte(`{"type":"auth","token":"t"}`))
+	if _, data, err := c.Read(ctx); err != nil || !strings.Contains(string(data), `"type":"ready"`) {
+		t.Fatalf("ready が来ない：%s %v", data, err)
+	}
+	// 他の端末宛ての session.revoked は届かず、閉じない。
+	e.appendFeedTo(t, kindSessionRevoked, uuid.Must(uuid.NewV7()))
+	pos := e.appendFeed(t, "notice")
+	_, data, err := c.Read(ctx)
+	if err != nil || !strings.Contains(string(data), `"type":"notice"`) || !strings.Contains(string(data), fmt.Sprintf(`"pos":%d`, pos)) {
+		t.Fatalf("他の端末宛ての行の後の notice が来ない：%s %v", data, err)
+	}
+	// この端末宛ての session.revoked はフレームの後に 4001（第2章 6.3）。
+	e.appendFeedTo(t, kindSessionRevoked, e.dev)
+	if _, data, err := c.Read(ctx); err != nil || !strings.Contains(string(data), `"type":"session.revoked"`) {
+		t.Fatalf("session.revoked が来ない：%s %v", data, err)
+	}
+	if _, _, err := c.Read(ctx); websocket.CloseStatus(err) != closeRevoked {
+		t.Fatalf("session.revoked の後に 4001 で閉じない：%v", err)
+	}
+	// 表から外れるのは読み手の goroutine が戻った後（閉じた後に少し遅れる）。
+	for i := 0; i < 50 && len(e.server.Hub().Connected(e.user)) != 0; i++ {
+		time.Sleep(50 * time.Millisecond)
+	}
+	if got := e.server.Hub().Connected(e.user); len(got) != 0 {
+		t.Fatalf("閉じた接続が表に残る：%v", got)
+	}
+}
+
 // expectProblem は応答が code の problem で、状態が status であることを確かめる。
 func expectProblem(t *testing.T, resp *http.Response, body []byte, status int, code string) map[string]any {
 	t.Helper()
@@ -422,7 +489,7 @@ func expectProblem(t *testing.T, resp *http.Response, body []byte, status int, c
 
 func TestErr_NET_001(t *testing.T) {
 	e := newItEnv(t)
-	resp, body := e.do(t, "POST", "/api/v1/family/recovery-key/use", `{"result":"maybe"}`, map[string]string{"Idempotency-Key": uuid.Must(uuid.NewV7()).String()})
+	resp, body := e.do(t, "POST", "/api/v1/me/recovery/request", `{"result":"maybe"}`, map[string]string{"Idempotency-Key": uuid.Must(uuid.NewV7()).String()})
 	p := expectProblem(t, resp, body, 400, cgen.NET001)
 	if errs, _ := p["params"].(map[string]any)["errors"].([]any); len(errs) == 0 {
 		t.Fatalf("params.errors[] が空：%s", body)
@@ -485,10 +552,11 @@ func TestErr_NET_007(t *testing.T) {
 func TestErr_NET_008(t *testing.T) {
 	e := newItEnv(t)
 	key := uuid.Must(uuid.NewV7()).String()
-	if resp, body := e.do(t, "POST", "/api/v1/family/recovery-key/use", `{"result":"success"}`, map[string]string{"Idempotency-Key": key}); resp.StatusCode != 200 {
+	// 本文の無い空の物体 2 つ（`{}` と `{ }`）。意味は同じでも本文の SHA-256 が違う（第2章 DD-2-5 は本文の一致で見る）。
+	if resp, body := e.do(t, "POST", "/api/v1/me/recovery/request", `{}`, map[string]string{"Idempotency-Key": key}); resp.StatusCode != 200 {
 		t.Fatalf("1 回目：%d %s", resp.StatusCode, body)
 	}
-	resp, body := e.do(t, "POST", "/api/v1/family/recovery-key/use", `{"result":"failure"}`, map[string]string{"Idempotency-Key": key})
+	resp, body := e.do(t, "POST", "/api/v1/me/recovery/request", `{ }`, map[string]string{"Idempotency-Key": key})
 	expectProblem(t, resp, body, 409, cgen.NET008)
 }
 

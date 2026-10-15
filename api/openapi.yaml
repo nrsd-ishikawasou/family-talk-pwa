@@ -121,6 +121,11 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/LoginResult'
+          headers:
+            Set-Cookie:
+              description: __Host-session（Secure、HttpOnly、SameSite=Lax、Path=/。第2章 4.1）
+              schema:
+                type: string
         default:
           $ref: '#/components/responses/Problem'
   /invites:
@@ -278,6 +283,11 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/LoginResult'
+          headers:
+            Set-Cookie:
+              description: __Host-session（Secure、HttpOnly、SameSite=Lax、Path=/。第2章 4.1）
+              schema:
+                type: string
         default:
           $ref: '#/components/responses/Problem'
   /auth/passkey/register/options:
@@ -296,6 +306,8 @@ paths:
       x-idempotency-natural: challenge
       x-errors:
       - AUTH-007
+      - AUTH-001
+      - KEY-004
       - AUTH-006
       requestBody:
         required: true
@@ -326,6 +338,7 @@ paths:
       x-idempotency-natural: challenge
       x-errors:
       - AUTH-003
+      - KEY-004
       - AUTH-006
       requestBody:
         required: true
@@ -398,6 +411,11 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/LoginResult'
+          headers:
+            Set-Cookie:
+              description: __Host-session（Secure、HttpOnly、SameSite=Lax、Path=/。第2章 4.1）
+              schema:
+                type: string
         default:
           $ref: '#/components/responses/Problem'
   /auth/qr/start:
@@ -454,6 +472,11 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/LoginResult'
+          headers:
+            Set-Cookie:
+              description: __Host-session（Secure、HttpOnly、SameSite=Lax、Path=/。第2章 4.1）
+              schema:
+                type: string
         default:
           $ref: '#/components/responses/Problem'
   /auth/qr/approve:
@@ -472,6 +495,7 @@ paths:
       - AUTH-006
       - AUTH-007
       - KEY-003
+      - MEM-006
       - AUTH-001
       - AUTH-002
       - KEY-004
@@ -573,6 +597,11 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/LoginResult'
+          headers:
+            Set-Cookie:
+              description: __Host-session（Secure、HttpOnly、SameSite=Lax、Path=/。第2章 4.1）
+              schema:
+                type: string
         default:
           $ref: '#/components/responses/Problem'
   /me/passkeys:
@@ -590,8 +619,18 @@ paths:
       - KEY-004
       parameters:
       - $ref: '#/components/parameters/Limit'
-      - $ref: '#/components/parameters/Before'
-      - $ref: '#/components/parameters/After'
+      - name: before
+        in: query
+        required: false
+        description: この要素の直前までの最後の limit 件（第2章 3）
+        schema:
+          $ref: ./schemas/common/base64url/1.json
+      - name: after
+        in: query
+        required: false
+        description: この要素の直後から limit 件（第2章 3）
+        schema:
+          $ref: ./schemas/common/base64url/1.json
       responses:
         '200':
           description: 成功
@@ -607,7 +646,7 @@ paths:
       in: path
       required: true
       schema:
-        $ref: ./schemas/common/uuidv7/1.json
+        $ref: ./schemas/common/base64url/1.json
     delete:
       operationId: deleteMyPasskey
       tags:
@@ -711,6 +750,11 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/LogoutResponse'
+          headers:
+            Set-Cookie:
+              description: __Host-session を消す（Max-Age=0。第2章 4.1、第3章 4.5）
+              schema:
+                type: string
         default:
           $ref: '#/components/responses/Problem'
   /me/session:
@@ -803,6 +847,70 @@ paths:
                 $ref: '#/components/schemas/GetFamilyDisclosureResponse'
         default:
           $ref: '#/components/responses/Problem'
+  /family/recovery-cards:
+    get:
+      operationId: getFamilyRecoveryCards
+      tags:
+      - family
+      description: 第2章 5.3
+      x-authz:
+      - approved
+      x-idempotency: none
+      x-errors:
+      - AUTH-001
+      - AUTH-002
+      - KEY-004
+      responses:
+        '200':
+          description: 成功
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/GetFamilyRecoveryCardsResponse'
+        default:
+          $ref: '#/components/responses/Problem'
+  /me/recovery-cards/{n}:
+    parameters:
+    - name: n
+      in: path
+      required: true
+      schema:
+        type: integer
+        enum:
+        - 2
+        - 3
+    post:
+      operationId: markRecoveryCardHeld
+      tags:
+      - me
+      description: 第2章 5.3
+      x-authz:
+      - approved
+      x-idempotency: natural
+      x-idempotency-natural: n
+      x-errors:
+      - MEM-009
+      - MEM-010
+      - MEM-011
+      - MEM-002
+      - AUTH-001
+      - AUTH-002
+      - KEY-004
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/MarkRecoveryCardHeldRequest'
+      responses:
+        '200':
+          description: 成功
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/MarkRecoveryCardHeldResponse'
+        default:
+          $ref: '#/components/responses/Problem'
   /me:
     get:
       operationId: getMe
@@ -835,6 +943,7 @@ paths:
       x-idempotency: none
       x-errors:
       - MEM-005
+      - MEM-007
       - AUTH-001
       - AUTH-002
       - KEY-004
@@ -1090,6 +1199,7 @@ paths:
       x-idempotency-natural: id
       x-errors:
       - MEM-001
+      - AUTH-007
       - AUTH-001
       - AUTH-002
       - KEY-004
@@ -1169,6 +1279,45 @@ paths:
                 $ref: ./schemas/ft.settings.guardian/1.json
         default:
           $ref: '#/components/responses/Problem'
+  /me/guardian/children/{id}/birthday:
+    parameters:
+    - name: id
+      in: path
+      required: true
+      schema:
+        $ref: ./schemas/common/uuidv7/1.json
+    put:
+      operationId: putChildBirthday
+      tags:
+      - me
+      description: 第2章 5.3
+      x-authz:
+      - approved
+      x-authz-rule: guardian
+      x-reauth: true
+      x-idempotency: none
+      x-errors:
+      - AUTH-006
+      - MEM-001
+      - MEM-005
+      - AUTH-001
+      - AUTH-002
+      - KEY-004
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/PutChildBirthdayRequest'
+      responses:
+        '200':
+          description: 成功
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PutChildBirthdayResponse'
+        default:
+          $ref: '#/components/responses/Problem'
   /me/report:
     post:
       operationId: createReport
@@ -1199,6 +1348,59 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/CreateReportResponse'
+        default:
+          $ref: '#/components/responses/Problem'
+  /me/notices:
+    get:
+      operationId: listMyNotices
+      tags:
+      - push
+      description: 第2章 5.3
+      x-authz:
+      - session
+      x-idempotency: none
+      x-errors:
+      - AUTH-001
+      - AUTH-002
+      parameters:
+      - $ref: '#/components/parameters/Limit'
+      - $ref: '#/components/parameters/Before'
+      - $ref: '#/components/parameters/After'
+      responses:
+        '200':
+          description: 成功
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ListMyNoticesResponse'
+        default:
+          $ref: '#/components/responses/Problem'
+  /me/notices/{id}:
+    parameters:
+    - name: id
+      in: path
+      required: true
+      schema:
+        $ref: ./schemas/common/uuidv7/1.json
+    get:
+      operationId: getMyNotice
+      tags:
+      - push
+      description: 第2章 5.3
+      x-authz:
+      - session
+      x-idempotency: none
+      x-errors:
+      - MEM-001
+      - AUTH-001
+      - AUTH-002
+      responses:
+        '200':
+          description: 成功
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/GetMyNoticeResponse'
         default:
           $ref: '#/components/responses/Problem'
   /me/devices:
@@ -1283,6 +1485,11 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/DeleteMyDeviceResponse'
+          headers:
+            Set-Cookie:
+              description: __Host-session を消す（Max-Age=0。第2章 4.1、第3章 4.5）
+              schema:
+                type: string
         default:
           $ref: '#/components/responses/Problem'
   /me/devices/{id}/keys:
@@ -1311,7 +1518,7 @@ paths:
         content:
           application/json:
             schema:
-              $ref: ./schemas/fdev/1.json
+              $ref: '#/components/schemas/PutMyDeviceKeysRequest'
       responses:
         '200':
           description: 成功
@@ -1360,6 +1567,28 @@ paths:
             application/json:
               schema:
                 $ref: ./schemas/fdev/1.json
+        default:
+          $ref: '#/components/responses/Problem'
+  /me/mls/rejoin:
+    post:
+      operationId: rejoinMyMls
+      tags:
+      - keys
+      description: 第2章 5.4
+      x-authz:
+      - approved
+      x-idempotency: none
+      x-errors:
+      - AUTH-001
+      - AUTH-002
+      - KEY-004
+      responses:
+        '200':
+          description: 成功
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/RejoinMyMlsResponse'
         default:
           $ref: '#/components/responses/Problem'
   /me/devices/{id}/keypackages:
@@ -1528,7 +1757,9 @@ paths:
       x-idempotency: none
       x-errors:
       - AUTH-006
+      - KEY-001
       - KEY-009
+      - KEY-011
       - AUTH-001
       - AUTH-002
       - KEY-004
@@ -1586,6 +1817,7 @@ paths:
       x-errors:
       - KEY-005
       - KEY-008
+      - KEY-012
       - AUTH-001
       - AUTH-002
       requestBody:
@@ -1616,6 +1848,7 @@ paths:
       x-idempotency: none
       x-errors:
       - AUTH-006
+      - KEY-004
       - AUTH-001
       - AUTH-002
       requestBody:
@@ -1642,9 +1875,13 @@ paths:
       x-authz:
       - session
       x-authz-rule: first_or_approved
+      x-reauth: conditional
       x-idempotency: none
       x-errors:
       - AUTH-006
+      - KEY-001
+      - KEY-003
+      - KEY-004
       - KEY-009
       - AUTH-001
       - AUTH-002
@@ -1653,7 +1890,7 @@ paths:
         content:
           application/json:
             schema:
-              $ref: ./schemas/fusr/1.json
+              $ref: '#/components/schemas/PutMySigningKeyRequest'
       responses:
         '200':
           description: 成功
@@ -1673,7 +1910,8 @@ paths:
       - session
       x-idempotency: key
       x-errors:
-      - KEY-004
+      - KEY-002
+      - KEY-005
       - AUTH-001
       - AUTH-002
       - NET-007
@@ -1695,6 +1933,37 @@ paths:
                 $ref: '#/components/schemas/RequestRecoveryResponse'
         default:
           $ref: '#/components/responses/Problem'
+  /recovery/{request_id}/share:
+    parameters:
+    - name: request_id
+      in: path
+      required: true
+      schema:
+        $ref: ./schemas/common/uuidv7/1.json
+    get:
+      operationId: getRecoveryShare
+      tags:
+      - keys
+      description: 第2章 5.4
+      x-authz:
+      - approved
+      x-authz-rule: share_holder
+      x-idempotency: none
+      x-errors:
+      - AUTH-007
+      - KEY-005
+      - AUTH-001
+      - AUTH-002
+      - KEY-004
+      responses:
+        '200':
+          description: 成功
+          content:
+            application/json:
+              schema:
+                $ref: ./schemas/fkb/1.json
+        default:
+          $ref: '#/components/responses/Problem'
   /recovery/{request_id}/approve:
     parameters:
     - name: request_id
@@ -1712,7 +1981,7 @@ paths:
       x-authz-rule: share_holder
       x-reauth: true
       x-idempotency: natural
-      x-idempotency-natural: id
+      x-idempotency-natural: request_id
       x-errors:
       - AUTH-006
       - AUTH-007
@@ -1769,6 +2038,7 @@ paths:
       x-ratelimit:
       - recovery
       x-errors:
+      - KEY-005
       - KEY-008
       - AUTH-001
       - AUTH-002
@@ -1776,19 +2046,13 @@ paths:
       - NET-008
       parameters:
       - $ref: '#/components/parameters/IdempotencyKey'
-      requestBody:
-        required: true
-        content:
-          application/json:
-            schema:
-              $ref: '#/components/schemas/UseFamilyRecoveryKeyRequest'
       responses:
         '200':
           description: 成功
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/UseFamilyRecoveryKeyResponse'
+                $ref: ./schemas/fkb/1.json
         default:
           $ref: '#/components/responses/Problem'
   /me/keybackup:
@@ -1841,6 +2105,7 @@ paths:
       x-errors:
       - AUTH-006
       - KEY-009
+      - KEY-011
       - AUTH-001
       - AUTH-002
       - KEY-004
@@ -1888,6 +2153,7 @@ paths:
       - inbox
       x-errors:
       - KEY-001
+      - KEY-009
       - KEY-010
       - AUTH-001
       - AUTH-002
@@ -2259,8 +2525,10 @@ paths:
       - ROOM-001
       - ROOM-005
       - ROOM-006
+      - ROOM-009
       - ROOM-012
       - MEDIA-002
+      - MEDIA-005
       - AUTH-001
       - AUTH-002
       - KEY-004
@@ -2454,6 +2722,29 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/CreateRoomReceiptsResponse'
+        default:
+          $ref: '#/components/responses/Problem'
+    get:
+      operationId: listRoomReceipts
+      tags:
+      - rooms
+      description: 第2章 5.5
+      x-authz:
+      - room_member
+      x-idempotency: none
+      x-errors:
+      - ROOM-001
+      - AUTH-001
+      - AUTH-002
+      - KEY-004
+      - ROOM-002
+      responses:
+        '200':
+          description: 成功
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ListRoomReceiptsResponse'
         default:
           $ref: '#/components/responses/Problem'
   /rooms/{id}/typing:
@@ -2744,7 +3035,7 @@ paths:
                 $ref: '#/components/schemas/CreateRoomMlsCommitResponse'
         default:
           $ref: '#/components/responses/Problem'
-  /rooms/{id}/mls/proposals:
+  /rooms/{id}/mls/reject:
     parameters:
     - name: id
       in: path
@@ -2752,16 +3043,19 @@ paths:
       schema:
         $ref: ./schemas/common/uuidv7/1.json
     post:
-      operationId: createRoomMlsProposal
+      operationId: rejectRoomMlsCommit
       tags:
       - rooms
       description: 第2章 5.5
       x-authz:
       - room_member
       x-idempotency: natural
-      x-idempotency-natural: proposal_ref
+      x-idempotency-natural: generation_epoch
+      x-ratelimit:
+      - commit
       x-errors:
       - ROOM-001
+      - KEY-007
       - KEY-009
       - AUTH-001
       - AUTH-002
@@ -2772,14 +3066,51 @@ paths:
         content:
           application/json:
             schema:
-              $ref: '#/components/schemas/CreateRoomMlsProposalRequest'
+              $ref: '#/components/schemas/RejectRoomMlsCommitRequest'
       responses:
         '200':
           description: 成功
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/CreateRoomMlsProposalResponse'
+                $ref: '#/components/schemas/RejectRoomMlsCommitResponse'
+        default:
+          $ref: '#/components/responses/Problem'
+  /rooms/{id}/mls/reinit:
+    parameters:
+    - name: id
+      in: path
+      required: true
+      schema:
+        $ref: ./schemas/common/uuidv7/1.json
+    post:
+      operationId: reinitRoomMls
+      tags:
+      - rooms
+      description: 第2章 5.5
+      x-authz:
+      - room_member
+      x-idempotency: key
+      x-ratelimit:
+      - commit
+      x-errors:
+      - ROOM-001
+      - KEY-013
+      - AUTH-001
+      - AUTH-002
+      - KEY-004
+      - ROOM-002
+      - NET-007
+      - NET-008
+      parameters:
+      - $ref: '#/components/parameters/IdempotencyKey'
+      responses:
+        '200':
+          description: 成功
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ReinitRoomMlsResponse'
         default:
           $ref: '#/components/responses/Problem'
   /media/config:
@@ -3274,36 +3605,6 @@ paths:
                 $ref: '#/components/schemas/EndCallResponse'
         default:
           $ref: '#/components/responses/Problem'
-  /calls/{id}/turn:
-    parameters:
-    - name: id
-      in: path
-      required: true
-      schema:
-        $ref: ./schemas/common/uuidv7/1.json
-    get:
-      operationId: getCallTurn
-      tags:
-      - calls
-      description: 第2章 5.7
-      x-authz:
-      - approved
-      x-authz-rule: call_participant
-      x-idempotency: none
-      x-errors:
-      - CALL-001
-      - AUTH-001
-      - AUTH-002
-      - KEY-004
-      responses:
-        '200':
-          description: 成功
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/GetCallTurnResponse'
-        default:
-          $ref: '#/components/responses/Problem'
   /me/calls:
     get:
       operationId: listMyCalls
@@ -3542,12 +3843,11 @@ paths:
       - shell
       description: 第2章 5.8
       x-authz:
-      - shell
+      - up_secret
       x-idempotency: none
       x-websocket: upWs
       x-errors:
       - AUTH-002
-      - AUTH-001
       responses:
         '101':
           description: WebSocket に切り替える（メッセージは asyncapi.yaml）
@@ -4014,6 +4314,7 @@ paths:
       x-errors:
       - AUTH-006
       - MEM-001
+      - MEM-012
       - AUTH-001
       - AUTH-002
       - KEY-004
@@ -5238,6 +5539,8 @@ components:
           - dormant
         push: *id004
         this_device: *id004
+        keys:
+          $ref: ./schemas/fdev/1.json
       required:
       - id
       - name
@@ -5355,7 +5658,6 @@ components:
       - kind
       - from_device
       - ciphertext
-      - sig
       - pos
       - created_at
       additionalProperties: false
@@ -5371,10 +5673,14 @@ components:
           - family
           - prf
         target: *id001
+        key_version:
+          type: integer
+          minimum: 1
         created_at: *id003
       required:
       - kind
       - target
+      - key_version
       - created_at
       additionalProperties: false
     RoomSummary:
@@ -5483,6 +5789,7 @@ components:
           items: *id002
         started_at: *id003
         ended_at: *id003
+        expires_at: *id003
       required:
       - id
       - room_id
@@ -5850,6 +6157,7 @@ components:
           $ref: '#/components/schemas/WebAuthnResponse'
         device_hint: *id002
         device_sig: *id007
+        device_name: *id001
         platform:
           type: string
           enum:
@@ -5859,6 +6167,7 @@ components:
       required:
       - challenge_id
       - response
+      - device_name
       - platform
       additionalProperties: false
       dependentRequired:
@@ -5876,11 +6185,14 @@ components:
           - android
           - pc
         device_name: *id001
+        sig_pub:
+          $ref: ./schemas/common/jwk_p256/1.json
         kem_pub:
           $ref: ./schemas/common/jwk_p256/1.json
       required:
       - platform
       - device_name
+      - sig_pub
       - kem_pub
       additionalProperties: false
     StartQrLoginResponse:
@@ -5918,15 +6230,24 @@ components:
     GetQrLoginResponse:
       type: object
       properties:
-        platform: *id001
+        platform:
+          type: string
+          enum:
+          - iphone
+          - android
+          - pc
         device_name: *id001
         ip: *id001
-        kem_pub_fingerprint: *id001
+        sig_pub:
+          $ref: ./schemas/common/jwk_p256/1.json
+        kem_pub:
+          $ref: ./schemas/common/jwk_p256/1.json
       required:
       - platform
       - device_name
       - ip
-      - kem_pub_fingerprint
+      - sig_pub
+      - kem_pub
       additionalProperties: false
     GetPasskeyResetResponse:
       type: object
@@ -6015,6 +6336,25 @@ components:
       - notice
       - outbound
       additionalProperties: false
+    GetFamilyRecoveryCardsResponse:
+      type: object
+      properties:
+        cards:
+          type: array
+          items:
+            type: object
+            properties:
+              'no': *id006
+              holder_id: *id002
+              held_at: *id003
+            required:
+            - 'no'
+            additionalProperties: false
+      required:
+      - cards
+      additionalProperties: false
+    MarkRecoveryCardHeldRequest: *id010
+    MarkRecoveryCardHeldResponse: *id010
     GetMeResponse:
       type: object
       properties:
@@ -6077,6 +6417,16 @@ components:
       - approve
       additionalProperties: false
     ApproveAsGuardianResponse: *id010
+    PutChildBirthdayRequest:
+      type: object
+      properties:
+        birthday:
+          type: string
+          pattern: ^\d{4}-\d{2}-\d{2}$
+      required:
+      - birthday
+      additionalProperties: false
+    PutChildBirthdayResponse: *id010
     CreateReportRequest:
       type: object
       properties:
@@ -6089,6 +6439,62 @@ components:
       - kind
       additionalProperties: false
     CreateReportResponse: *id010
+    ListMyNoticesResponse:
+      type: object
+      properties:
+        items:
+          type: array
+          items:
+            type: object
+            properties:
+              id: *id002
+              kind: *id001
+              level:
+                type: string
+                enum:
+                - info
+                - warning
+                - error
+              text_key: *id001
+              params:
+                type: object
+              ts: *id003
+            required:
+            - id
+            - kind
+            - level
+            - text_key
+            - params
+            - ts
+            additionalProperties: false
+        has_more: *id004
+      required:
+      - items
+      - has_more
+      additionalProperties: false
+    GetMyNoticeResponse:
+      type: object
+      properties:
+        id: *id002
+        kind: *id001
+        level:
+          type: string
+          enum:
+          - info
+          - warning
+          - error
+        text_key: *id001
+        params:
+          type: object
+        ts: *id003
+      required:
+      - id
+      - kind
+      - level
+      - text_key
+      - params
+      - ts
+      additionalProperties: false
     ListMyDevicesResponse:
       type: object
       properties:
@@ -6109,12 +6515,32 @@ components:
       - name
       additionalProperties: false
     DeleteMyDeviceResponse: *id010
+    PutMyDeviceKeysRequest:
+      type: object
+      properties:
+        sig_pub:
+          $ref: ./schemas/common/jwk_p256/1.json
+        kem_pub:
+          $ref: ./schemas/common/jwk_p256/1.json
+        mls_credential: *id007
+      required:
+      - sig_pub
+      - kem_pub
+      - mls_credential
+      additionalProperties: false
     ApproveMyDeviceRequest:
       type: object
       properties:
         user_sig: *id007
       required:
       - user_sig
+      additionalProperties: false
+    RejoinMyMlsResponse:
+      type: object
+      properties:
+        rooms: *id006
+      required:
+      - rooms
       additionalProperties: false
     CreateMyKeyPackagesRequest:
       type: object
@@ -6123,7 +6549,7 @@ components:
           type: array
           items: *id007
           minItems: 1
-          maxItems: 21
+          maxItems: 20
         last_resort: *id007
       required:
       - key_packages
@@ -6177,14 +6603,14 @@ components:
     VerifyRecoveryCodeRequest:
       type: object
       properties:
-        code_hash: *id007
+        verifier: *id007
       required:
-      - code_hash
+      - verifier
       additionalProperties: false
     PutMyRecoveryCodeRequest:
       type: object
       properties:
-        hash: *id007
+        verifier: *id007
         params:
           type: object
           properties:
@@ -6202,10 +6628,30 @@ components:
           - salt
           additionalProperties: false
       required:
-      - hash
+      - verifier
       - params
       additionalProperties: false
     PutMyRecoveryCodeResponse: *id010
+    PutMySigningKeyRequest:
+      type: object
+      properties:
+        user_sig_pub:
+          $ref: ./schemas/common/jwk_p256/1.json
+        device_sigs:
+          type: array
+          items:
+            type: object
+            properties:
+              device_id: *id002
+              user_sig: *id007
+            required:
+            - device_id
+            - user_sig
+            additionalProperties: false
+      required:
+      - user_sig_pub
+      - device_sigs
+      additionalProperties: false
     RequestRecoveryRequest: *id010
     RequestRecoveryResponse:
       type: object
@@ -6219,10 +6665,11 @@ components:
     ApproveRecoveryRequest:
       type: object
       properties:
-        item:
-          $ref: '#/components/schemas/InboxItem'
+        ciphertext: *id007
+        sig: *id007
       required:
-      - item
+      - ciphertext
+      - sig
       additionalProperties: false
     ApproveRecoveryResponse: *id010
     GetFamilyRecoveryKeyPublicResponse:
@@ -6235,18 +6682,6 @@ components:
       - public_key
       - version
       additionalProperties: false
-    UseFamilyRecoveryKeyRequest:
-      type: object
-      properties:
-        result:
-          type: string
-          enum:
-          - success
-          - failure
-      required:
-      - result
-      additionalProperties: false
-    UseFamilyRecoveryKeyResponse: *id010
     ListMyKeyBackupResponse:
       type: object
       properties:
@@ -6266,11 +6701,9 @@ components:
         kind:
           type: string
           enum:
-          - welcome
           - keybundle
           - key_backup
           - key_request
-          - share
           - call_key_request
           - call_key
           - sticker_remove_request
@@ -6360,6 +6793,24 @@ components:
       additionalProperties: false
     RedactRoomEventResponse: *id010
     CreateRoomReceiptsResponse: *id010
+    ListRoomReceiptsResponse:
+      type: object
+      properties:
+        items:
+          type: array
+          items:
+            type: object
+            properties:
+              user_id: *id002
+              read: *id002
+              read_private: *id002
+              fully_read: *id002
+            required:
+            - user_id
+            additionalProperties: false
+      required:
+      - items
+      additionalProperties: false
     PutRoomTypingRequest:
       type: object
       properties:
@@ -6398,15 +6849,34 @@ components:
     GetRoomMlsEpochResponse:
       type: object
       properties:
+        generation: *id006
+        group_id: *id007
         epoch: *id006
-        tree_hash: *id007
+        pending_add:
+          type: array
+          items: *id002
+        pending_add_devices:
+          type: array
+          items: *id002
+        pending_remove:
+          type: array
+          items: *id002
+        pending_readd:
+          type: array
+          items: *id002
       required:
+      - generation
+      - group_id
       - epoch
-      - tree_hash
+      - pending_add
+      - pending_add_devices
+      - pending_remove
+      - pending_readd
       additionalProperties: false
     ListRoomMlsCommitsResponse:
       type: object
       properties:
+        generation: *id006
         items:
           type: array
           items:
@@ -6414,13 +6884,15 @@ components:
             properties:
               epoch: *id006
               commit: *id007
-              group_info: *id007
+              commit_ref: *id001
             required:
             - epoch
             - commit
+            - commit_ref
             additionalProperties: false
         has_more: *id004
       required:
+      - generation
       - items
       - has_more
       additionalProperties: false
@@ -6430,7 +6902,6 @@ components:
         epoch: *id006
         commit: *id007
         welcome: *id007
-        group_info: *id007
       required:
       - epoch
       - commit
@@ -6439,17 +6910,51 @@ components:
       type: object
       properties:
         epoch: *id006
+        commit_ref: *id001
       required:
       - epoch
+      - commit_ref
       additionalProperties: false
-    CreateRoomMlsProposalRequest:
+    RejectRoomMlsCommitRequest:
       type: object
       properties:
-        proposal: *id007
+        generation: *id006
+        epoch: *id006
+        commit_ref: *id001
+        reason:
+          type: string
+          enum:
+          - signature
+          - membership_tag
+          - confirmation_tag
+          - proposals
+          - path
+          - tree
+          - welcome
+          - lifetime
+          - other
       required:
-      - proposal
+      - generation
+      - reason
       additionalProperties: false
-    CreateRoomMlsProposalResponse: *id010
+    RejectRoomMlsCommitResponse:
+      type: object
+      properties:
+        reinit_allowed_at: *id003
+      required:
+      - reinit_allowed_at
+      additionalProperties: false
+    ReinitRoomMlsResponse:
+      type: object
+      properties:
+        generation: *id006
+        group_id: *id007
+        epoch: *id006
+      required:
+      - generation
+      - group_id
+      - epoch
+      additionalProperties: false
     GetMediaConfigResponse:
       type: object
       properties:
@@ -6553,21 +7058,6 @@ components:
     LeaveCallResponse: *id010
     EndCallRequest: *id010
     EndCallResponse: *id010
-    GetCallTurnResponse:
-      type: object
-      properties:
-        urls:
-          type: array
-          items: *id001
-        username: *id001
-        credential: *id001
-        ttl: *id006
-      required:
-      - urls
-      - username
-      - credential
-      - ttl
-      additionalProperties: false
     ListMyCallsResponse:
       type: object
       properties:
@@ -6609,8 +7099,10 @@ components:
       type: object
       properties:
         endpoint: *id001
+        ws_secret: *id007
       required:
       - endpoint
+      - ws_secret
       additionalProperties: false
     ReceiveUpResponse: *id010
     GetSyncResponse:

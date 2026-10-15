@@ -58,11 +58,11 @@
         "method": {
           "type": "string",
           "enum": [
-            "device",
             "share",
             "recovery-code",
             "family",
-            "prf"
+            "prf",
+            "reset"
           ]
         },
         "version": {

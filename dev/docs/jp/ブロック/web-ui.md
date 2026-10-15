@@ -159,6 +159,7 @@ classDiagram
 |Theme|`+backgrounds`|トークの背景（同梱の数種、自分の写真）|
 |I18n|`+ja Json`|web/src/ui/i18n/ja.json（手で書く）：画面の鍵、通知の文、知らせの文、「データの取扱いについて」の画面の文（第12章 7.2 のうち 7.1 と 8 以外）、免責（第13章 7）。明示の文と外へ送る情報の表（第12章 7.1、8）はサーバーが返す物を示し、持たない|
 |I18n|`+errors Json`|web/src/ui/i18n/errors.json（tools/gen_texts が第10章 9.2 から作る。手で直さない）：err.&lt;code&gt;.what/next|
+|I18n|`+notices Json`|web/src/ui/i18n/notices.json（tools/gen_texts が第10章 9.4 から作る。手で直さない）：notice.&lt;識別子&gt;.what/next。知らせの一覧、バナー、SW の通知（web-push）が使う|
 |I18n|`+t(key, params)`|web-core Text の実体|
 |I18n|`+rules`|第10章 9.1：です・ます、40 文字、技術の語の禁止（tools/forbidden_words が検査）、数 + 半角空白 + 単位、時刻の形（Intl）|
 |A11y|`+feed`|メッセージの一覧は role=feed と article（aria-posinset/setsize、aria-busy）、日付は見出し|
@@ -171,14 +172,15 @@ classDiagram
 |Screens_Onboarding|`+Disclosure（明示）/ DataHandling（取扱い）`|GET /family/disclosure の notice と outbound を示し、「確認した」で POST /me/disclosure-ack {version}（G-09。第3章 3.1 の 7、3.3 の 6）。起動の時に /me/session の disclosure_ack_version と今の版が違えば示し直す。MEM-008 は取り直して示し直す|
 |Screens_Onboarding|`+SetupAdmin`|/setup/admin/:token：家族の名前、名前と写真、パスキー、回復コード、カードの印刷（PDF。「印刷した」で POST /admin/family/recovery-key/printed）、明示、2 人目の管理者とバックアップの案内。写真は Join1_Name と同じく holdProfile|
 |Screens_Auth|`+Login`|条件付き UI（autocomplete=username webauthn）+ ボタン。シェルはボタンだけ|
-|Screens_Auth|`+AddDevice`|/d/:code：QR と 8 文字。poll|
-|Screens_Auth|`+ApproveDevice`|既存の端末：QR を読むか 8 文字を入力し、ロックを解除する。GET /auth/qr/{user_code}（G-13）で種類・名前・場所・指紋を示し、承認する|
+|Screens_Auth|`+AddDevice`|/d/:code：web-crypto DeviceKeys.create の後に POST /auth/qr/start（種類、名前、sig_pub、kem_pub）。QR と 8 文字と、その下に自分の鍵の指紋（DeviceKeys.fingerprint。20 桁）。poll|
+|Screens_Auth|`+ApproveDevice`|既存の端末：QR を読むか 8 文字を入力し、ロックを解除する。GET /auth/qr/{user_code}（G-13）の sig_pub と kem_pub から DeviceKeys.fingerprintOf で指紋を求め、種類・名前・場所と共に示し「新しい端末の画面の 20 桁と同じか確かめてください」。承認の後、device.changed{added} で GET /me/devices の keys から指紋を求め直し、示した値と一致する時だけ web-crypto Recovery.approveDevice（署名と転送）。違えば「鍵が一致しません。端末の追加をやり直してください」（第3章 4.4、第12章 5.3）|
 |Screens_Auth|`+Recover`|4 段の案内（既存の端末、家族に頼む（求めの状態）、回復コード（検査文字の誤りの位置）、カード（語の候補、誤りの行））+ PRF|
 |Screens_Talk|`+RoomList`|行（写真 48、名前、冒頭、時刻、未読）、検索、＋、長押し、並べ替え、空の案内。TanStack Virtual|
 |Screens_Talk|`+Room`|上（名前と人数、通話、バナー：アナウンス／通話中／オフライン／鍵待ち）、本文（日付の見出し、吹き出し、既読、リアクション、束 10 件、各種類の描画、削除済みの印、システムの知らせ）、下（入力欄、＋、録音、送信。長押し：通知なし、予約）。新着のボタン。右スワイプで返信。メンションの候補|
 |Screens_Talk|`+LongPressMenu`|上段リアクション 5 + ＋。下段は返信、転送、コピー、アナウンス、情報、編集、取消、削除の順|
 |Screens_Settings|`+SettingsHome`|写真と名前、10 の分類、このアプリについて、管理者の画面（管理者）、保護者（子ども）|
 |Screens_Settings|`+Account`|プロフィール、回復コード、パスキー、抹消の求め（POST /me/erase。再認証）と猶予の間の取り消し（DELETE /me/erase）|
+|Screens_Settings|`+Guardian（子の設定）`|保護者の端末：設定 > 子ども。子ごとに 4 つの制限（`PUT /me/guardian/children/{id}/controls`）と誕生日（`PUT /me/guardian/children/{id}/birthday`。年は必須。第3章 9.1）。どちらも再認証（B-343）|
 |Screens_Settings|`+GuardianApprovals（保護者の承認）`|保護者の端末：子の端末の追加と抹消の求め（知らせから開く）。POST /me/guardian/approvals/{id}（G-17。再認証）|
 |Screens_Settings|`+TransferAccept（引き継ぎの承認）`|指名された構成員：知らせから開き、POST /me/transfer/{id}/accept（G-18。再認証）|
 |ErrorView|`+render(err AppError)`|what + next + 番号（小さく）。retryable は「もう一度」|
@@ -202,7 +204,7 @@ classDiagram
 
 ## 公開操作
 
-- 本ブロックは画面の側であり、他のブロックに操作を提供しない。文言の表（P-8）の持ち主として `ja.json` と `errors.json`（生成）を所有し、web-core `Text` と and-shell（Kotlin の資源に生成）が読む（B-602）。
+- 本ブロックは画面の側であり、他のブロックに操作を提供しない。文言の表（P-8）の持ち主として `ja.json` と `errors.json`、`notices.json`（生成）を所有する。web-core `Text` と and-shell（Kotlin の資源に生成）が読む（B-602）。
 
 ## アルゴリズム（画面の側に残るもの）
 
@@ -220,6 +222,7 @@ classDiagram
 |---|---|---|---|
 |`web/src/ui/i18n/ja.json`|JSON（P-8。手で書く）|画面の鍵、通知、知らせ、免責。`tools/forbidden_words` が検査|[第10章 9 文言（DD-10-8）](../../../../docs/jp/design/10_基本設計書_画面.md#9-文言dd-10-8)|
 |`web/src/ui/i18n/errors.json`|JSON（P-8。生成してコミット）|`err.*`。`tools/gen_texts --check` と `tools/errors_check --texts` が検査|[第10章 9 文言（DD-10-8）](../../../../docs/jp/design/10_基本設計書_画面.md#9-文言dd-10-8)|
+|`web/src/ui/i18n/notices.json`|JSON（P-8。生成してコミット）|`notice.*`。`tools/gen_texts --check` が検査（第7章 9 の識別子と 1 対 1）|[第10章 9 文言（DD-10-8）](../../../../docs/jp/design/10_基本設計書_画面.md#9-文言dd-10-8)|
 |`web/src/ui/theme/tokens.css`|CSS 変数|第10章 3.1 の 9 トークン × 明暗|[第10章 3.1 配色（トークン）](../../../../docs/jp/design/10_基本設計書_画面.md#31-配色トークン)|
 |同梱の素材（P-7）|`web/public/assets/`|絵柄 32、着信音 3、アイコン（線）、背景の数種、案内の図（iOS 2 種、Android 4 画面）|[第10章 3.2 字と形](../../../../docs/jp/design/10_基本設計書_画面.md#32-字と形)、[第10章 7 案内と明示の置き場（DD-10-7）](../../../../docs/jp/design/10_基本設計書_画面.md#7-案内と明示の置き場dd-10-7)|
 |端末だけの設定|web-core `Settings`（外観、文字の大きさ、アニメーション）|第10章 8 の「端末だけの設定」|[第10章 8 設定の分類と項目（DD-10-4）](../../../../docs/jp/design/10_基本設計書_画面.md#8-設定の分類と項目dd-10-4)|

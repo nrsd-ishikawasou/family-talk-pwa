@@ -92,9 +92,15 @@ func (h *SyncHandler) GetSync(ctx context.Context, request gen.GetSyncRequestObj
 	return gen.GetSync200JSONResponse{Pos: int(last), Events: &events, HasMore: hasMore}, nil
 }
 
-// read は since より後を limit まで読み、フレームにする。last は読んだ最後の pos（無ければ since）。
+// read は since より後のうち要求の端末に届く物を limit まで読み、フレームにする（第2章 5.9）。
+// last は、続きがあれば返した最後の pos、無ければ利用者の最新の pos（他の端末宛ての行を含む）。
+// 最新の pos は行を読む前に取る：後に取ると、読みと取得の間に確定したこの端末宛ての行を端末が飛ばす。
 func (h *SyncHandler) read(ctx context.Context, p Principal, since int64, limit int) ([]map[string]any, bool, int64, error) {
-	rows, err := h.base.Feed.ReadSince(ctx, *p.UserId, since, limit+1)
+	latest, err := h.base.Feed.LastPos(ctx, *p.UserId)
+	if err != nil {
+		return nil, false, since, err
+	}
+	rows, err := h.base.Feed.ReadSince(ctx, *p.UserId, *p.DeviceId, since, limit+1)
 	if err != nil {
 		return nil, false, since, err
 	}
@@ -102,11 +108,14 @@ func (h *SyncHandler) read(ctx context.Context, p Principal, since int64, limit 
 	if hasMore {
 		rows = rows[:limit]
 	}
-	last := since
+	last := max(since, latest)
 	if len(rows) > 0 {
 		last = int64(rows[len(rows)-1].Pos)
+		if !hasMore {
+			last = max(last, latest)
+		}
 	}
-	frames, err := h.hub.frames(ctx, *p.UserId, *p.DeviceId, rows)
+	frames, _, err := h.hub.frames(ctx, *p.UserId, *p.DeviceId, rows)
 	if err != nil {
 		return nil, false, since, err
 	}

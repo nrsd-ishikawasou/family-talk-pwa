@@ -14,7 +14,8 @@
         "started",
         "ended",
         "missed",
-        "declined"
+        "declined",
+        "cancelled"
       ]
     },
     "reason": {

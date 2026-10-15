@@ -178,27 +178,67 @@ func TestFeedAppendRejectsUnknownKind(t *testing.T) {
 			t.Fatal("知らない種類で panic しない")
 		}
 	}()
-	_ = NewFeed(nil).Append(context.Background(), nil, uuid.Nil, 1, FeedRef{Kind: "room.typing"})
+	_ = NewFeed(nil).Append(&Tx{}, uuid.Nil, FeedRef{Kind: "room.typing"})
+}
+
+// R: R-2-2-3
+func TestFeedAppendBuffersUntilFlush(t *testing.T) {
+	f := NewFeed(nil)
+	user := uuid.Must(uuid.FromString("01890a5d-ac96-774b-bcce-b302099a8060"))
+	ref := FeedRef{Kind: "notice", Id: uuid.Must(uuid.FromString("01890a5d-ac96-774b-bcce-b302099a8061")), Payload: json.RawMessage(`{"k":1}`)}
+	tx := &Tx{}
+	p1 := f.Append(tx, user, ref)
+	p2 := f.Append(tx, user, ref)
+	if p1.Pos != 0 || p2.Pos != 0 || len(tx.feed) != 2 || tx.feed[0] != p1 || tx.feed[1] != p2 {
+		t.Fatal("Append が溜めるだけでない（Pos は Flush の後に入る）")
+	}
+	if p1.UserId != user || p1.Ref.Kind != "notice" {
+		t.Fatal("溜めた行の中身が違う")
+	}
+	mustPanic := func(name string, fn func()) {
+		t.Helper()
+		defer func() {
+			if recover() == nil {
+				t.Fatalf("%s で panic しない", name)
+			}
+		}()
+		fn()
+	}
+	mustPanic("宛先の利用者が無い", func() { f.Append(tx, uuid.Nil, ref) })
+	done := &Tx{done: true}
+	mustPanic("終わったトランザクション", func() { f.Append(done, user, ref) })
+	if err := f.Flush(context.Background(), &Tx{}); err != nil {
+		t.Fatalf("溜めた行が無い Flush が記録に触れた: %v", err)
+	}
 }
 
 func TestFeedCheckRef(t *testing.T) {
 	id := uuid.Must(uuid.FromString("01890a5d-ac96-774b-bcce-b302099a8057"))
 	room := uuid.Must(uuid.FromString("01890a5d-ac96-774b-bcce-b302099a8058"))
 	p := json.RawMessage(`{"count":1}`)
+	dev := uuid.Must(uuid.FromString("01890a5d-ac96-774b-bcce-b302099a8059"))
 	ok := []FeedRef{
 		{Kind: "room.event", Id: id, RoomId: room},
 		{Kind: "room.receipt", Id: id, RoomId: room, Payload: p},
-		{Kind: "device.inbox", Id: id, Payload: p},
+		{Kind: "device.inbox", Id: id, DeviceId: dev, Payload: p},
+		{Kind: "session.revoked", Id: id, DeviceId: dev, Payload: p},
+		{Kind: "sync.gap", Id: id, Payload: p},                // 宛先の端末は任意（空なら本人の全端末）
+		{Kind: "sync.gap", Id: id, DeviceId: dev, Payload: p}, // その端末だけ
+		{Kind: "notice", Id: id, Payload: p},
 	}
 	for _, r := range ok {
 		checkRef(r)
 	}
 	bad := []FeedRef{
-		{Kind: "device.inbox", Payload: p},                       // id が無い
-		{Kind: "room.receipt", Id: id, Payload: p},               // room.* に room_id が無い
-		{Kind: "device.inbox", Id: id, RoomId: room, Payload: p}, // room.* でないのに room_id
-		{Kind: "room.event", Id: id, RoomId: room, Payload: p},   // room.event に payload
-		{Kind: "notice", Id: id},                                 // payload が無い
+		{Kind: "device.inbox", DeviceId: dev, Payload: p},                       // id が無い
+		{Kind: "room.receipt", Id: id, Payload: p},                              // room.* に room_id が無い
+		{Kind: "device.inbox", Id: id, RoomId: room, DeviceId: dev, Payload: p}, // room.* でないのに room_id
+		{Kind: "room.event", Id: id, RoomId: room, Payload: p},                  // room.event に payload
+		{Kind: "notice", Id: id},                                                // payload が無い
+		{Kind: "device.inbox", Id: id, Payload: p},                              // 宛先の端末が無い
+		{Kind: "session.revoked", Id: id, Payload: p},                           // 宛先の端末が無い
+		{Kind: "notice", Id: id, DeviceId: dev, Payload: p},                     // 宛先の端末を持てない種類
+		{Kind: "room.receipt", Id: id, RoomId: room, DeviceId: dev, Payload: p}, // 宛先の端末を持てない種類
 	}
 	for i, r := range bad {
 		func() {

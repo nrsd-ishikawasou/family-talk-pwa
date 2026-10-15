@@ -39,7 +39,7 @@
   - 2.1（`ft` の 1 バイナリ、サブコマンド）
   - 3.1（`ServerState`、更新、秘密の交代）
   - 4.1 の記録：`server_state`、`key_versions`、`update_state`、`backup_state`、`maps_state`
-  - 4.1 の記録：`audit`、`notices`、`settings_db`、`erasures`、`retention_rules`
+  - 4.1 の記録：`audit`、`settings_db`、`erasures`、`retention_rules`
   - I-7、I-9
 
 ## 依存
@@ -186,7 +186,7 @@ classDiagram
 
 |クラス|メンバー|注記|
 |---|---|---|
-|Startup|`+Run(ctx) Result~ServerState, Fault~`|第1章 7.1 の 8 段を順に行う。1. Config（必須の欠けは止まる。形 D で `server.hosting_provider` が空も止まる：第12章 7.1）。2. Secrets.Ensure（KEK が無ければ止まる）、KeyRotation.RegisterKek。3. Migrator（失敗なら読み取り専用）。4. ディレクトリと権限（media、maps、backups、www。書けなければ読み取り専用）。5. /srv/www を /data/www に同期し、manifest・assetlinks・security.txt を生成。6. sfu の設定の書き出し（内容が前と変われば HostRequests.Put(sfu_restart)。sfu は設定を起動の時にだけ読む）、caddy の証明書の状態。7. 後始動（Jobs.Recover、RingTimer.RecoverAfterRestart、Erasures.Reapply、SweepParts。server_state.restored_at が前回の起動より新しければ全利用者の feed に sync.gap{restore}：S-13）。8. 状態の確定（管理者がいなければ「初回」。リンクは作らない。作るのは `ft setup` の最後と `ft admin create-link` だけ：G-08）|
+|Startup|`+Run(ctx) Result~ServerState, Fault~`|第1章 7.1 の 8 段を順に行う。1. Config（必須の欠けは止まる。形 D で `server.hosting_provider` が空も止まる：第12章 7.1）。2. Secrets.Ensure（KEK が無ければ止まる）、KeyRotation.RegisterKek。3. Migrator（失敗なら読み取り専用）。4. ディレクトリと権限（media、maps、backups、www。書けなければ読み取り専用）。5. /srv/www を /data/www に同期し、manifest・assetlinks・security.txt を生成。6. sfu の設定の書き出し（内容が前と変われば HostRequests.Put(sfu_restart)。sfu は設定を起動の時にだけ読む）、caddy の証明書の状態。7. 後始動（Jobs.Recover、RingTimer.RecoverAfterRestart、Erasures.Reapply、SweepParts。server_state.restored_at が前回の起動より新しければ全利用者の feed に sync.gap{restore} を利用者ごとに 1 行（宛先の端末は空：本人の全端末。全体実装設計書 2.4）：S-13）。8. 状態の確定（管理者がいなければ「初回」。リンクは作らない。作るのは `ft setup` の最後と `ft admin create-link` だけ：G-08）|
 |Startup|`+State() ServerState`|srv-boundary ServerStateReader。`ServerState` の型は srv-boundary が定める（本ブロックより下に置くため）|
 |Startup|`+SetReadOnly(reason)`|reason は SRV-001 の params の値：migration（移行の失敗）、capacity（容量 100%）、storage（置き場に書けない、DB が書き込みを拒む）、restore（復元の後の抹消の再適用の間）。server_state に書く。srv-boundary の ServerStateReader.ReadOnlyReason が読む|
 |SecretsInit|`+Ensure(ctx) Result~Fault~`|session-keys、vapid、sfu（2 本）、backup、db_password を無ければ生成（第12章 10 の順）。KEK は ft setup が /etc に作る（無ければ Fault）|
@@ -203,7 +203,7 @@ classDiagram
 |Settings|`+Put(tx, principal, changes) Result~Event~`|DB の層だけ。ADM-002。範囲の検証。Config.Reload。audit。notice（管理者の操作）|
 |Settings|`+DbLayerGet(key) Option~Value~`|srv-common DbLayer|
 |AdminApi|`+Users(ctx) [AdminUserView]`|/admin/users：状態、端末の数、最終の利用、容量|
-|AdminApi|`+Suspend / Unsuspend / Delete / RevokeDevice / ResetLink / SetRole / Guardians / Child`|srv-identity の関数 + Audit + Notices|
+|AdminApi|`+Suspend / Unsuspend / Delete / RevokeDevice / ResetLink / SetRole / Guardians / Child`|srv-identity の関数 + Audit + Notices。Child は Users.SetChild（18 歳以上の誕生日があれば MEM-012。第3章 9.1）、Guardians は Guardians.Set|
 |AdminApi|`+Rooms(ctx) [AdminRoomView]`|識別子、種類、人数、容量（名前は見えない）。DELETE /admin/rooms/{id}（空のグループ）|
 |AdminApi|`+Storage(ctx) UsageReport`|srv-media Quota|
 |AdminApi|`+Retention(ctx) / PutRetention(tx, rules)`|retention_rules + バックアップの保持期間。30 日前の知らせの予約|
@@ -213,7 +213,7 @@ classDiagram
 |AdminApi|`+Maps(ctx) / UpdateMaps(tx)`|jobs maps_update|
 |AdminApi|`+Transfer(tx, principal, toUserId)`|srv-identity Users.Transfer|
 |AdminApi|`+Family(tx, patch)`|srv-identity Families.Update|
-|AdminApi|`+RotateRecoveryKey(tx, principal, newPub)`|srv-keys FamilyRecoveryKey.SetPublic + 全員に keybundle.changed。srv-identity Families.ClearCardPrinted（新しいカードの印刷を待つ）|
+|AdminApi|`+RotateRecoveryKey(tx, principal, newPub)`|srv-keys FamilyRecoveryKey.SetPublic + 全員に keybundle.changed。srv-identity Families.ClearCardHolders と ClearCardPrinted（新しいカードの印刷を待つ）|
 |AdminApi|`+MarkCardPrinted(tx, principal) Time`|`POST /admin/family/recovery-key/printed`。srv-identity Families.MarkCardPrinted。ダッシュボードの注意のバナーは families.card_printed_at が空の間|
 |AdminApi|`+LogsSummary(ctx) [CodeCount]`|`GET /admin/logs/summary`（G-01）：LogStats.Summary(28)。本文と秘密なし（第11章 12）|
 |AdminApi|`+DisposeGuide(ctx) Text`|/admin/disk/dispose の手順|
@@ -235,9 +235,9 @@ classDiagram
 |HostRequests|`+Result(ctx, id) Option~HostResult~`|`/data/host/results/<id>.json` を読む（ok、code、finished_at）。無ければまだ|
 |HostRequests|`+Sweep(ctx)`|worker の監視（5 分）が呼ぶ。結果の届いた要求を update_state と知らせに反映する。要求から 2 時間で結果が無ければ知らせ（ホストの受け口が動いていない）|
 |HostTools|`+DiskDispose(ctx)`|第11章 13.2 の 1〜5（Luks.Erase）|
-|HostTools|`+RelaySetup(ctx)`|C の形：VPS に TURN（coturn の compose）とトンネルの設定|
+|HostTools|`+RelaySetup(ctx)`|C の形（第11章 5）：VPS 側は WireGuard の受け口（鍵対、`wg0`、systemd）と nftables の転送（443、5349、7881/tcp、3478、50000〜60000/udp をトンネルの先の自宅へ DNAT、戻りは MASQUERADE）。自宅側（`--home`）はトンネルの service と、`.env` の `FT_RELAY_VPS_HOST`・`FT_EXTERNAL_IPV4`。コンテナは置かない|
 |HostTools|`+Logs(ctx, service, since)`|要約と直近（本文と秘密なし）|
-|HostTools|`+AdminCreateLink(ctx)`|srv-identity SetupLink.Create|
+|HostTools|`+AdminCreateLink(ctx)`|srv-identity SetupLink.Create。管理者がいれば作らずに理由を示して終わる（設置のリンクは初回だけ。第3章 3.1 の 2）|
 |NetDetect|`+Detect(ctx) NetReport`|(1) グローバル IPv6、(2) UPnP の GetExternalIPAddress（無ければ入力）でグローバル、100.64/10、RFC 1918 のどれかを判定、(3) 事業者の方式の選択、(4) 形の提案と費用。外部のサービスに送信しない|
 |NetDetect|`+Propose(report) [ModeOption]`|A/B/C/D と費用|
 |CertWatch|`+Days(ctx) int`|/data/caddy の証明書の期限（/health の caddy_cert_days）|

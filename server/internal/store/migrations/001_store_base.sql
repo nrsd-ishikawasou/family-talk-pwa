@@ -11,10 +11,16 @@ CREATE TABLE feed (
     kind text NOT NULL,
     ref_id uuid NOT NULL,
     room_id uuid,
+    device_id uuid,
     payload jsonb,
     ts timestamptz NOT NULL,
     PRIMARY KEY (user_id, pos),
     CONSTRAINT feed_room CHECK ((kind LIKE 'room.%') = (room_id IS NOT NULL)),
+    -- 宛先の端末（全体実装設計書 2.4）：session.revoked と device.inbox は必須、sync.gap は任意、他は空。
+    CONSTRAINT feed_device CHECK (
+        (kind IN ('session.revoked', 'device.inbox') AND device_id IS NOT NULL)
+        OR kind = 'sync.gap'
+        OR (kind NOT IN ('session.revoked', 'device.inbox', 'sync.gap') AND device_id IS NULL)),
     CONSTRAINT feed_payload CHECK ((kind = 'room.event') = (payload IS NULL))
 );
 CREATE INDEX feed_ts ON feed (ts);

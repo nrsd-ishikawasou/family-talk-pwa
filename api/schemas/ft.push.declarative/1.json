@@ -1,0 +1,59 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://family-talk.invalid/schemas/ft.push.declarative/1",
+  "title": "ft.push.declarative/1",
+  "description": "第2章 7。宣言型の Web Push の包み（iOS 18.4 以上の購読。RFC 8291 で暗号化する前）。notification.data が ft.push/1。mutable は外側と notification の中の両方（18.4〜26.1 の WebKit は中だけを読む）",
+  "type": "object",
+  "properties": {
+    "web_push": {
+      "const": 8030
+    },
+    "mutable": {
+      "const": true
+    },
+    "notification": {
+      "type": "object",
+      "properties": {
+        "title": {
+          "type": "string"
+        },
+        "body": {
+          "type": "string"
+        },
+        "navigate": {
+          "type": "string"
+        },
+        "tag": {
+          "type": "string"
+        },
+        "silent": {
+          "type": "boolean"
+        },
+        "mutable": {
+          "const": true
+        },
+        "app_badge": {
+          "type": "string",
+          "pattern": "^[0-9]+$"
+        },
+        "data": {
+          "$ref": "../ft.push/1.json"
+        }
+      },
+      "required": [
+        "title",
+        "navigate",
+        "tag",
+        "mutable",
+        "data"
+      ],
+      "additionalProperties": false
+    }
+  },
+  "required": [
+    "web_push",
+    "mutable",
+    "notification"
+  ],
+  "additionalProperties": false
+}

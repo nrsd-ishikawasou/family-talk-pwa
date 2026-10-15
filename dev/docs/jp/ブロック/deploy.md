@@ -100,8 +100,8 @@ classDiagram
 |ComposeYaml|`+secrets`|db_password（/data/secrets/db_password）、kek（/etc/family-talk/secrets/kek）、backup_password（/data/secrets/backup）、dns_token（/etc/family-talk/secrets/dns_token）|
 |ComposeYaml|`+x-common`|restart unless-stopped、logging json-file 100m × 7、stop_grace_period 15s（api は Shutdown で bye を送ってから止まる。S-13）|
 |ComposeOverrides|`+compose.mode-B.yaml`|MAP-E：HTTPS のポート、UDP の範囲、TURN のポートを割り当てに|
-|ComposeOverrides|`+compose.mode-C.yaml`|自宅 + VPS：sfu の TURN を無効、FT_RELAY_TURN_HOST、トンネル（WireGuard または SSH）の service|
-|ComposeOverrides|`+compose.relay.yaml`|VPS の側：coturn（TURN だけ）と逆プロキシ（TCP の転送）|
+|ComposeOverrides|`+compose.mode-C.yaml`|自宅 + VPS（第11章 5）：`FT_EXTERNAL_IPV4` を `FT_RELAY_VPS_HOST` に固定、sfu の `rtc.use_external_ip` を偽。TURN は内蔵のまま。トンネル（WireGuard）は compose の外（`ft relay setup --home` が置く systemd の service）|
+|RelayFiles|`+wg0.conf、nftables.conf`|VPS の側：`ft relay setup` が置く WireGuard の設定と nftables の転送（compose は無い）|
 |ComposeOverrides|`+compose.test.yaml`|L5：sfu を bridge に、ポートを変え、本物の DNS を使わない（自己署名は使わない方針のため、caddy は internal の tls を試験だけ許す）|
 |Caddyfile|`+site`|{$FT_DOMAIN}:{$FT_HTTPS_PORT}。tls { dns {$FT_DNS_PROVIDER} {file.{$DNS_TOKEN_FILE}} }。ACME は DNS-01。FT_ACME_FALLBACK で代替の発行機関|
 |Caddyfile|`+headers`|HSTS（1 年、preload なし）、CSP（第8章 6 の値。nonce は api が index の応答ごとに作って CSP のヘッダごと付けるため、/ と `/r/*` 等の SPA の経路は api に逆プロキシし、静的な資産だけ caddy が直接。caddy は `header ?Content-Security-Policy` で、上流が付けていない応答にだけ nonce の無い値を付ける）、COOP same-origin、Referrer-Policy、Permissions-Policy|

@@ -174,14 +174,14 @@ items:
     env: FT_ACME_FALLBACK
     chapter: "第11章 3.2"
     locked_when_env_or_file: true
-  - key: server.relay_turn_host
+  - key: server.relay_vps_host
     type: string
     default: ""
     layers: [env]
-    env: FT_RELAY_TURN_HOST
+    env: FT_RELAY_VPS_HOST
     chapter: "第11章 3.2"
     locked_when_env_or_file: true
-    note: "形 C の時"
+    note: "形 C の時。VPS のグローバル IP（5）"
   - key: server.hosting_provider
     type: string
     default: ""
@@ -509,11 +509,11 @@ items:
     locked_when_env_or_file: false
   - key: push.call_repeat
     type: string
-    default: "15s x 4"
+    default: "20s x 3"
     layers: []
     chapter: "第7章 11"
     locked_when_env_or_file: false
-    note: "固定（iPhone）"
+    note: "固定（iPhone と PC の Web Push）"
   - key: push.retry_backoff
     type: list
     default: [1, 4, 16]

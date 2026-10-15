@@ -118,8 +118,8 @@ classDiagram
 |UpConnector|`+onMessage(instance, bytes)`|RFC 8291 を復号し（VAPID の検証）、平文の ft.push/1 を Dispatcher に渡す|
 |UpConnector|`+onUnregistered / onRegistrationFailed`|設定に表示。再登録|
 |WsDistributor|`+PushService`|前面サービス（specialUse。PROPERTY_SPECIAL_USE_FGS_SUBTYPE）。家族ごとに 1 接続|
-|WsDistributor|`+registerToken(family)`|POST /api/v1/up/register（シェルのトークン）で token を得て、endpoint https://<サーバー>/up/&lt;token&gt; を組み、connector へ NEW_ENDPOINT で渡す|
-|WsDistributor|`+connect(family)`|wss://<サーバー>/api/v1/up/ws（シェルのトークンを `Authorization: Bearer` で。形は第2章 6.4）。接続時に未配信を順に受け ack。ping 60 秒。切れたら指数（1〜300 秒）。1 時間つながらなければ通知「通知の接続が不安定です」と (ii) への切り替えの提案|
+|WsDistributor|`+registerToken(family)`|POST /api/v1/up/register（シェルのトークン。WebView が開いている時）で token と ws_secret を得て、endpoint https://<サーバー>/up/&lt;token&gt; を組み、connector へ NEW_ENDPOINT で渡す。ws_secret は and-keystore で包んで push/&lt;family_id&gt;.json に置く|
+|WsDistributor|`+connect(family)`|wss://<サーバー>/api/v1/up/ws（ws_secret を `Authorization: Bearer` で。形は第2章 6.4。シェルのトークンに依らないので WebView を開かない端末でも続く。401 なら次に WebView を開いた時に registerToken）。接続時に未配信を順に受け ack。ping 60 秒。切れたら指数（1〜300 秒）。1 時間つながらなければ通知「通知の接続が不安定です」と (ii) への切り替えの提案|
 |WsDistributor|`+onBoot()`|BootReceiver：BOOT_COMPLETED と LOCKED_BOOT_COMPLETED で起動する（(i) の時）|
 |WsDistributor|`+onForceStopped()`|Android 15 の強制停止を検知して案内を出す|
 |VendorDistributor|`+component`|(ii)：OS の提供者の中継の Web Push のエンドポイントの部品（公開の値だけで動く。NRSD の秘密を配らない）。ライセンスの確認が条件（第14章 7.1）|

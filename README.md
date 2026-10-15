@@ -34,7 +34,7 @@ SPDX-License-Identifier: Apache-2.0
 
 |端末|最低要件|
 |---|---|
-|iPhone|iOS 16.4 以上（Safari でホーム画面に追加したウェブアプリ）|
+|iPhone|iOS 18 以上（Safari でホーム画面に追加したウェブアプリ）|
 |Android|Android 10 以上を推奨。Android 8.0〜9 は WebView 138 の範囲で動かします|
 |PC|Chromium 系、Firefox、Safari の各最新 2 版|
 |家族のサーバー|Ubuntu と Docker（[第11章](docs/jp/design/11_基本設計書_運用.md)、[第14章 4](docs/jp/design/14_基本設計書_開発基盤.md)）|

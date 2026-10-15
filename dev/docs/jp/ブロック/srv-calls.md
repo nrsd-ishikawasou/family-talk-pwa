@@ -72,7 +72,6 @@ classDiagram
     +End(tx, principal, callId, reason)
     +Get(ctx, principal, callId) CallView
     +ListMine(ctx, principal) [CallSummary]
-    +Turn(ctx, principal, callId) TurnCredential
     +InProgressOf(ctx, roomId) Option~Call~
     +IsBusy(ctx, userId) bool
     +CountActive(ctx) int
@@ -112,17 +111,16 @@ classDiagram
 |Call|`+MaxVideo int`|設定（8）|
 |Participant|`+Identity string`|SFU の identity = device_id|
 |Calls|`+Start(tx, principal, roomId, video) Result~StartResult, Event~`|構成員（ROOM-002）。進行中があれば CALL-002 で合流。dm で相手が通話中なら CALL-003（相手に不在の記録と知らせ）。相手が着信を受けないなら CALL-005（記録なし）。自分が通話中なら CALL-003。SFU が応答しなければ CALL-004。通れば calls を作り、トークンを出す。dm は call.ring と CallRinger.Ring、group は call.started と通常の通知と SystemEvent(started)。60 秒の timer（dm）|
-|Calls|`+Join(tx, principal, callId) Result~JoinResult, Event~`|CALL-001。映像の上限 CALL-006（音声のみなら可）。dm の応答：state active、他の端末に call.state(active)、CallRinger.Stop(answered)。トークン|
-|Calls|`+Decline(tx, principal, callId)`|dm の相手の端末。call.state(declined)、CallEvent(declined)、CallRinger.Stop|
+|Calls|`+Join(tx, principal, callId) Result~JoinResult, Event~`|CALL-001。映像の上限 CALL-006（音声のみなら可）。dm の応答：state active、他の端末に call.state(active)、CallRinger.Stop(answered)（着信の push を送った相手の端末に kind call_end、reason answered。着信の通知を閉じるため。第7章 7）。トークン|
+|Calls|`+Decline(tx, principal, callId)`|dm の相手の端末。call.state(declined)、CallEvent(declined)、CallRinger.Stop(declined)（相手の他の端末に call_end、reason declined）|
 |Calls|`+Leave(tx, principal, callId)`|参加者。最後の 1 人なら End(empty)（group は 60 秒の猶予：Webhook room_finished が正）|
 |Calls|`+End(tx, principal, callId, reason)`|発信者・参加者。dm の取消（ringing のまま）は cancelled：call.state(cancelled)、CallEvent(cancelled)、CallRinger.Stop(cancelled)。dm の通話中の終了は SfuAdmin.DeleteRoom（B-009）でルームを閉じ、Webhook を待たずに CallEvent(ended)（S-07）|
 |Calls|`+ListMine(ctx, principal) [CallSummary]`|/me/calls（発信・着信・不在。トークのイベントの骨から）|
-|Calls|`+Turn(ctx, principal, callId) TurnCredential`|C の形だけ（第11章 5）。共有の秘密、TTL 300|
 |Calls|`+IsBusy(ctx, userId) bool`|参加の状態（通話中の判定）|
 |Calls|`+CountActive(ctx) int`|/admin/health の通話の数（更新の延期）|
 |RingTimer|`+Arm(callId, 60s)`|api のプロセスの中|
-|RingTimer|`+Fire(callId)`|ringing のままなら missed にする：call.state(missed)、CallEvent(missed) を双方、相手に不在の通知（kind: call_end）|
-|RingTimer|`+RecoverAfterRestart(ctx, now)`|起動時：ringing かつ started_at + 60 秒 < now なら missed にする（全体実装設計書 3.1）|
+|RingTimer|`+Fire(callId)`|ringing のままなら missed にする：call.state(missed)、CallEvent(missed) を双方、相手に不在の通知（CallRinger.Stop(missed)：kind call_end、reason missed）|
+|RingTimer|`+RecoverAfterRestart(ctx, now)`|起動時（srv-admin Startup の後始末から）：ringing かつ started_at + 60 秒 < now なら missed にする。60 秒未満なら残りの時間で Arm し直す（全体実装設計書 3.1）|
 |Tokens|`+Issue(callId, deviceId, canPublishVideo bool) Jwt`|SFU の鍵で署名。room = call_id、identity = device_id、権限 publish/subscribe、5 分。TURN の資格はトークンに含む（埋め込み TURN）|
 |Tokens|`+Keys() [SfuKey]`|2 本。発行は新しい方、検証は両方（srv-admin KeyRotation）|
 |Webhook|`+Handle(ctx, r) Result~Event~`|/internal/sfu/webhook。Authorization の JWT を SFU の鍵で検証。room_started、participant_joined（Participant を joined）、participant_left（left。最後なら 60 秒の猶予）、room_finished（End(ended)：CallEvent(ended, duration, participants)）、track_published（記録だけ）。冪等（同じ event id は無視）|
@@ -132,7 +130,7 @@ classDiagram
 
 |番号|操作（上の図）|使う側|由来|
 |---|---|---|---|
-|B-160|`Calls`（`Start`、`Join`、`Decline`、`Leave`、`End`、`Get`、`ListMine`、`Turn`、`InProgressOf`、`IsBusy`、`CountActive`）|operation（`/rooms/{id}/calls`、`/calls/{id}/*`、`/me/calls`）、srv-rooms（トークの削除で `End`）、srv-admin（`/admin/health` の通話の数。更新の延期）、srv-push（`IsBusy` は不要：`CALL-003` は本ブロックが判定）|[第6章 4 開始と着信（DD-6-3、DD-6-4）](../../../../docs/jp/design/06_基本設計書_通話.md#4-開始と着信dd-6-3dd-6-4)、[第2章 5.7 通話（第6章）](../../../../docs/jp/design/02_基本設計書_境界.md#57-通話第6章)|
+|B-160|`Calls`（`Start`、`Join`、`Decline`、`Leave`、`End`、`Get`、`ListMine`、`InProgressOf`、`IsBusy`、`CountActive`）|operation（`/rooms/{id}/calls`、`/calls/{id}/*`、`/me/calls`）、srv-rooms（トークの削除で `End`）、srv-admin（`/admin/health` の通話の数。更新の延期）、srv-push（`IsBusy` は不要：`CALL-003` は本ブロックが判定）|[第6章 4 開始と着信（DD-6-3、DD-6-4）](../../../../docs/jp/design/06_基本設計書_通話.md#4-開始と着信dd-6-3dd-6-4)、[第2章 5.7 通話（第6章）](../../../../docs/jp/design/02_基本設計書_境界.md#57-通話第6章)|
 |B-161|`RingTimer`（`RecoverAfterRestart` は srv-admin `Startup` の後始末から）|本ブロック、srv-admin|[第6章 4.1 1 対 1](../../../../docs/jp/design/06_基本設計書_通話.md#41-1-対-1)、全体実装設計書 3.1|
 |B-162|`Tokens::Issue`、`Keys`|本ブロック、srv-admin（鍵の交代）|[第2章 4.4 WebSocket と通知と SFU](../../../../docs/jp/design/02_基本設計書_境界.md#44-websocket-と通知と-sfu)、[第12章 10 秘密の鍵（DD-12-15、R-12-7-1）](../../../../docs/jp/design/12_基本設計書_データと暗号化.md#10-秘密の鍵dd-12-15r-12-7-1)|
 |B-163|`Webhook::Handle`（operation `/internal/sfu/webhook`）|srv-boundary（`Implementations.Calls`。openapi のタグは calls）|[第6章 3.1 SFU の設定（deploy/livekit.yaml。初期値）](../../../../docs/jp/design/06_基本設計書_通話.md#31-sfu-の設定deploylivekityaml初期値)、全体実装設計書 2.1|
@@ -157,4 +155,3 @@ classDiagram
 |`/data/sfu/config.yaml`|YAML（生成ファイル）|第6章 3.1 の表の値。鍵は `/data/secrets/sfu` から|[第6章 3.1 SFU の設定（deploy/livekit.yaml。初期値）](../../../../docs/jp/design/06_基本設計書_通話.md#31-sfu-の設定deploylivekityaml初期値)|
 |通話の記録のイベント|`ft.event.call/1`|`{call_id, kind, duration, participants[]}`（平文。kind は started、ended、missed、declined、cancelled のいずれか）|[第2章 12 データの形式（本章が定める共通の型。api/schemas）](../../../../docs/jp/design/02_基本設計書_境界.md#12-データの形式本章が定める共通の型apischemas)、[第6章 6 記録（DD-6-8）](../../../../docs/jp/design/06_基本設計書_通話.md#6-記録dd-6-8)|
 |`StartResult`／`JoinResult`|構造|`{call_id, sfu: {url: wss://<サーバー>/rtc, token}, started_at, video_allowed}`|[第2章 5.7 通話（第6章）](../../../../docs/jp/design/02_基本設計書_境界.md#57-通話第6章)|
-|`TurnCredential`|構造|`{urls[], username, credential, ttl: 300}`（C の形）|[第2章 5.7 通話（第6章）](../../../../docs/jp/design/02_基本設計書_境界.md#57-通話第6章)、[第11章 5 回線の分岐（DD-11-4）](../../../../docs/jp/design/11_基本設計書_運用.md#5-回線の分岐dd-11-4)|

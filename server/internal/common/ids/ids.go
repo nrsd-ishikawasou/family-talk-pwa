@@ -49,10 +49,11 @@ func (g *Ids) NewV7() Uuid {
 }
 
 // Parse は文字列の UUID を読む。形が違う、または版が 7 でなければ NET-001（要求の形の誤り）の Event を返す。
+// params はエラーコード表の NET-001 の形（errors の要素は path と message。path は誤りの場所の名）。
 func (g *Ids) Parse(s string) (Uuid, *fault.Event) {
 	u, err := uuid.FromString(strings.ToLower(s))
 	if err != nil || u.Version() != uuid.V7 {
-		return uuid.Nil, fault.New(gen.NET001, map[string]any{"field": "id"})
+		return uuid.Nil, fault.New(gen.NET001, map[string]any{"errors": []map[string]any{{"path": "id", "message": "UUIDv7 でない"}}})
 	}
 	return u, nil
 }

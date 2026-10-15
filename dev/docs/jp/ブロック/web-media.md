@@ -161,13 +161,13 @@ classDiagram
 |---|---|---|
 |MediaRuntime|`+run(task) Promise~Result~`|decode、resize、thumbnail、blurhash、transcode、probe、ocr、segment|
 |WorkerRuntime|`（クラス全体）`|Dedicated Worker + OffscreenCanvas + WebCodecs|
-|MainThreadRuntime|`（クラス全体）`|OffscreenCanvas が無い環境（【未確認】iOS 16.4）|
-|Picker|`+pickPhotos(max 50) Promise~[File]~`|`<input accept="image/*" multiple>` / シェルの写真ピッカー（Platform）/ capture / 共有の受け口|
+|MainThreadRuntime|`（クラス全体）`|OffscreenCanvas が無い環境（PC の古いブラウザ。iOS は 16.4 から 2D を持つので当たらない）|
+|Picker|`+pickPhotos(max 50) Promise~[File]~`|`<input multiple>` の accept は `image/jpeg,image/png,image/gif,image/webp,image/heic,image/heif,image/avif`（`image/*` を書かない。iPhone は OS が HEIC を JPEG に変換して渡す。第5章 4.1）。動画は `video/mp4,video/quicktime,video/webm`。シェルの写真ピッカー（Platform）/ capture / 共有の受け口|
 |Photo|`+prepare(file, quality) Promise~Prepared~`|次の順。1. 復号（createImageBitmap imageOrientation: from-image。効かなければ EXIF を読んで回転）。2. 画素数 1 億の上限。3. 長辺 1,600/2,560/無圧縮（20 MB 超は高画質へ）。4. 加工。5. JPEG 85（オリジナルは APP1 を落とす）。6. サムネイル 320/1,280。7. BlurHash 4×3|
 |Photo|`+heicFallback(file) Result`|Android の ImageDecoder が無ければ「この写真は送れません（形式）」|
 |Photo|`+prepareAvatar(file) Promise~Prepared~`|プロフィールの写真：512×512 の JPEG、サムネイル 128（第3章 6。S-03）|
 |Video|`+probe(file) Probe`|mediabunny で demux：avc1、プロファイル、解像度、fps、mp4a|
-|Video|`+prepare(file) Promise~Prepared~`|範囲内：無変換（faststart の並べ替えだけ）。範囲外で VideoEncoder がある時：復号、1080p に縮小、H.264 High 6 Mbps 60fps で符号化、AAC を通す、MP4 faststart の順。進捗。電池 20% 未満は確認。変換できない：原本 + playable_hint: original。ポスター 1,280（1 秒目）、BlurHash、長さ|
+|Video|`+prepare(file) Promise~Prepared~`|範囲内：無変換（faststart の並べ替えだけ）。範囲外で VideoEncoder がある時：復号、1080p に縮小、H.264 Constrained Baseline（avc1.42E0 と level。isConfigSupported が偽か出力が 10 秒止まれば原本。第5章 DD-5-3）6 Mbps 60fps で符号化、AAC を通す、MP4 faststart の順。進捗。電池 20% 未満は確認。変換できない：原本 + playable_hint: original。ポスター 1,280（1 秒目）、BlurHash、長さ|
 |Video|`+canPlay(item) bool`|canPlayType / MediaSource.isTypeSupported|
 |Audio|`+record() Recorder`|MediaRecorder（audio/mp4、audio/webm;codecs=opus の順に試す）。30 分で停止。AnalyserNode から波形 64 点|
 |Audio|`+player(item) Player`|1x/1.5x/2x、途中から、出口（Android はシェル）|

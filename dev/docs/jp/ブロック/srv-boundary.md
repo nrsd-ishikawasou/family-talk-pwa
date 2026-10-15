@@ -173,8 +173,13 @@ classDiagram
     +Session SessionVerifier
     +Shell ShellTokenVerifier
     +Ws WsTokenVerifier
+    +UpWs UpWsVerifier
     +Membership RoomMembership
     +State ServerStateReader
+  }
+  class UpWsVerifier {
+    <<interface>>
+    +Verify(ctx, secret) Result~DeviceId, Event~
   }
   class SessionVerifier {
     <<interface>>
@@ -209,7 +214,6 @@ classDiagram
   class Hub {
     +Run(ctx)
     +Attach(conn, principal, lastPos)
-    +Detach(deviceId)
     +Broadcast(userIds, kind, payload)
     +CatchUp(ctx, deviceId)
     +Connected(userId) [DeviceId]
@@ -363,7 +367,7 @@ classDiagram
 |Hub|`+Run(ctx)`|Notifier.Listen を 1 本。通知を受けた利用者の接続に「キャッチアップ」。LISTEN が切れて戻ったら全接続を CatchUp（`uuid.Nil` の通知。srv-store）。最初に LISTEN を張り終えた直後も全接続を CatchUp し、待ちを起こす（受け付けは LISTEN より先に始まりうるため）|
 |Hub|`+Attach(conn, principal, lastPos)`|ready{pos} を送る。1 端末 1 接続（2 本目は古い方を切る）|
 |Hub|`+Broadcast(userIds, kind, payload)`|feed に無い種類（room.typing、bye）を利用者たちの接続へ。room.typing の宛先はトークの構成員（呼ぶ側が渡す）|
-|Hub|`+CatchUp(ctx, deviceId)`|Feed.ReadSince(lastSent) で読み、room.event の行は EventSource で payload を引いてフレーム（第2章 6.1）にして送り、lastSent を進める|
+|Hub|`+CatchUp(ctx, deviceId)`|Feed.ReadSince(userId, deviceId, lastSent) で読み（宛先が端末の行はその端末の分だけ読まれる）、room.event の行は EventSource で payload を引いてフレーム（第2章 6.1）にして送り、lastSent を進める。`session.revoked` の行は、そのフレームを書いた直後に接続を 4001 で閉じる（第2章 6.3。以後の行は送らない）|
 |Hub|`+Connected(userId) [DeviceId]`|srv-push の「開いている端末」の判定（第7章 3.2）|
 |Hub|`+Wait(ctx, userId) bool`|/sync のロングポール：利用者の通知が来るか ctx が終わるまで待つ|
 |Hub|`+CloseAll(retryAfter)`|Shutdown：全接続に bye{retry_after}|
@@ -375,7 +379,7 @@ classDiagram
 |WsHandler|`+ReadLoop(conn)`|typing は srv-rooms Typing へ。ping/pong|
 |SyncHandler|`+Get(ctx, principal, since, timeout, limit) Result~SyncResponse, Event~`|since なし：初回（srv-rooms Timeline.Snapshot）。since あり：Feed.ReadSince。保持の外は NET-005。timeout > 0 はロングポール（hub の通知を待つ。起きても新しい物が無ければ期限まで待ち直す。待ちの間に Shutdown が来たら 200 と空の配列：端末は再接続する。S-09）|
 |UpWsHandler|`+Deliver(deviceId, msg UpMessage) bool`|srv-push `UpBox.Receive` が呼ぶ。その端末の接続があれば送りの channel に入れて true。無ければ false（メールボックスに残り、次の接続で Pending）|
-|UpWsHandler|`+Upgrade(w, r)`|/up/ws。シェルのトークン（`Authorization: Bearer`。形は第2章 6.4）。相手はネイティブの配布元なので Origin の無い要求を許し、ある時は WsHandler と同じ一致を求める（Bearer はブラウザが自動で付けないので、他のサイトからの接続は認証を通らない）。srv-push UpBox と結ぶ（未配信を順に、ack、ping 60 秒）|
+|UpWsHandler|`+Upgrade(w, r)`|/up/ws（x-authz `up_secret`。認可の層は通し、ここで確かめる）。配布元の接続の秘密（`Authorization: Bearer`。形は第2章 6.4。`Verifiers.UpWs`：srv-push `UpBox.VerifyWs`）。相手はネイティブの配布元なので Origin の無い要求を許し、ある時は WsHandler と同じ一致を求める（Bearer はブラウザが自動で付けないので、他のサイトからの接続は認証を通らない）。srv-push UpBox と結ぶ（未配信を順に、ack、ping 60 秒）|
 |Health|`+Get() HealthResponse`|checks: postgres(Ping)、sfu（`http://host.docker.internal:7880/` への GET が 200。SFU 本体の疎通の確かめの経路で、ノードの統計の更新が 4 秒を超えて遅れると 406。調査資料 1.17）、caddy_cert_days（srv-admin）、disk_free_pct、worker_last_job_at（Jobs.Stats）、ddns_last_ok_at、mode。503 なら reason の分類。秘密なし。外への確かめ（postgres、sfu）は並行に行い、各 2 秒で打ち切って false とする（応答しない相手を待って `/health` 自体が遅れないように。Compose の healthcheck の既定の待ち 30 秒より十分短い）|
 |VersionHandler|`+MinApp(platform) Option~string~`|AppVersion の middleware が引く（web、android）|
 |VersionHandler|`+Get() VersionResponse`|ft.version/1：server、boundary、min_app、released_at は起動の時に dl/version.json（ft.release/1）から読む。deprecations[] は AuthzTable の `x-deprecation` を持つ経路（path と sunset）|
@@ -389,10 +393,10 @@ classDiagram
 |番号|操作（上の図）|使う側|由来|
 |---|---|---|---|
 |B-040|`Server::Build`／`ListenAndServe`／`Shutdown`|cmd/ft `serve`|全体実装設計書 2.1|
-|B-041|`Principal`（要求の文脈。`ctx` から取る `PrincipalFrom(ctx)`）|業務のブロックの全 operation|[第2章 4 認証と認可](../../../../docs/jp/design/02_基本設計書_境界.md#4-認証と認可)|
+|B-041|`Principal`（要求の文脈。`ctx` から取る `PrincipalFrom(ctx)`）と、端末の IP の `ClientIpFrom(ctx) netip.Addr`（RequestId の middleware が置く。X-Forwarded-For の最後の値、無ければ RemoteAddr。レート制限と同じ値）|業務のブロックの全 operation|[第2章 4 認証と認可](../../../../docs/jp/design/02_基本設計書_境界.md#4-認証と認可)|
 |B-042|`Verifiers` と `Links` の各 interface と値の型（定義。`ServerState`、`UpMessage`、`HealthFacts`）|実装：srv-identity（`SessionVerifier`、`ShellTokenVerifier`、`WsTokenVerifier`）、srv-rooms（`RoomMembership`、`Snapshotter`、`TypingSink`）、srv-admin（`ServerStateReader`、`HealthProbe`）、srv-push（`UpMailbox`）|[第2章 4.1 セッション](../../../../docs/jp/design/02_基本設計書_境界.md#41-セッション)、[第2章 4.3 認可の 3 つの基本](../../../../docs/jp/design/02_基本設計書_境界.md#43-認可の-3-つの基本)、[第2章 4.4 WebSocket と通知と SFU](../../../../docs/jp/design/02_基本設計書_境界.md#44-websocket-と通知と-sfu)|
-|B-043|`Hub::Connected`、`Hub::Broadcast`（`room.typing`、`bye`）、`Hub::Detach`（ログアウト・取り消しで切る）|srv-push（開いている端末の判定）、srv-rooms（入力中）、srv-identity（失効で切る）、srv-admin（再起動の前の `bye`）|[第2章 6.2 イベントの一覧（asyncapi.yaml の `channels`）](../../../../docs/jp/design/02_基本設計書_境界.md#62-イベントの一覧asyncapiyaml-の-channels)、[第2章 6.3 接続の規則](../../../../docs/jp/design/02_基本設計書_境界.md#63-接続の規則)、[第7章 3.2 送信（api）](../../../../docs/jp/design/07_基本設計書_通知.md#32-送信api)|
-|B-044|`SyncHandler`（`/sync`）|生成した operation（本ブロック）|[第2章 5.9 同期（第4章、第7章）](../../../../docs/jp/design/02_基本設計書_境界.md#59-同期第4章第7章)|
+|B-043|`Hub::Connected`、`Hub::Broadcast`（`room.typing`、`bye`）。失効で切る口は無い：hub が feed の `session.revoked` をその端末に書いた後に 4001 で閉じる（全体実装設計書 2.4。失効を書く側は本ブロックを呼ばない）|srv-push（開いている端末の判定）、srv-rooms（入力中）、srv-admin（再起動の前の `bye`）|[第2章 6.2 イベントの一覧（asyncapi.yaml の `channels`）](../../../../docs/jp/design/02_基本設計書_境界.md#62-イベントの一覧asyncapiyaml-の-channels)、[第2章 6.3 接続の規則](../../../../docs/jp/design/02_基本設計書_境界.md#63-接続の規則)、[第7章 3.2 送信（api）](../../../../docs/jp/design/07_基本設計書_通知.md#32-送信api)|
+|B-044|`SyncHandler`（`/sync`。Feed.ReadSince に要求の端末を渡し、他の端末宛ての行を返さない。応答の `pos` は `has_more` が真なら最後の行、偽なら Feed.LastPos。第2章 5.9）|生成した operation（本ブロック）|[第2章 5.9 同期（第4章、第7章）](../../../../docs/jp/design/02_基本設計書_境界.md#59-同期第4章第7章)|
 |B-045|`UpWsHandler`（`/up/ws` の接続の器と `Deliver`。メールボックスの読みと ack は srv-push `UpBox` を `UpMailbox` として呼ぶ）|srv-push|[第7章 3.1 家族のサーバーの受け口（(i)）](../../../../docs/jp/design/07_基本設計書_通知.md#31-家族のサーバーの受け口i)|
 |B-046|`Health`（`checks` のうち caddy_cert_days、disk_free_pct、ddns_last_ok_at、mode は srv-admin が `HealthProbe` で渡す。postgres、sfu、worker_last_job_at（srv-store `Jobs.Stats`）は本ブロックが読む）|cmd/ft、caddy の healthcheck|[第11章 11 監視と知らせ（DD-11-10）](../../../../docs/jp/design/11_基本設計書_運用.md#11-監視と知らせdd-11-10)|
 |B-047|`InternalAuth`（forward auth）|caddy|全体実装設計書 2.1|

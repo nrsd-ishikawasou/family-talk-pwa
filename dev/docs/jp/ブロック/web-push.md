@@ -59,7 +59,8 @@ classDiagram
     +show(decrypted, setting) Promise
     +generic(senderId) Promise
     +showCall(callId, roomId, callerName)
-    +replaceCall(callId, reason)
+    +endCall(callId, callerName, reason)
+    +closeCall(callId)
     +showNotice(textKey, params)
     +badge(n)
   }
@@ -100,19 +101,21 @@ classDiagram
 |ServiceWorker|`+install()`|プリキャッシュ（ビルド時の資産の一覧。版ごとのキャッシュ名）|
 |ServiceWorker|`+activate()`|古い版のキャッシュを消す。clients.claim|
 |ServiceWorker|`+fetch(event)`|/、`/r/*`、`/d/*`、`/i/*`、`/settings/*` は index を返す（ネットワークが無ければキャッシュ）。`/api/*` はネットワークのみ。添付・地図・manifest は触らない|
-|ServiceWorker|`+push(event)`|event.waitUntil(PushHandler.handle(data)) 10 秒|
-|ServiceWorker|`+notificationclick(event)`|clients.matchAll で開いている画面を探し、focus して /r/&lt;room_id&gt;。無ければ openWindow。action=reply（PC）は Reply|
+|ServiceWorker|`+push(event)`|`event.data` があれば `event.data.json()`、無ければ（宣言型。iOS 18.4 以上）`event.notification.data` を `ft.push/1` として読み、event.waitUntil(PushHandler.handle(data)) 10 秒|
+|ServiceWorker|`+notificationclick(event)`|clients.matchAll で開いている画面を探し、focus して /r/&lt;room_id&gt;（data.kind が call なら /call/&lt;call_id&gt;。第6章 4.1）。無ければ openWindow。action=reply（PC）は Reply|
 |ServiceWorker|`+pushsubscriptionchange(event)`|新しい購読を PUT /me/devices/{id}/push|
 |ServiceWorker|`+message(event)`|画面との postMessage（skipWaiting の指示、復号の結果の共有）|
-|PushHandler|`+handle(payload FtPush) Promise`|kind で分岐：message は Decryptor の後に Notify.show、call は Notify.showCall、call_end は Notify.replaceCall、notice は Notify.showNotice。必ず 1 回 showNotification（iOS の規則）。10 秒の期限で汎用の本文|
-|PushHandler|`+declarativeOverride(tag)`|宣言型が先に出した通知を同じ tag で置き換える|
-|Decryptor|`+decrypt(eventId, roomId) Promise~Result~Decrypted~~`|GET /rooms/{id}/events/{eid}（401 なら汎用）、web-crypto Sender.decryptEvent（Locks mls:&lt;room&gt;）、web-sync Ingest.applyEvent（コピーに取り込む）の順|
-|Notify|`+show(decrypted, setting) Promise`|第7章 5.2 の 3 択：title（送信者／トーク名／家族の名前）、body（冒頭 100 文字。種類の印 [写真] 等）、tag = room_id、renotify、icon、badge、data{room_id}。同じトークは「n 件の新着」に置き換え。PC は actions reply|
+|PushHandler|`+handle(payload FtPush) Promise`|kind で分岐：message は Decryptor の後に Notify.show、call は `GET /calls/{call_id}` で `ringing` を確かめてから Notify.showCall（終わっていれば Notify.endCall(最後の状態)。第7章 7）、call_end は Notify.endCall(reason)、notice は `GET /me/notices/{event_id}` で中身を取って Notify.showNotice（第2章 7）。必ず 1 回 showNotification（iOS の規則）。10 秒の期限で汎用の本文（call_end の閉じる待ちだけは 30 秒まで。第7章 7）|
+|PushHandler|`+declarativeOverride(tag)`|宣言型（`event.notification` あり）では、提案の通知を出させないために必ず同じ tag で showNotification を 1 回出す（時間内に出せば提案の通知は出ない。出せなければ OS が提案の通知を出す）|
+|Decryptor|`+decrypt(eventId, roomId) Promise~Result~Decrypted~~`|GET /rooms/{id}/events/{eid}（401 なら汎用）の後に web-sync Ingest.applyEvent。epoch が端末より新しければ Commit を先に取り込み、web-crypto Sender.decryptEvent（Locks mls:&lt;room&gt;）で復号してコピーに取り込む。10 秒に収まらなければ汎用の本文|
+|Notify|`+show(decrypted, setting) Promise`|第7章 5.2 の 3 択：title（送信者／トーク名／家族の名前）、body（冒頭 100 文字。種類の印 [写真] 等）、tag = room_id、icon、badge、data{room_id}。同じトークは「n 件の新着」に置き換え（PC は tag で置き換わる。iPhone は置き換わらないので、`getNotifications({tag})` で前の通知を閉じてから出す。表示から 30 秒の内の物は閉じられず並ぶ。第7章 5.2、H-7-8）。renotify は置かない（WebKit は実装しない）。PC は actions reply。出した通知の tag と時刻を IndexedDB `settings.push.shown` に書く|
 |Notify|`+generic(senderId) Promise`|「{name}さんからメッセージ」（表示名は端末のコピー。無ければ家族の名前）|
-|Notify|`+showCall(callId, roomId, callerName)`|「{name}さんから着信」「応答するには開いてください」。tag = call:&lt;call_id&gt;。iPhone は 4 回同じ tag|
-|Notify|`+replaceCall(callId, reason)`|「不在着信」に置き換え（call_end）|
+|Notify|`+showNotice(textKey, params)`|title は家族の名前、body は第10章 9.4 の 1 文目（notices.json の `text_key`。params を埋める）。tag は `notice`。warning と error は画面でバナーにもなる（web-ui）|
+|Notify|`+showCall(callId, roomId, callerName)`|「{name}さんから着信」「応答するには開いてください」。tag = call:&lt;call_id&gt;。3 回の push のたびに出す（iPhone 18.2 以降は別の通知として並び、毎回鳴る。第7章 DD-7-7）。出した時刻を `settings.push.shown` に書く|
+|Notify|`+endCall(callId, callerName, reason)`|call_end：closeCall の後に、reason が missed なら「{name}さんからの着信」「不在着信」（音あり）、answered・declined・cancelled なら同じ title で「終わりました」（silent）。1 回は必ず showNotification（iOS の規則）|
+|Notify|`+closeCall(callId)`|`getNotifications({tag: "call:" + callId})` の通知を閉じる。iPhone は表示から 30 秒は閉じられない（26.4 以降）ので、`settings.push.shown` の時刻から 30 秒に足りない分を待ってから閉じる（最長 20 秒。push の処理の 30 秒の内）。画面（web-ui）がアプリの起動と前面化で同じ処理を呼ぶ（Channel）。第7章 7、H-7-8|
 |Notify|`+badge(n)`|navigator.setAppBadge（SW と画面）。app_badge の値と /rooms の合計|
-|Subscription|`+ensure() Promise`|起動のたび：getSubscription で確かめ、無ければ `subscribe({userVisibleOnly, applicationServerKey, declarative?})` して PUT /me/devices/{id}/push。endpoint の変化は PUT。VAPID の版が GET /me/push/vapid と違えば unsubscribe してから subscribe|
+|Subscription|`+ensure() Promise`|起動のたび：getSubscription で確かめ、無ければ `subscribe({userVisibleOnly, applicationServerKey})` して PUT /me/devices/{id}/push（`window.navigator.pushManager` があれば `declarative: true`）。endpoint の変化は PUT。VAPID の版が GET /me/push/vapid と違えば unsubscribe してから subscribe|
 |Subscription|`+requestPermission() Promise~State~`|standalone で最初のトークのボタン（web-ui）|
 |Subscription|`+disable() Promise`|DELETE|
 |Subscription|`+onInvalidated()`|device.changed を受けたら次の起動で再登録|
@@ -141,7 +144,7 @@ classDiagram
 |事項|実装|切り替え|由来|
 |---|---|---|---|
 |復号の期限|10 秒（設定「復号の待ち」）。期限で汎用の本文|設定|[第7章 5.1 表示の流れ](../../../../docs/jp/design/07_基本設計書_通知.md#51-表示の流れ)、[第7章 11 数値の一覧（config.yaml の「通知」）](../../../../docs/jp/design/07_基本設計書_通知.md#11-数値の一覧configyaml-の通知)|
-|宣言型|`pushManager.subscribe` の応答で `declarative` を判定（iOS 18.4 以上）。SW が同じ tag で置き換える|端末の能力で自動|[第7章 3 経路（DD-7-1、DD-7-2）](../../../../docs/jp/design/07_基本設計書_通知.md#3-経路dd-7-1dd-7-2)、[第2章 7 通知の中身（第7章）](../../../../docs/jp/design/02_基本設計書_境界.md#7-通知の中身第7章)|
+|宣言型|`window.navigator.pushManager` の有無で `declarative` を判定（iOS 18.4 以上）。SW が時間内に通知を出せば提案の通知は出ない|端末の能力で自動|[第7章 3 経路（DD-7-1、DD-7-2）](../../../../docs/jp/design/07_基本設計書_通知.md#3-経路dd-7-1dd-7-2)、[第2章 7 通知の中身（第7章）](../../../../docs/jp/design/02_基本設計書_境界.md#7-通知の中身第7章)|
 |同じトークの置き換え|`tag = room_id`、本文「n 件の新着」|固定|[第7章 5.2 内容の表示（設定）](../../../../docs/jp/design/07_基本設計書_通知.md#52-内容の表示設定)|
 |PC の返信のアクション|`Notification.maxActions > 0` のブラウザだけ|端末の能力で自動|[第7章 5.4 通知からの返信](../../../../docs/jp/design/07_基本設計書_通知.md#54-通知からの返信)|
 |SW の更新|`skipWaiting` は画面の確認の後。通話中・送信中は出さない|固定|[第8章 3.2 Service Worker](../../../../docs/jp/design/08_基本設計書_iPhoneとPCのシェル.md#32-service-worker)、[第8章 5 更新とオフライン（DD-8-9）](../../../../docs/jp/design/08_基本設計書_iPhoneとPCのシェル.md#5-更新とオフラインdd-8-9)|
@@ -151,6 +154,6 @@ classDiagram
 |記録|形|欄|由来|
 |---|---|---|---|
 |Cache Storage `ft-<版>`|キャッシュ|ビルド時の資産の一覧（JS、CSS、WASM、フォント、絵柄、音、index、notify.html）|[第8章 3.2 Service Worker](../../../../docs/jp/design/08_基本設計書_iPhoneとPCのシェル.md#32-service-worker)|
-|IndexedDB `settings.push`|key-value|`subscription_endpoint`、`vapid_version`、`declarative bool`、`permission_asked_at`、`notify_content_mode`（名前と本文／名前のみ／なし）|[第7章 4 購読](../../../../docs/jp/design/07_基本設計書_通知.md#4-購読)、[第7章 5.2 内容の表示（設定）](../../../../docs/jp/design/07_基本設計書_通知.md#52-内容の表示設定)|
+|IndexedDB `settings.push`|key-value|`subscription_endpoint`、`vapid_version`、`declarative bool`、`permission_asked_at`、`notify_content_mode`（名前と本文／名前のみ／なし）、`shown`（SW が出した通知の tag と時刻の表。閉じる時の 30 秒の判定。1 日で消す）|[第7章 4 購読](../../../../docs/jp/design/07_基本設計書_通知.md#4-購読)、[第7章 5.2 内容の表示（設定）](../../../../docs/jp/design/07_基本設計書_通知.md#52-内容の表示設定)|
 |通知の `data`|JSON|`{room_id, event_id?, call_id?, kind}`|[第8章 3.2 Service Worker](../../../../docs/jp/design/08_基本設計書_iPhoneとPCのシェル.md#32-service-worker)|
 |JS ブリッジの `push` の結果（`/notify.html` からシェルへ）|`ft.bridge/1` の `notifyResult`|`{title, body, room_id, sender_id, kind, badge}`|[第9章 5 通知（DD-9-5）](../../../../docs/jp/design/09_基本設計書_Androidのシェル.md#5-通知dd-9-5)|

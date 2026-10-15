@@ -99,6 +99,16 @@ RETURNING id`, id, kind, body, runAt.UTC(), dk, j.clk.Now()).Scan(&got)
 	return got, nil
 }
 
+// Cancel は queued で同じ dedupeKey の仕事を同じトランザクションで消す（抹消の猶予の取り消し：srv-identity Users.CancelErase）。
+// 消したら真。running の仕事は消さず偽を返す（handler が記録の状態を見て何もしない。I-10）。
+func (j *Jobs) Cancel(ctx context.Context, tx *Tx, dedupeKey string) (bool, error) {
+	tag, err := tx.Exec(ctx, `DELETE FROM jobs WHERE dedupe_key = $1 AND state = 'queued'`, dedupeKey)
+	if err != nil {
+		return false, fault.Wrap(err)
+	}
+	return tag.RowsAffected() > 0, nil
+}
+
 // scanJob は 1 行を Job に読む。
 func scanJob(row pgx.Row) (*Job, error) {
 	var jb Job

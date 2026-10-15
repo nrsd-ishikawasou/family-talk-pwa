@@ -89,6 +89,7 @@ classDiagram
     +promptInstall() Promise
   }
   class Limitations {
+    +lockdown() bool
     +list() [Limitation]
     +iphoneBanner(context) Option~Text~
   }
@@ -163,6 +164,7 @@ classDiagram
 |InstallGuide|`+steps() [Step]`|図と文（OS の版ごと）|
 |InstallGuide|`+promptInstall() Promise`|PC|
 |Limitations|`+list() [Limitation]`|capabilities から「この端末・ブラウザでできないこと」（設定 > ヘルプ）|
+|Limitations|`+lockdown() bool`|起動の最初に `indexedDB` の有無を見る。無ければ（iPhone のロックダウンモード）web-core の起動を止め、第10章 7 の「ロックダウンモードでは使えません」の 1 画面を出す（第8章 3.4、H-8-6）|
 |Limitations|`+iphoneBanner(context) Option~Text~`|通話の開始時のバナーなど|
 |AppLock|`+mode`|none、biometric、pin のいずれか|
 |AppLock|`+timeout`|immediate、1m、5m、1h、off のいずれか|

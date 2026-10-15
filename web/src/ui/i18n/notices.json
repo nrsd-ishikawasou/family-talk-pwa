@@ -1,0 +1,146 @@
+{
+  "notice.age_ask": {
+    "what": "{child_name}さんはまだ 18 歳未満ですか。",
+    "next": "誕生日を入れるか、管理者に設定の解除を頼んでください。"
+  },
+  "notice.backup_failed": {
+    "what": "バックアップに失敗しました。",
+    "next": "管理者の画面のバックアップで原因を確かめてください。"
+  },
+  "notice.card_distribution": {
+    "what": "家族回復鍵のカード {missing} 枚目がまだ配られていません。",
+    "next": "別の大人に渡し、受け取った人に記録してもらってください。"
+  },
+  "notice.card_holder_changed": {
+    "what": "カード {cards} 枚目を持つ{name}さんが使えない状態になりました。",
+    "next": "家族の画面でカードを作り直してください。"
+  },
+  "notice.cert_expired": {
+    "what": "安全な接続の証明書が切れました。",
+    "next": "管理者の画面で証明書を確かめてください。"
+  },
+  "notice.cert_expiry": {
+    "what": "安全な接続の証明書が {days} 日後に切れます。",
+    "next": "管理者の画面で証明書の状態を確かめてください。"
+  },
+  "notice.child_flag_cleared": {
+    "what": "{name}さんの子どもの設定が外れました。",
+    "next": ""
+  },
+  "notice.child_flag_set": {
+    "what": "{name}さんに子どもの設定が付きました。",
+    "next": "保護者は設定の子どもで内容を確かめてください。"
+  },
+  "notice.child_flag_suggested": {
+    "what": "{name}さんの誕生日では 18 歳未満です。",
+    "next": "構成員の画面で子どもの設定と保護者を決めてください。"
+  },
+  "notice.child_relaxed_16": {
+    "what": "{name}さんが 16 歳になり、時間帯とリンクの確認が外れました。",
+    "next": "端末の追加の承認と招待の設定は残ります。"
+  },
+  "notice.child_released_18": {
+    "what": "{name}さんが 18 歳になり、子どもの設定が外れました。",
+    "next": ""
+  },
+  "notice.clock_skew": {
+    "what": "家族のサーバーの時計が {seconds} 秒ずれています。",
+    "next": "機械の時刻合わせを確かめてください。"
+  },
+  "notice.ddns_failed": {
+    "what": "家族のサーバーの住所の更新に失敗しています。",
+    "next": "回線と設定を確かめてください。"
+  },
+  "notice.device_approval_requested": {
+    "what": "{child_name}さんが{device_name}を追加しようとしています。",
+    "next": "10 分以内に承認するか断ってください。"
+  },
+  "notice.disk_smart": {
+    "what": "記録を置くディスクに警告が出ています。",
+    "next": "バックアップを確かめ、ディスクの交換を考えてください。"
+  },
+  "notice.disk_usage": {
+    "what": "保存できる量の {percent}% を使っています。",
+    "next": "不要な写真や動画を消すか、管理者に相談してください。"
+  },
+  "notice.erase_approval_expired": {
+    "what": "{child_name}さんの抹消の求めは期限が切れ、取り消されました。",
+    "next": "必要なら、もう一度求めてください。"
+  },
+  "notice.erase_approval_requested": {
+    "what": "{child_name}さんがアカウントの抹消を求めています。",
+    "next": "保護者として承認するか断ってください。"
+  },
+  "notice.erase_cancelled": {
+    "what": "アカウントの抹消を取り消しました。",
+    "next": "そのまま使えます。"
+  },
+  "notice.erase_requested": {
+    "what": "アカウントの抹消を受け付けました。{erase_at} に実行します。",
+    "next": "取りやめるなら、それまでに設定のアカウントから取り消してください。"
+  },
+  "notice.family_key_used": {
+    "what": "家族回復鍵のカードが{name}さんの端末で使われました。",
+    "next": "心当たりがなければ、管理者に知らせてください。"
+  },
+  "notice.guardian_settings_changed": {
+    "what": "{by_name}さんが{child_name}さんの子どもの設定を変えました。",
+    "next": "設定の子どもで内容を確かめてください。"
+  },
+  "notice.guardians_changed": {
+    "what": "{child_name}さんの保護者が変わりました。",
+    "next": "保護者は {guardian_names} です。"
+  },
+  "notice.kek_rotation_due": {
+    "what": "記録を守る鍵を取り替える時期です。",
+    "next": "手順書の「鍵の交代」を行ってください。"
+  },
+  "notice.maps_update": {
+    "what": "地図を更新する時期です。",
+    "next": "管理者の画面の地図から更新してください。"
+  },
+  "notice.mls_reinit": {
+    "what": "{name}さんの端末（{device_name}）が、トークの暗号の準備を作り直しました。",
+    "next": "続くときは、その端末のアプリの更新を案内してください。"
+  },
+  "notice.mls_reinit_limit": {
+    "what": "{name}さんの端末（{device_name}）は、トークの暗号の準備を作り直せなくなりました。",
+    "next": "その端末のアプリを更新するよう案内してください。"
+  },
+  "notice.network_mode_changed": {
+    "what": "回線の状態が変わりました。",
+    "next": "管理者の画面で接続の形を確かめてください。"
+  },
+  "notice.new_device": {
+    "what": "{device_name}で{name}さんとしてログインしました。",
+    "next": "心当たりがなければ、端末の一覧から取り消してください。"
+  },
+  "notice.paper_check": {
+    "what": "回復コードとカードの所在を確かめる時期です。",
+    "next": "紙がどこにあるか確かめてください。"
+  },
+  "notice.recovery_requested": {
+    "what": "{name}さんが新しい端末（{device_name}）で、記録を戻すための承認を求めています。",
+    "next": "心当たりがあれば、知らせを開いて承認してください。"
+  },
+  "notice.recovery_used": {
+    "what": "{name}さんが回復の手順で記録を開きました。",
+    "next": "心当たりがなければ、端末の一覧を確かめてください。"
+  },
+  "notice.transfer_requested": {
+    "what": "{from_name}さんがあなたに管理者を引き継ごうとしています。",
+    "next": "設定のアカウントから承認か拒否を選んでください。"
+  },
+  "notice.update_apply_failed": {
+    "what": "更新を適用できず、前の版で動いています。",
+    "next": "管理者の画面の更新で記録を確かめてください。"
+  },
+  "notice.update_available": {
+    "what": "新しい版 {version} があります。",
+    "next": "管理者の画面の更新から適用できます。"
+  },
+  "notice.update_failed": {
+    "what": "{name}さんの端末でアプリの更新に失敗しました。",
+    "next": "手順書の入れ直しの手順を案内してください。"
+  }
+}

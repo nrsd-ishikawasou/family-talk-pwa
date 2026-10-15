@@ -84,6 +84,7 @@ classDiagram
     +ft.release/1
     +ft.bridge/1
     +fkb/1、fkb-history/1、fdev/1、fusr/1
+    +ft.push.declarative/1
     +problem/1
     +common/*
   }
@@ -178,6 +179,7 @@ classDiagram
 |SchemaSet|`+ft.version/1`|`/version` の応答（第2章 5.11）|
 |SchemaSet|`+ft.release/1`|配布物の version.json（第13章 3。revoked_digests を含む）|
 |SchemaSet|`+ft.bridge/1`|第9章 4.2 の命令とイベント|
+|SchemaSet|`+ft.push.declarative/1`|第2章 7。宣言型の Web Push の包み（`mutable: true`、`notification.data` が `ft.push/1`）。srv-push が作り web-push が読む|
 |SchemaSet|`+fkb/1、fkb-history/1、fdev/1、fusr/1`|第12章 12。境界を越える形だけを置く。`fenv/1`・`fdek/1`（DB の列のバイナリ）は srv-common、`fcard/1`（印刷するカードの中身）は web-crypto が持つ。添付の記述と通話の鍵は `ft.content.attachment_item/1`、`ft.content.call_key/1`|
 |SchemaSet|`+problem/1`|RFC 9457 + code、retryable、params|
 |SchemaSet|`+common/*`|uuidv7、rfc3339、base64url、pos（int64 ≥ 0）、grapheme_string(max)|

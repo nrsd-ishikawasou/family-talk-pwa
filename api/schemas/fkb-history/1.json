@@ -2,7 +2,7 @@
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "https://family-talk.invalid/schemas/fkb-history/1",
   "title": "fkb-history/1",
-  "description": "第12章 12、5.6。鍵のバックアップ",
+  "description": "第12章 12、5.6。鍵のバックアップ。group_id はグループの識別子（トークの識別子の 16 バイトと世代の 4 バイト）の base64url、key_version は S の版",
   "type": "object",
   "properties": {
     "v": {
@@ -17,6 +17,10 @@
     "epoch": {
       "type": "integer",
       "minimum": 0
+    },
+    "key_version": {
+      "type": "integer",
+      "minimum": 1
     },
     "alg": {
       "const": "A256GCM"
@@ -36,6 +40,7 @@
     "user_id",
     "group_id",
     "epoch",
+    "key_version",
     "alg",
     "nonce",
     "ciphertext",

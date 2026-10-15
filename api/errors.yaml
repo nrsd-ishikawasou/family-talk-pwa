@@ -45,9 +45,9 @@ rows:
   - code: AUTH-005
     status: 400
     title: "QR login not completed"
-    meaning: "QR の `authorization_pending`、`slow_down`、`expired`（params.state）"
+    meaning: "QR の `authorization_pending`、`slow_down`、`expired`、`access_denied`（params.state。`access_denied` は保護者の不承認。第3章 4.4）"
     retryable: "by_state"
-    params: {"type": "object", "properties": {"state": {"type": "string", "enum": ["authorization_pending", "slow_down", "expired"]}}, "additionalProperties": false}
+    params: {"type": "object", "properties": {"state": {"type": "string", "enum": ["authorization_pending", "slow_down", "expired", "access_denied"]}}, "additionalProperties": false}
     log: false
     scope: route
     user_text_key: err.AUTH-005
@@ -135,7 +135,7 @@ rows:
   - code: MEM-006
     status: 403
     title: "Guardian approval required"
-    meaning: "保護者の承認が要る（子ども区分の抹消・端末の追加）"
+    meaning: "保護者の承認が要る（子ども区分の抹消・端末の追加。端末の追加は QR の承認と鍵の承認の両方。第3章 4.4）"
     retryable: false
     params: {"type": "object", "properties": {}, "additionalProperties": false}
     log: false
@@ -145,7 +145,7 @@ rows:
   - code: MEM-007
     status: 403
     title: "Not allowed for a child member"
-    meaning: "子ども区分ではできない操作（招待の発行）"
+    meaning: "子ども区分ではできない操作（招待の発行、自分の誕生日の変更。第3章 9.1）"
     retryable: false
     params: {"type": "object", "properties": {}, "additionalProperties": false}
     log: false
@@ -162,6 +162,46 @@ rows:
     scope: route
     user_text_key: err.MEM-008
     test: TestErr_MEM_008
+  - code: MEM-009
+    status: 409
+    title: "Recovery card held by another member"
+    meaning: "家族回復鍵のカードの札を別の人が既に持っている（params.holder に持ち主。第12章 5.4）"
+    retryable: false
+    params: {"type": "object", "properties": {"holder": {"type": "string"}}, "additionalProperties": false}
+    log: false
+    scope: route
+    user_text_key: err.MEM-009
+    test: TestErr_MEM_009
+  - code: MEM-010
+    status: 403
+    title: "Recovery card cannot be held by a child member"
+    meaning: "子ども区分の構成員は家族回復鍵のカードを持てない（第12章 5.4）"
+    retryable: false
+    params: {"type": "object", "properties": {}, "additionalProperties": false}
+    log: false
+    scope: route
+    user_text_key: err.MEM-010
+    test: TestErr_MEM_010
+  - code: MEM-011
+    status: 409
+    title: "Recovery card holder overlap"
+    meaning: "家族回復鍵のカードの持ち主の重なり（本人が既に別の札を持ち、持てる構成員が 3 人以上。params.held に本人が持つ札の番号。第12章 5.4）"
+    retryable: false
+    params: {"type": "object", "properties": {"held": {"type": "integer", "minimum": 1, "maximum": 3}}, "additionalProperties": false}
+    log: false
+    scope: route
+    user_text_key: err.MEM-011
+    test: TestErr_MEM_011
+  - code: MEM-012
+    status: 409
+    title: "Birthday contradicts child flag"
+    meaning: "誕生日と子ども区分が合わない（18 歳以上の誕生日がある構成員に区分を付けられない。第3章 9.1）"
+    retryable: false
+    params: {"type": "object", "properties": {}, "additionalProperties": false}
+    log: false
+    scope: route
+    user_text_key: err.MEM-012
+    test: TestErr_MEM_012
   - code: KEY-001
     status: 404
     title: "Device or public key not found"
@@ -184,8 +224,8 @@ rows:
     test: TestErr_KEY_002
   - code: KEY-003
     status: 403
-    title: "Approval from unapproved device"
-    meaning: "未承認の端末からの承認の操作"
+    title: "Approval not permitted"
+    meaning: "承認の操作の権限が無い（未承認の端末が他の端末を承認した、または `user_sig` が本人の署名鍵の公開部で通らない）"
     retryable: false
     params: {"type": "object", "properties": {}, "additionalProperties": false}
     log: false
@@ -262,6 +302,36 @@ rows:
     scope: route
     user_text_key: err.KEY-010
     test: TestErr_KEY_010
+  - code: KEY-011
+    status: 409
+    title: "Key bundle version is stale"
+    meaning: "鍵バンドルの版が古い（`S` の交代の後。params.version に今の版。第12章 5.4）"
+    retryable: false
+    params: {"type": "object", "properties": {"version": {"type": "integer", "minimum": 1}}, "additionalProperties": false}
+    log: false
+    scope: route
+    user_text_key: err.KEY-011
+    test: TestErr_KEY_011
+  - code: KEY-012
+    status: 403
+    title: "Recovery code mismatch"
+    meaning: "回復コードの照合の値が置かれた値と合わない（打ち間違い、再発行の前の古いコード。第12章 5.4 (b)）"
+    retryable: true
+    params: {"type": "object", "properties": {}, "additionalProperties": false}
+    log: true
+    scope: route
+    user_text_key: err.KEY-012
+    test: TestErr_KEY_012
+  - code: KEY-013
+    status: 409
+    title: "MLS group reinit not allowed"
+    meaning: "MLS のグループの再初期化を許さない（params.reason：`not_pending` は再参加待ちでない、`too_early` は条件を満たす前（params.allowed_at に許される時刻）、`limit` は 24 時間に 2 回の上限。第12章 5.2）"
+    retryable: "by_state"
+    params: {"type": "object", "properties": {"reason": {"type": "string", "enum": ["not_pending", "too_early", "limit"]}, "allowed_at": {"$ref": "./schemas/common/rfc3339/1.json"}}, "additionalProperties": false}
+    log: true
+    scope: route
+    user_text_key: err.KEY-013
+    test: TestErr_KEY_013
   - code: ROOM-001
     status: 404
     title: "Room not found"

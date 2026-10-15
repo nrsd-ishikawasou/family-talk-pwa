@@ -28,6 +28,18 @@
     },
     "call_id": {
       "$ref": "../common/uuidv7/1.json"
+    },
+    "video": {
+      "type": "boolean"
+    },
+    "reason": {
+      "type": "string",
+      "enum": [
+        "missed",
+        "answered",
+        "declined",
+        "cancelled"
+      ]
     }
   },
   "required": [
@@ -68,6 +80,34 @@
           "call_id",
           "room_id",
           "sender_id"
+        ]
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "kind": {
+            "const": "call"
+          }
+        }
+      },
+      "then": {
+        "required": [
+          "video"
+        ]
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "kind": {
+            "const": "call_end"
+          }
+        }
+      },
+      "then": {
+        "required": [
+          "reason"
         ]
       }
     }

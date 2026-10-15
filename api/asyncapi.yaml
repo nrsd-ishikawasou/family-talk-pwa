@@ -263,6 +263,7 @@ components:
             type: object
             properties:
               user_id: *id001
+              device_id: *id001
               change:
                 type: string
                 enum:
@@ -271,6 +272,7 @@ components:
                 - left
                 - pending_add
                 - pending_remove
+                - pending_readd
               by: *id001
             required:
             - user_id
@@ -370,14 +372,15 @@ components:
           payload:
             type: object
             properties:
+              generation: *id004
               epoch: *id004
               commit_ref: &id005
                 type: string
               has_welcome_for_me: &id006
                 type: boolean
             required:
+            - generation
             - epoch
-            - commit_ref
             - has_welcome_for_me
             additionalProperties: false
           pos: *id002
@@ -472,6 +475,7 @@ components:
                 enum:
                 - added
                 - approved
+                - guardian_approved
                 - revoked
                 - renamed
               by: *id001
@@ -605,11 +609,11 @@ components:
               method:
                 type: string
                 enum:
-                - device
                 - share
                 - recovery-code
                 - family
                 - prf
+                - reset
               device_id: *id001
               result:
                 type: string
@@ -793,7 +797,6 @@ components:
               reason:
                 type: string
                 enum:
-                - retention
                 - restore
             required:
             - reason

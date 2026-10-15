@@ -170,7 +170,7 @@ classDiagram
 |B-410|`Bridge`（`register`、`emit`、`onMessage`）と `BridgeHandler`（定義）|and-push、and-calls、and-media、and-update（自分の命令の登録とイベントの送出）、web-shell `Bridge`（相手）|[第9章 4.2 JS ブリッジの命令](../../../../docs/jp/design/09_基本設計書_Androidのシェル.md#42-js-ブリッジの命令)、I-15|
 |B-411|`WebHost`（`load`、`webView` の参照、`onRenderProcessGone` の通知）|and-calls（PiP の `setSourceRectHint`、通話中の描画）、and-media（`onShowFileChooser` の実装を渡す）、and-push（`DecryptHost` は別の WebView：本ブロックの `configure` を再利用）|[第9章 4.1 設定](../../../../docs/jp/design/09_基本設計書_Androidのシェル.md#41-設定)|
 |B-412|`Families`（`list`、`current`、`add`、`switch`、`remove`）|and-push（instance の登録）、and-update（`/dl/version.json` の URL）、`MainActivity`|[第9章 11 複数の家族（DD-9-11）](../../../../docs/jp/design/09_基本設計書_Androidのシェル.md#11-複数の家族dd-9-11)|
-|B-413|`ShellToken::get`、`set`、`client`|and-push（`/up/register`、`/up/ws`）、and-update（`/dl/version.json`、`/dl/app.apk` は無認証だが同じ client）|[第2章 4.4 WebSocket と通知と SFU](../../../../docs/jp/design/02_基本設計書_境界.md#44-websocket-と通知と-sfu)|
+|B-413|`ShellToken::get`、`set`、`client`|and-push（`/up/register`。`/up/ws` は配布元の接続の秘密）、and-update（`/dl/version.json`、`/dl/app.apk` は無認証だが同じ client）|[第2章 4.4 WebSocket と通知と SFU](../../../../docs/jp/design/02_基本設計書_境界.md#44-websocket-と通知と-sfu)|
 |B-414|`ShellUi`（`Onboarding`、`WebViewGuide`、`ShellSettings`、`theme`）|and-push（通知の方式の切り替え）、and-update（自動で更新）、and-calls（着信の画面の配色）|[第10章 11 シェルの画面（DD-10-10）](../../../../docs/jp/design/10_基本設計書_画面.md#11-シェルの画面dd-10-10)|
 |B-415|`CoreCommands::requestPermission`|and-push（初回の案内から）、and-calls（通話の権限）|[第9章 7 権限（DD-9-7）](../../../../docs/jp/design/09_基本設計書_Androidのシェル.md#7-権限dd-9-7)|
 

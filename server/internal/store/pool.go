@@ -154,10 +154,24 @@ func unavailable(err error) error {
 	return dbUnavailable()
 }
 
-// Tx は 1 つのトランザクション。コミットの後に走る付け足し（AfterCommit）を持つ。
+// Querier は Pool と Tx の読み書きの共通の口（読みの操作が「ctx のトランザクションか Pool」を受ける時の型。B-020）。
+type Querier interface {
+	QueryRow(ctx context.Context, sql string, args ...any) pgx.Row
+	Query(ctx context.Context, sql string, args ...any) (pgx.Rows, error)
+	Exec(ctx context.Context, sql string, args ...any) (pgconn.CommandTag, error)
+}
+
+var (
+	_ Querier = (*Pool)(nil)
+	_ Querier = (*Tx)(nil)
+)
+
+// Tx は 1 つのトランザクション。コミットの後に走る付け足し（AfterCommit）と、溜めた feed の行（Feed.Append。コミットの直前に
+// 宛先の識別子の順に採番して書く。全体実装設計書 2.4）を持つ。
 type Tx struct {
 	tx    pgx.Tx
 	after []func()
+	feed  []*FeedPending
 	done  bool
 }
 
@@ -176,8 +190,15 @@ func (t *Tx) QueryRow(ctx context.Context, sql string, args ...any) pgx.Row {
 	return t.tx.QueryRow(ctx, sql, args...)
 }
 
-// Commit はコミットし、成功したら AfterCommit の関数を登録の順に呼ぶ。
+// Commit は溜めた feed の行を書いて（flushFeed。採番の錠を最後に識別子の順で取る）からコミットし、
+// 成功したら AfterCommit の関数を登録の順に呼ぶ。feed の書き込みに失敗すれば rollback する。
 func (t *Tx) Commit(ctx context.Context) error {
+	if err := t.flushFeed(ctx); err != nil {
+		t.done = true
+		t.after = nil
+		_ = t.tx.Rollback(ctx)
+		return err
+	}
 	if err := t.tx.Commit(ctx); err != nil {
 		t.done = true
 		t.after = nil
@@ -192,13 +213,14 @@ func (t *Tx) Commit(ctx context.Context) error {
 	return nil
 }
 
-// Rollback は取り消す（コミット済みなら何もしない。defer で呼んでよい）。AfterCommit の関数は捨てる。
+// Rollback は取り消す（コミット済みなら何もしない。defer で呼んでよい）。AfterCommit の関数と溜めた feed の行は捨てる。
 func (t *Tx) Rollback(ctx context.Context) {
 	if t.done {
 		return
 	}
 	t.done = true
 	t.after = nil
+	t.feed = nil
 	_ = t.tx.Rollback(ctx)
 }
 

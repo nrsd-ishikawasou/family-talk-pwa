@@ -6,6 +6,7 @@ toolchain go1.27.2
 
 require (
 	github.com/coder/websocket v1.8.15
+	github.com/go-webauthn/webauthn v0.18.2
 	github.com/gofrs/uuid/v5 v5.5.1
 	github.com/google/go-containerregistry v0.22.1
 	github.com/jackc/pgx/v5 v5.11.0
@@ -16,6 +17,7 @@ require (
 	github.com/oapi-codegen/runtime v1.7.0
 	github.com/pb33f/libopenapi v0.41.6
 	github.com/pb33f/libopenapi-validator v0.16.1
+	github.com/rivo/uniseg v0.4.7
 	github.com/sigstore/sigstore-go v1.3.0
 	github.com/testcontainers/testcontainers-go/modules/postgres v0.44.0
 	github.com/twitchtv/twirp v8.1.3+incompatible
@@ -68,6 +70,7 @@ require (
 	github.com/felixge/httpsnoop v1.1.0 // indirect
 	github.com/frostbyte73/core v0.1.1 // indirect
 	github.com/fsnotify/fsnotify v1.10.1 // indirect
+	github.com/fxamacker/cbor/v2 v2.9.4 // indirect
 	github.com/gammazero/deque v1.2.1 // indirect
 	github.com/go-logr/logr v1.4.4 // indirect
 	github.com/go-logr/stdr v1.2.2 // indirect
@@ -96,9 +99,11 @@ require (
 	github.com/go-openapi/swag/yamlutils v0.27.3 // indirect
 	github.com/go-openapi/validate v0.26.1 // indirect
 	github.com/go-viper/mapstructure/v2 v2.5.0 // indirect
+	github.com/go-webauthn/x v0.3.1 // indirect
 	github.com/golang-jwt/jwt/v5 v5.3.1 // indirect
 	github.com/google/cel-go v0.29.0 // indirect
 	github.com/google/certificate-transparency-go v1.3.3 // indirect
+	github.com/google/go-tpm v0.9.8 // indirect
 	github.com/google/uuid v1.6.0 // indirect
 	github.com/gorilla/websocket v1.5.4-0.20250319132907-e064f32e3674 // indirect
 	github.com/grpc-ecosystem/grpc-gateway/v2 v2.29.0 // indirect
@@ -141,6 +146,7 @@ require (
 	github.com/pb33f/jsonschema/v6 v6.0.3 // indirect
 	github.com/pb33f/ordered-map/v2 v2.3.2 // indirect
 	github.com/petermattis/goid v0.0.0-20260725062400-500c67a39b75 // indirect
+	github.com/philhofer/fwd v1.2.0 // indirect
 	github.com/pion/datachannel v1.6.2 // indirect
 	github.com/pion/dtls/v3 v3.1.8 // indirect
 	github.com/pion/ice/v4 v4.4.0 // indirect
@@ -179,11 +185,13 @@ require (
 	github.com/stretchr/testify v1.12.1 // indirect
 	github.com/testcontainers/testcontainers-go v0.44.0 // indirect
 	github.com/theupdateframework/go-tuf/v2 v2.4.2 // indirect
+	github.com/tinylib/msgp v1.6.4 // indirect
 	github.com/tklauser/go-sysconf v0.4.0 // indirect
 	github.com/tklauser/numcpus v0.12.0 // indirect
 	github.com/transparency-dev/formats v0.1.1 // indirect
 	github.com/transparency-dev/merkle v0.0.2 // indirect
 	github.com/wlynxg/anet v0.0.5 // indirect
+	github.com/x448/float16 v0.8.4 // indirect
 	github.com/youmark/pkcs8 v0.0.0-20240726163527-a2c0da244d78 // indirect
 	github.com/yusufpapurcu/wmi v1.2.4 // indirect
 	github.com/zeebo/xxh3 v1.1.0 // indirect

@@ -81,8 +81,13 @@ func TestParseAcceptsV7AndRejectsOthers(t *testing.T) {
 	}
 	v4 := uuid.Must(uuid.NewV4())
 	for _, s := range []string{v4.String(), "", "not-a-uuid", u.String() + "0"} {
-		if _, ev := g.Parse(s); ev == nil || ev.Code != gen.NET001 || ev.Status != 400 {
+		_, ev := g.Parse(s)
+		if ev == nil || ev.Code != gen.NET001 || ev.Status != 400 {
 			t.Fatalf("%q を NET-001 で拒まない: %v", s, ev)
+		}
+		list, ok := ev.Params["errors"].([]map[string]any)
+		if !ok || len(ev.Params) != 1 || len(list) != 1 || list[0]["path"] != "id" || list[0]["message"] == "" {
+			t.Fatalf("params がエラーコード表の NET-001 の形でない: %v", ev.Params)
 		}
 	}
 }

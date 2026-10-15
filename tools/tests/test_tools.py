@@ -186,6 +186,17 @@ class TestGenTexts(unittest.TestCase):
             gen_texts.build(doc.replace('|NET-001|a。|b。|', '|NET-001|a。|b。|\n|NET-001|c。|d。|'),
                             [{'code': 'NET-001', 'user_text_key': 'err.NET-001'}])
 
+    # R: R-7-6-1
+    def test_notice_table_and_chapter_7_must_match(self):
+        doc10 = '### 9.4 知らせ\n\n|識別子|1 文目|2 文目|\n|---|---|---|\n|disk_usage|a。|b。|\n|paper_check|c。||\n\n## 10. 次\n'
+        doc7 = '## 9. 知らせ\n\n|知らせ|識別子|level|\n|---|---|---|\n|容量|`disk_usage`|warning|\n|誕生日|—|—|\n|紙|`paper_check`|info|\n\n## 10. 次\n'
+        out = json.loads(gen_texts.build_notices(doc10, doc7))
+        self.assertEqual(out, {'notice.disk_usage': {'what': 'a。', 'next': 'b。'}, 'notice.paper_check': {'what': 'c。', 'next': ''}})
+        with self.assertRaises(ValueError):
+            gen_texts.build_notices(doc10, doc7.replace('|紙|`paper_check`|info|', '|紙|`paper_check`|info|\n|地図|`maps_update`|info|'))
+        with self.assertRaises(ValueError):
+            gen_texts.build_notices(doc10.replace('|paper_check|c。||', ''), doc7)
+
     # R: R-12-5-1
     def test_disclosure_from_chapter_12(self):
         out = json.loads(gen_texts.build_disclosure(gen_texts.DATA_CHAPTER.read_text(encoding='utf-8')))
@@ -199,7 +210,7 @@ class TestGenTexts(unittest.TestCase):
         texts = [out['title'], out['lead'], *(i['text'] for i in out['items'])]
         texts += [v for r in out['outbound'] for k, v in r.items() if k != 'mode']
         for t in texts:
-            self.assertEqual(set(re.findall(r'\{(\w+)\}', t)) - {'admin', 'provider'}, set(), t)
+            self.assertEqual(set(re.findall(r'\{(\w+)\}', t)) - {'admin', 'provider', 'card_holders'}, set(), t)
 
     def test_disclosure_shape_errors(self):
         doc = ('### 7.1 文\n\n> **題**\n>\n> 前書き{admin}。\n>\n> - 項目。\n\n## 8. 表\n\n'

@@ -2,7 +2,7 @@
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "https://family-talk.invalid/schemas/fdev/1",
   "title": "fdev/1",
-  "description": "第12章 12。端末の登録",
+  "description": "第12章 12。端末の登録。user_sig の対象と mls_credential の形は第12章 5.3",
   "type": "object",
   "properties": {
     "v": {

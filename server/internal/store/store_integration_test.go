@@ -6,12 +6,14 @@
 package store
 
 import (
+	"bytes"
 	"context"
 	"crypto/rand"
 	"crypto/sha256"
 	"encoding/json"
 	"errors"
 	"fmt"
+	"io/fs"
 	"net"
 	"os"
 	"strconv"
@@ -26,6 +28,7 @@ import (
 	"github.com/nrsd-ishikawasou/family-talk-pwa/server/internal/common/fault"
 	"github.com/nrsd-ishikawasou/family-talk-pwa/server/internal/common/gen"
 	"github.com/nrsd-ishikawasou/family-talk-pwa/server/internal/common/ids"
+	"github.com/nrsd-ishikawasou/family-talk-pwa/server/internal/store/migrations"
 )
 
 // 試験の postgres（全試験で 1 つ）。
@@ -51,8 +54,9 @@ func TestMain(m *testing.M) {
 		fmt.Fprintln(os.Stderr, "接続できない:", err)
 		os.Exit(1)
 	}
+	files, _ := fs.Glob(migrations.FS, "*.sql")
 	rep, err := NewMigrator(testPool).Apply(ctx)
-	if err != nil || rep.To != 1 {
+	if err != nil || rep.To != len(files) {
 		fmt.Fprintln(os.Stderr, "移行できない:", err, rep)
 		os.Exit(1)
 	}
@@ -72,8 +76,9 @@ func newIds() *ids.Ids { return ids.New(clock.WallClock{}, rand.Reader) }
 func TestMigratorIsAppliedOnceAndDetectsDowngrade(t *testing.T) {
 	ctx := context.Background()
 	m := NewMigrator(testPool)
+	files, _ := fs.Glob(migrations.FS, "*.sql")
 	rep, err := m.Apply(ctx)
-	if err != nil || rep.From != 1 || rep.To != 1 || len(rep.Applied) != 0 {
+	if err != nil || rep.From != len(files) || rep.To != len(files) || len(rep.Applied) != 0 {
 		t.Fatalf("2 回目の Apply が何かを当てた: %+v %v", rep, err)
 	}
 	if p, _ := m.Pending(ctx); len(p) != 0 {
@@ -85,14 +90,14 @@ func TestMigratorIsAppliedOnceAndDetectsDowngrade(t *testing.T) {
 	if _, err := testPool.Exec(ctx, `UPDATE schema_migrations SET version = 99`); err != nil {
 		t.Fatal(err)
 	}
-	defer func() { _, _ = testPool.Exec(ctx, `UPDATE schema_migrations SET version = 1`) }()
+	defer func() { _, _ = testPool.Exec(ctx, `UPDATE schema_migrations SET version = $1`, len(files)) }()
 	if err := m.RequireVersion(ctx); !errors.Is(err, errDowngrade) {
 		t.Fatalf("ダウングレードを止めない: %v", err)
 	}
 }
 
 // R: R-2-2-3
-func TestNextPosHasNoGapsUnderConcurrency(t *testing.T) {
+func TestFlushHasNoGapsUnderConcurrency(t *testing.T) {
 	ctx := context.Background()
 	f := NewFeed(testPool)
 	user := uuid.Must(uuid.NewV7())
@@ -108,21 +113,21 @@ func TestNextPosHasNoGapsUnderConcurrency(t *testing.T) {
 				return
 			}
 			defer tx.Rollback(ctx)
-			pos, err := f.NextPos(ctx, tx, user)
-			if err != nil {
-				errs <- err
-				return
-			}
 			ref := FeedRef{Kind: "notice", Id: uuid.FromStringOrNil(fmt.Sprintf("01890a5d-ac96-774b-bcce-%012d", i)),
 				Payload: json.RawMessage(`{"kind":"capacity","level":"info","text_key":"k","params":{}}`), Ts: time.Unix(1_800_000_000, 0)}
-			if err := f.Append(ctx, tx, user, pos, ref); err != nil {
+			p := f.Append(tx, user, ref)
+			if i%10 == 0 {
+				return // 取り消す：溜めた行は捨てられ、採番は起きない
+			}
+			if err := tx.Commit(ctx); err != nil {
 				errs <- err
 				return
 			}
-			if i%10 == 0 {
-				return // 取り消す：採番も戻る
+			if p.Pos < 1 {
+				errs <- fmt.Errorf("コミットの後に pos が入らない: %d", p.Pos)
+				return
 			}
-			errs <- tx.Commit(ctx)
+			errs <- nil
 		}(i)
 	}
 	wg.Wait()
@@ -132,7 +137,7 @@ func TestNextPosHasNoGapsUnderConcurrency(t *testing.T) {
 			t.Fatal(err)
 		}
 	}
-	rows, err := f.ReadSince(ctx, user, 0, 1000)
+	rows, err := f.ReadSince(ctx, user, uuid.Nil, 0, 1000)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -232,6 +237,33 @@ func TestJobsClaimIsExclusiveAndClaimIdGuards(t *testing.T) {
 	c.Advance(31 * 24 * time.Hour)
 	if n, _ := j.Prune(ctx, c.Now().Add(-30*24*time.Hour)); n != 1 {
 		t.Fatalf("終わった仕事を消さない: %d", n)
+	}
+}
+
+func TestJobsCancelRemovesOnlyQueued(t *testing.T) {
+	ctx := context.Background()
+	c := clock.NewTestClock(time.Unix(1_800_000_000, 0))
+	j := NewJobs(testPool, newIds(), c)
+	tx, _ := testPool.Begin(ctx)
+	_, _ = j.Enqueue(ctx, tx, "erasure", map[string]any{"user_id": "a"}, c.Now().Add(time.Hour), "erasure:cancel-a")
+	_, _ = j.Enqueue(ctx, tx, "erasure", map[string]any{"user_id": "b"}, c.Now(), "erasure:cancel-b")
+	_ = tx.Commit(ctx)
+	jb, _ := j.Claim(ctx, []string{"erasure"}, c.Now(), time.Minute)
+	if jb == nil {
+		t.Fatal("取れない")
+	}
+	tx, _ = testPool.Begin(ctx)
+	okA, errA := j.Cancel(ctx, tx, "erasure:cancel-a")
+	okB, errB := j.Cancel(ctx, tx, "erasure:cancel-b")
+	okC, errC := j.Cancel(ctx, tx, "erasure:cancel-none")
+	_ = tx.Commit(ctx)
+	if errors.Join(errA, errB, errC) != nil || !okA || okB || okC {
+		t.Fatalf("queued だけを消す：a=%v b=%v none=%v %v", okA, okB, okC, errors.Join(errA, errB, errC))
+	}
+	var n int
+	_ = testPool.QueryRow(ctx, `SELECT count(*) FROM jobs WHERE dedupe_key IN ('erasure:cancel-a', 'erasure:cancel-b')`).Scan(&n)
+	if n != 1 {
+		t.Fatalf("running の仕事は残る：%d", n)
 	}
 }
 
@@ -452,5 +484,169 @@ func TestInTxCommitsAndRollsBack(t *testing.T) {
 	}
 	if n != 1 {
 		t.Fatalf("残った行の和が違う: %d", n)
+	}
+}
+
+// R: R-2-3-2
+func TestFeedReadSinceFiltersByDevice(t *testing.T) {
+	ctx := context.Background()
+	f := NewFeed(testPool)
+	user := uuid.Must(uuid.NewV7())
+	a, b := uuid.Must(uuid.NewV7()), uuid.Must(uuid.NewV7())
+	put := func(kind string, dev uuid.UUID, payload string) int64 {
+		t.Helper()
+		tx, err := testPool.Begin(ctx)
+		if err != nil {
+			t.Fatal(err)
+		}
+		defer tx.Rollback(ctx)
+		ref := FeedRef{Kind: kind, Id: uuid.Must(uuid.NewV7()), DeviceId: dev, Payload: json.RawMessage(payload), Ts: time.Unix(1_800_000_000, 0)}
+		p := f.Append(tx, user, ref)
+		if err := tx.Commit(ctx); err != nil {
+			t.Fatal(err)
+		}
+		return p.Pos
+	}
+	put("notice", uuid.Nil, `{"kind":"capacity","level":"info","text_key":"k","params":{}}`)
+	put("device.inbox", a, `{"count":1}`)
+	put("session.revoked", b, `{"reason":"logout"}`)
+	put("sync.gap", uuid.Nil, `{"reason":"restore"}`)
+	put("sync.gap", a, `{"reason":"restore"}`)
+	want := map[uuid.UUID][]int64{a: {1, 2, 4, 5}, b: {1, 3, 4}}
+	for dev, poss := range want {
+		rows, err := f.ReadSince(ctx, user, dev, 0, 100)
+		if err != nil {
+			t.Fatal(err)
+		}
+		var got []int64
+		for _, r := range rows {
+			got = append(got, r.Pos)
+			if r.Ref.DeviceId != uuid.Nil && r.Ref.DeviceId != dev {
+				t.Fatalf("他の端末宛ての行が読めた: %v", r)
+			}
+		}
+		if fmt.Sprint(got) != fmt.Sprint(poss) {
+			t.Fatalf("端末 %s に届く行が違う: %v（期待 %v）", dev, got, poss)
+		}
+	}
+	// 表の CHECK：宛先の無い session.revoked と、宛先を持つ notice は入らない（Append の確かめをすり抜けても止まる）。
+	for _, c := range []struct {
+		kind string
+		dev  any
+	}{{"session.revoked", nil}, {"notice", a}} {
+		tx, err := testPool.Begin(ctx)
+		if err != nil {
+			t.Fatal(err)
+		}
+		_, err = tx.Exec(ctx, `INSERT INTO feed (user_id, pos, kind, ref_id, device_id, payload, ts) VALUES ($1, 100, $2, $3, $4, '{}', now())`,
+			user, c.kind, uuid.Must(uuid.NewV7()), c.dev)
+		tx.Rollback(ctx)
+		if err == nil {
+			t.Fatalf("%s の宛先の規則を CHECK が止めない", c.kind)
+		}
+	}
+}
+
+// noticeRef は試験用の notice の行。
+func noticeRef(id int) FeedRef {
+	return FeedRef{Kind: "notice", Id: uuid.FromStringOrNil(fmt.Sprintf("01890a5d-ac96-774b-bcce-%012d", id)),
+		Payload: json.RawMessage(`{"kind":"capacity","level":"info","text_key":"k","params":{}}`), Ts: time.Unix(1_800_000_000, 0)}
+}
+
+// R: R-2-2-3
+// 宛先を逆の順に持つ同時の 2 つの書き込み（2 構成員が同時に自分の他の端末を取り消す形。全体実装設計書 2.4）。
+// 採番の錠をコミットの直前に識別子の順で取るので、両方がコミットし、デッドロック（40P01）は起きない。
+func TestFlushTakesCursorLocksInIdOrderAcrossTransactions(t *testing.T) {
+	ctx := context.Background()
+	f := NewFeed(testPool)
+	a, c := uuid.Must(uuid.NewV7()), uuid.Must(uuid.NewV7())
+	if bytes.Compare(a[:], c[:]) > 0 {
+		a, c = c, a
+	}
+	barrier := make(chan struct{})
+	var ready sync.WaitGroup
+	ready.Add(2)
+	run := func(first, second uuid.UUID, id int) error {
+		tx, err := testPool.Begin(ctx)
+		if err != nil {
+			return err
+		}
+		defer tx.Rollback(ctx)
+		f.Append(tx, first, noticeRef(id)) // 本人のその端末へ（session.revoked の形）
+		ready.Done()
+		<-barrier
+		f.Append(tx, first, noticeRef(id+1)) // 家族の全員へ（device.changed の形）
+		f.Append(tx, second, noticeRef(id+1))
+		return tx.Commit(ctx)
+	}
+	errs := make(chan error, 2)
+	go func() { errs <- run(a, c, 1000) }()
+	go func() { errs <- run(c, a, 2000) }()
+	ready.Wait()
+	close(barrier)
+	for i := 0; i < 2; i++ {
+		select {
+		case err := <-errs:
+			if err != nil {
+				t.Fatalf("同時の 2 つの書き込みのどちらかが失敗した（デッドロックなら SRV-003）: %v", err)
+			}
+		case <-time.After(10 * time.Second):
+			t.Fatal("同時の 2 つの書き込みが終わらない")
+		}
+	}
+	for _, u := range []uuid.UUID{a, c} {
+		rows, err := f.ReadSince(ctx, u, uuid.Nil, 0, 10)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if len(rows) != 3 || rows[0].Pos != 1 || rows[1].Pos != 2 || rows[2].Pos != 3 {
+			t.Fatalf("両方の書き込みが連続の pos で入っていない: %+v", rows)
+		}
+	}
+}
+
+// R: R-2-2-3
+// 同じ利用者への複数の行は積んだ順の連続の pos。明示の Flush は pos をコミットの前に入れ、Commit は二重に書かない。
+// Rollback は溜めた行を捨てる（採番は起きない）。
+func TestFlushOrdersRowsWithinUserAndRollbackDiscards(t *testing.T) {
+	ctx := context.Background()
+	f := NewFeed(testPool)
+	user := uuid.Must(uuid.NewV7())
+	tx, err := testPool.Begin(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer tx.Rollback(ctx)
+	p1 := f.Append(tx, user, noticeRef(3001))
+	p2 := f.Append(tx, user, noticeRef(3002))
+	if err := f.Flush(ctx, tx); err != nil {
+		t.Fatal(err)
+	}
+	if p1.Pos != 1 || p2.Pos != 2 {
+		t.Fatalf("明示の Flush が積んだ順の連続の pos を入れない: %d %d", p1.Pos, p2.Pos)
+	}
+	p3 := f.Append(tx, user, noticeRef(3003))
+	if err := tx.Commit(ctx); err != nil {
+		t.Fatal(err)
+	}
+	if p3.Pos != 3 {
+		t.Fatalf("Commit が Flush の後に溜めた行を書かない: %d", p3.Pos)
+	}
+	rows, err := f.ReadSince(ctx, user, uuid.Nil, 0, 10)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(rows) != 3 || rows[0].Ref.Id != p1.Ref.Id || rows[1].Ref.Id != p2.Ref.Id || rows[2].Ref.Id != p3.Ref.Id {
+		t.Fatalf("行の順か数が違う（二重か欠け）: %+v", rows)
+	}
+	other := uuid.Must(uuid.NewV7())
+	tx2, err := testPool.Begin(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	q := f.Append(tx2, other, noticeRef(3004))
+	tx2.Rollback(ctx)
+	if last, err := f.LastPos(ctx, other); err != nil || last != 0 || q.Pos != 0 {
+		t.Fatalf("Rollback が溜めた行を捨てない: last=%d pos=%d %v", last, q.Pos, err)
 	}
 }

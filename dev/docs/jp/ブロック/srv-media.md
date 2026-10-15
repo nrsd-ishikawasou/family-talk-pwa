@@ -133,7 +133,7 @@ classDiagram
 |Slots|`+Delete(tx, principal, id)`|結び付く前|
 |Slots|`+SweepExpired(ctx)`|24 時間（srv-worker gc）|
 |Get|`+Serve(w, r, principal, id)`|認可：結び付いたどれかのトークの構成員、または結び付く前の持ち主（MEDIA-005）。実体が無ければ MEDIA-006。Accept-Ranges、ETag "&lt;sha256&gt;"、Cache-Control: private, immutable, max-age=31536000。Range は FileStore.Open|
-|Refs|`+Bind(tx, eventId, mediaIds) Result~Event~`|srv-rooms MediaBinder。complete でなければ MEDIA-002。media_refs に (media_id, event_id, room_id)|
+|Refs|`+Bind(tx, principal, eventId, mediaIds) Result~Event~`|srv-rooms MediaBinder。complete でなければ MEDIA-002。送信者が取得できる媒体か（持ち主、または既に結び付いたどれかのトークの構成員。第2章 5.6）を確かめ、違えば MEDIA-005。media_refs に (media_id, event_id, room_id)|
 |Refs|`+Unbind(tx, eventId)`|削除済みの印。参照 0 なら orphaned_at = now|
 |Refs|`+RoomsOf(ctx, mediaId) [RoomId]`|取得の認可|
 |Gc|`+PurgeOrphans(ctx, grace) int`|orphaned_at から 7 日を過ぎたら FileStore.Remove し、state = deleted|

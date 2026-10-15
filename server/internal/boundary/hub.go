@@ -30,16 +30,18 @@ const (
 
 // 閉じる状態の番号（第2章 6.3。IANA の登録と私用の範囲）。
 const (
-	closePolicy   websocket.StatusCode = 1008
-	closeInternal websocket.StatusCode = 1011
-	closeRestart  websocket.StatusCode = 1012
-	closeTryLater websocket.StatusCode = 1013
-	closeRevoked  websocket.StatusCode = 4001
-	closeReplaced websocket.StatusCode = 4002
-	kindRoomEvent                      = "room.event"
+	closePolicy        websocket.StatusCode = 1008
+	closeInternal      websocket.StatusCode = 1011
+	closeRestart       websocket.StatusCode = 1012
+	closeTryLater      websocket.StatusCode = 1013
+	closeRevoked       websocket.StatusCode = 4001
+	closeReplaced      websocket.StatusCode = 4002
+	kindRoomEvent                           = "room.event"
+	kindSessionRevoked                      = "session.revoked"
 )
 
-// Frame は WebSocket の 1 つのフレーム（JSON。第2章 6.1）。
+// Frame は WebSocket の 1 つのフレーム（JSON。第2章 6.1）。nil は「ここまで書いたら 4001 で閉じる」の印
+// （session.revoked をその端末に書いた直後。第2章 6.3。書き手の goroutine が順に処理するので、フレームの後に閉じる）。
 type Frame []byte
 
 // WsConn は 1 つの /ws の接続（記憶の上。再起動で消え、端末が再接続する）。
@@ -193,16 +195,6 @@ func (h *Hub) remove(conn *WsConn) {
 	}
 }
 
-// Detach は端末の接続を 4001 で切る（ログアウト、取り消し、停止。B-043）。
-func (h *Hub) Detach(deviceId uuid.UUID) {
-	h.mu.RLock()
-	c := h.conns[deviceId]
-	h.mu.RUnlock()
-	if c != nil {
-		c.closeWith(closeRevoked, "revoked")
-	}
-}
-
 // Broadcast は feed に無い種類（room.typing、bye）を利用者たちの接続へ送る（B-043）。
 // payload はフレームの全体（type を含む）。
 func (h *Hub) Broadcast(userIds []uuid.UUID, kind string, payload any) {
@@ -225,6 +217,8 @@ func (h *Hub) Broadcast(userIds []uuid.UUID, kind string, payload any) {
 }
 
 // CatchUp は Feed.ReadSince(lastSent) を空になるまで読んでフレームにして送り、lastSent を進める。
+// 宛先が端末の行は、その端末の接続の分だけ読まれる（全体実装設計書 2.4）。session.revoked の行を送ったら、
+// その後ろに閉じる印（nil）を積んでやめる（第2章 6.3 の 4001）。
 // 書き手の goroutine から呼ぶ（同じ接続で同時に 2 つ走らない）。
 func (h *Hub) CatchUp(ctx context.Context, deviceId uuid.UUID) {
 	h.mu.RLock()
@@ -238,19 +232,23 @@ func (h *Hub) CatchUp(ctx context.Context, deviceId uuid.UUID) {
 // catchUp は 1 つの接続のキャッチアップ。
 func (h *Hub) catchUp(ctx context.Context, c *WsConn) error {
 	for {
-		rows, err := h.base.Feed.ReadSince(ctx, c.UserId, c.LastSentPos, catchUpBatch)
+		rows, err := h.base.Feed.ReadSince(ctx, c.UserId, c.DeviceId, c.LastSentPos, catchUpBatch)
 		if err != nil {
 			return err
 		}
 		if len(rows) == 0 {
 			return nil
 		}
-		frames, err := h.frames(ctx, c.UserId, c.DeviceId, rows)
+		frames, kinds, err := h.frames(ctx, c.UserId, c.DeviceId, rows)
 		if err != nil {
 			return err
 		}
-		for _, f := range frames {
+		for i, f := range frames {
 			c.enqueue(Frame(f))
+			if kinds[i] == kindSessionRevoked {
+				c.enqueue(nil)
+				return nil
+			}
 		}
 		c.LastSentPos = int64(rows[len(rows)-1].Pos)
 		if len(rows) < catchUpBatch {
@@ -259,9 +257,9 @@ func (h *Hub) catchUp(ctx context.Context, c *WsConn) error {
 	}
 }
 
-// frames は feed の行をフレーム（第2章 6.1：pos、id、type、ts、room_id、payload）にする。
+// frames は feed の行をフレーム（第2章 6.1：pos、id、type、ts、room_id、payload）にし、各フレームの種類を添えて返す。
 // room.event は EventSource から、その利用者と端末に見える形で引く。返らない物は送らない。
-func (h *Hub) frames(ctx context.Context, userId, deviceId uuid.UUID, rows []store.FeedRow) ([]json.RawMessage, error) {
+func (h *Hub) frames(ctx context.Context, userId, deviceId uuid.UUID, rows []store.FeedRow) ([]json.RawMessage, []string, error) {
 	var ids []uuid.UUID
 	for _, r := range rows {
 		if r.Ref.Kind == kindRoomEvent {
@@ -272,10 +270,11 @@ func (h *Hub) frames(ctx context.Context, userId, deviceId uuid.UUID, rows []sto
 	if len(ids) > 0 {
 		var err error
 		if events, err = h.links.Events.ForFeed(ctx, userId, deviceId, ids); err != nil {
-			return nil, err
+			return nil, nil, err
 		}
 	}
 	out := make([]json.RawMessage, 0, len(rows))
+	kinds := make([]string, 0, len(rows))
 	for _, r := range rows {
 		payload := r.Ref.Payload
 		if r.Ref.Kind == kindRoomEvent {
@@ -292,11 +291,12 @@ func (h *Hub) frames(ctx context.Context, userId, deviceId uuid.UUID, rows []sto
 		}
 		b, err := json.Marshal(f)
 		if err != nil {
-			return nil, err
+			return nil, nil, err
 		}
 		out = append(out, b)
+		kinds = append(kinds, r.Ref.Kind)
 	}
-	return out, nil
+	return out, kinds, nil
 }
 
 // Connected は利用者の開いている端末（srv-push の判定。第7章 3.2。B-043）。

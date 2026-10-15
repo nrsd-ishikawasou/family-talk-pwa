@@ -34,12 +34,15 @@
   - [srv-common](srv-common.md)
   - [srv-store](srv-store.md)（`Tx`、`Feed`、`Notifier`、`RoomLock`、`Jobs`）
   - [srv-identity](srv-identity.md)（`Users`、役割、`Hooks` の登録）
-  - [srv-keys](srv-keys.md)（`Groups.Create`、`Groups.CheckSender`、`Inbox.Put`）
+  - [srv-keys](srv-keys.md)（`Groups` の `Create`、`CheckSender`、`Epoch`、`CommitsSince`、`Commit`、`Reject`、`Reinit`、`PendingDevices`。`Inbox.Put`）
+    - タグ rooms の `/rooms/{id}/mls/*` の 5 操作（epoch、commits、commit、reject、reinit）は本ブロックが受けて srv-keys の `Groups` を呼ぶ。`reject` と `reinit` は構成員の確かめ（ROOM-002）の後にそのまま `Groups.Reject`、`Groups.Reinit` を呼ぶ（第12章 5.2 の復旧）。`POST /rooms/{id}/mls/commit` は同じトランザクションで `Groups.Commit`、`Members.Resolve` の順。`Groups.Commit` の前に RoomLock を取らない（`Groups.Commit` は、休眠の端末を承認済みへ戻す devices の行の錠を RoomLock より先に取る）。サーバーが Commit の Add と Remove を読む（第12章 5.2）。`GET /rooms/{id}/mls/epoch` は `Groups.Epoch` に構成員の追加待ち（`pending_add`）を足す
 - 依存の逆転：
   - `Notifier`（イベントの後の通知の判定と送信）と `MediaBinder`（添付の結び付き）を本ブロックが定義し、srv-push と srv-media が実装して渡す。
   - srv-boundary の `RoomMembership` を実装する。
+  - srv-keys の `RoomReader`（`RoomsOf`、`MembersOf`、`IsMemberOrPending`）を実装する。中身は `Members.RoomsOf`、`Members.Of`、`Members.IsMemberOrPending` で、組み立ての後に `Keys.SetRooms` で渡す。
+  - 錠の順：`RoomLock` の後に srv-identity の行（users、devices）の錠を取らない。取り消しの hook が devices の後に rooms を取るため（srv-keys のページの「錠の順」）。
   - srv-identity の hook に登録する。
-    - `OnUserCreated`（家族全員のトークに追加待ち）
+    - `OnUserCreated(tx, userId, firstDeviceId)`（家族全員のトークが無ければ作り、あれば追加待ちに置く。前者は設置、後者は参加）
     - `OnUserSuspended`（システムの知らせ）
     - `OnUserDeleted`（削除済みの印への置き換えの選択）
 - 上：srv-calls、srv-push、srv-admin、srv-worker は `SystemEvent`／`Notice`／`PostScheduled` を呼ぶ。
@@ -77,6 +80,7 @@ classDiagram
     +Remove(tx, roomId, by, userId) Result~Event~
     +Resolve(tx, roomId, addedDevices, removedDevices)
     +IsMember(ctx, userId, roomId) bool
+    +IsMemberOrPending(ctx, tx, roomId, userId) bool
     +Of(ctx, roomId) [Member]
     +RoomsOf(ctx, userId) [RoomId]
     +PendingAdds(ctx) [(roomId, userId)]
@@ -196,15 +200,16 @@ classDiagram
 |Room|`+LastPos int64`|一覧の並びの元（このトークの最新のイベントの pos は利用者ごとに違うので、最新のイベントの ts を持つ）|
 |Rooms|`+Create(tx, by, kind, memberIds) Result~Room, Event~`|dm は同じ 2 人で既にあれば ROOM-004 で既存。group は上限 = 家族の人数。Groups.Create（epoch 0）。room.member(added) と pending_add（作成者の端末が Commit）|
 |Rooms|`+List(ctx, userId) [RoomView]`|/rooms：種類、構成員、自分の設定、未読の数（fully_read より後の件数。システムの知らせ・既読・入力中・自分の送信を除く）、最後のイベントの pos、epoch|
-|Rooms|`+CreateFamilyRoom(tx, adminDevice)`|設置の時（srv-identity SetupLink.Consume から）|
+|Rooms|`+CreateFamilyRoom(tx, adminDevice)`|設置の時（srv-identity の hook `OnUserCreated` の中で、家族全員のトークが無い時。本ブロックは srv-identity の上なので、srv-identity からは呼ばれない）|
 |Rooms|`+CreateSelfRoom(tx, userId, device)`|参加の時|
 |Rooms|`+Delete(tx, roomId, by)`|作成者・管理者。全 leaf を pending_remove、イベントを削除済みの印、添付の参照を外す、通話を ended（srv-calls）。30 日の空のグループは srv-worker gc から|
 |Members|`+Add(tx, roomId, by, userId) Result~Event~`|dm は不可。state = pending_add。room.member(pending_add)。Commit が来るまで読めない|
 |Members|`+Remove(tx, roomId, by, userId) Result~Event~`|作成者・管理者・本人（退出）。ROOM-003 / ROOM-011。pending_remove|
-|Members|`+Resolve(tx, roomId, addedDevices, removedDevices)`|srv-keys Groups.Commit から。pending の行を active か removed にする。room.member（added、removed、left のいずれか）。SystemEvent|
+|Members|`+Resolve(tx, roomId, addedDevices, removedDevices)`|`POST /rooms/{id}/mls/commit` の受けが、srv-keys Groups.Commit の後に同じトランザクションで呼ぶ（引数は Groups.Commit が返した端末。サーバーが Commit から読んだ物で、端末の申告ではない）。pending_add の構成員は、その人の端末が 1 つでも leaf を得たら active に。pending_remove の構成員は、その人の leaf が無くなったら removed か left に。room.member（added、removed、left のいずれか）。SystemEvent|
 |Members|`+IsMember(ctx, userId, roomId) bool`|現在の構成員（srv-boundary RoomMembership）|
+|Members|`+IsMemberOrPending(ctx, tx, roomId, userId) bool`|active か pending_add の構成員か（srv-keys RoomReader の実装。Commit の Add の端末の本人の確かめ）|
 |Members|`+PendingAdds(ctx) [(roomId, userId)]`|7 日残れば知らせ（srv-worker monitor）|
-|Members|`+Takeover(ctx, roomId) Option~DeviceId~`|追加待ちを次の端末が引き継ぐ判定（第4章 4.1）|
+|Members|`+Takeover(ctx, roomId) Option~DeviceId~`|追加待ちを次の端末が引き継ぐ判定（第4章 4.1）。構成員の追加待ち（room_members）と端末の追加待ち・削除待ち・再参加待ち（srv-keys mls_pending。第12章 5.5、5.2 の復旧）の全部。再参加待ちは、その端末の Remove と新しい KeyPackage の Add を 1 つの Commit で行う|
 |Member|`+State string`|pending_add、active、pending_remove、removed、left のいずれか|
 |RoomMe|`+HiddenBeforePos Option~int64~`|端末から消した位置（新着で戻る）|
 |RoomMeStore|`+Put(tx, userId, roomId, me)`|room.me を本人の全端末へ|
@@ -214,9 +219,9 @@ classDiagram
 |Event|`+Sender Option~Uuid~`|system は None|
 |Event|`+Epoch Option~int64~`|mls|
 |Event|`+Ciphertext Option~[]byte~`|mls。削除済みの印で NULL|
-|Event|`+Plain Option~json~`|system / call / redaction の中身、mls の平文の欄（mentions、relates_to、attachments、schema_inner、expires_at、silent）|
+|Event|`+Plain Option~json~`|system / call / redaction の中身、mls の平文の欄（mentions、relates_to、attachments、schema_inner、expires_at）。silent は要求の欄から events.silent へ（第2章 5.5）|
 |Event|`+TransactionId Option~Uuid~`|エコー用|
-|Timeline|`+Post(tx, principal, roomId, body EventMls, idemKey) Result~Posted, Event~`|次の順に行う。1. RoomLock。2. 構成員か（ROOM-002）。3. 大きさ 256 KiB（ROOM-005）。4. Groups.CheckSender（ROOM-006）。5. relates_to が同じトークか（ROOM-012）。6. MediaBinder.Bind（MEDIA-002）。7. events に書く。8. 構成員ごとに Feed.Append。9. Notifier.Notify。応答は {id, pos(本人), ts}|
+|Timeline|`+Post(tx, principal, roomId, body EventMls, idemKey) Result~Posted, Event~`|次の順に行う。1. RoomLock。2. 構成員か（ROOM-002）。3. 大きさ 256 KiB（ROOM-005）。4. Groups.CheckSender（本文の外側の確かめ。同じトランザクションを渡す。ROOM-005 か ROOM-006。第12章 5.2）。5. relates_to が同じトークか（ROOM-012）。rel_type が replace なら対象の sender_id が本人で、対象の ts から 15 分以内（ROOM-009。第4章 3.2）。6. MediaBinder.Bind（MEDIA-002）。7. events に書く。8. 構成員ごとに Feed.Append（溜めるだけ）。9. Feed.Flush（宛先の識別子の順に採番して書き、宛先ごとに pg_notify。本操作は応答に pos を要するので自分で呼ぶ。この後は行の錠を取らない。全体実装設計書 2.4）。応答は {id, pos(本人。Flush が入れた FeedPending.Pos), ts}|
 |Timeline|`+SystemEvent(tx, roomId, kind, params) Event`|ft.event.system/1（平文）。本文なし|
 |Timeline|`+CallEvent(tx, roomId, body EventCall) Event`|srv-calls から|
 |Timeline|`+Redact(tx, principal, roomId, eventId, reason) Result~Event~`|送信者（7 日。ROOM-009。対象が本人の annotation なら期限なし。平文の relates_to で判定。第4章 3.2、G-15）、作成者・管理者（期限なし。理由）。ciphertext=NULL、redacted_*。MediaBinder.Unbind。ft.event.redaction/1 を feed へ。暗号文は猶予 7 日の後に物理削除（gc）|
@@ -244,7 +249,7 @@ classDiagram
 |番号|操作（上の図）|使う側|由来|
 |---|---|---|---|
 |B-100|`Rooms`（`Create`、`Get`、`List`、`CreateFamilyRoom`、`CreateSelfRoom`、`Delete`）|operation（`/rooms*`）、srv-identity（設置と参加）、srv-admin（`/admin/rooms`、空のグループの削除）|[第4章 4.1 種類と状態](../../../../docs/jp/design/04_基本設計書_トークとメッセージ.md#41-種類と状態)、[第2章 5.5 トーク（第4章）](../../../../docs/jp/design/02_基本設計書_境界.md#55-トーク第4章)|
-|B-101|`Members`（`Add`、`Remove`、`Resolve`、`IsMember`、`Of`、`RoomsOf`、`PendingAdds`、`Takeover`）。srv-boundary の `RoomMembership` の実装|operation、srv-keys（`Resolve` を Commit から）、srv-identity（hook）、srv-push（宛先）、srv-calls（参加の資格）、srv-worker（`PendingAdds`）|[第4章 4.1 種類と状態](../../../../docs/jp/design/04_基本設計書_トークとメッセージ.md#41-種類と状態)、[第2章 4.3 認可の 3 つの基本](../../../../docs/jp/design/02_基本設計書_境界.md#43-認可の-3-つの基本)|
+|B-101|`Members`（`Add`、`Remove`、`Resolve`、`IsMember`、`IsMemberOrPending`、`Of`、`RoomsOf`、`PendingAdds`、`Takeover`）。srv-boundary の `RoomMembership` と srv-keys の `RoomReader` の実装|operation、本ブロックの `/mls/commit` の受け（`Resolve`）、srv-keys（`RoomReader`）、srv-identity（hook）、srv-push（宛先）、srv-calls（参加の資格）、srv-worker（`PendingAdds`）|[第4章 4.1 種類と状態](../../../../docs/jp/design/04_基本設計書_トークとメッセージ.md#41-種類と状態)、[第2章 4.3 認可の 3 つの基本](../../../../docs/jp/design/02_基本設計書_境界.md#43-認可の-3-つの基本)|
 |B-102|`RoomMeStore`|operation（`/rooms/{id}/me`、すべて既読）、srv-push（`mute_until`）|[第4章 4.2 一覧（DD-4-13）](../../../../docs/jp/design/04_基本設計書_トークとメッセージ.md#42-一覧dd-4-13)、[第7章 6 規則（DD-7-5、DD-7-6）](../../../../docs/jp/design/07_基本設計書_通知.md#6-規則dd-7-5dd-7-6)|
 |B-103|`Timeline`（`Post`、`SystemEvent`、`CallEvent`、`Redact`、`Get`、`Page`、`Relations`、`Snapshot`、`Export`、`PostScheduled`）|operation、srv-calls（`CallEvent`、`SystemEvent`）、srv-identity・srv-admin・srv-push（`SystemEvent`）、srv-worker（`PostScheduled`）、srv-boundary（`Snapshot`）、srv-push（通知の中身の `event_id` の確認）|[第4章 5.1 送信（DD-4-14）](../../../../docs/jp/design/04_基本設計書_トークとメッセージ.md#51-送信dd-4-14)、[第4章 3.2 関係の規則](../../../../docs/jp/design/04_基本設計書_トークとメッセージ.md#32-関係の規則)、[第2章 6 イベント（WebSocket と同期）](../../../../docs/jp/design/02_基本設計書_境界.md#6-イベントwebsocket-と同期)、[第12章 9 消すこと（DD-12-13、R-12-6-1）](../../../../docs/jp/design/12_基本設計書_データと暗号化.md#9-消すことdd-12-13r-12-6-1)|
 |B-104|`Receipts`|operation（`/rooms/{id}/receipts`）、srv-push（未読の合計）|[第4章 5.4 既読と入力中（DD-4-4、DD-4-5）](../../../../docs/jp/design/04_基本設計書_トークとメッセージ.md#54-既読と入力中dd-4-4dd-4-5)|
@@ -259,7 +264,7 @@ classDiagram
 
 |事項|実装|切り替え|由来|
 |---|---|---|---|
-|未読の数|`fully_read` の pos より後の `events`（system、receipt、typing、自分の送信を除く）の件数。索引 (room_id, ts)|固定|[第4章 4.2 一覧（DD-4-13）](../../../../docs/jp/design/04_基本設計書_トークとメッセージ.md#42-一覧dd-4-13)|
+|未読の数|正。`fully_read` の ts より後の `events` の件数。除くのは system、receipt、typing、通話の記録（`ft.event.call/1`）、削除済みの印、annotation（relates_to.rel_type）、自分の送信。索引 (room_id, ts)。人のミュートは除かない（一覧の印を薄くするだけ。第4章 5.10）|固定|[第4章 4.2 一覧（DD-4-13）](../../../../docs/jp/design/04_基本設計書_トークとメッセージ.md#42-一覧dd-4-13)|
 |トークの並びの元|`rooms.last_event_at`|固定|[第4章 4.2 一覧（DD-4-13）](../../../../docs/jp/design/04_基本設計書_トークとメッセージ.md#42-一覧dd-4-13)|
 |取消の権限|送信者は 7 日（設定「取消の期限」）。作成者・管理者は期限なし + 理由 + 全員に知らせ|設定|[第4章 3.2 関係の規則](../../../../docs/jp/design/04_基本設計書_トークとメッセージ.md#32-関係の規則)|
 |イベントの大きさ|256 KiB（暗号文を含む本体の JSON）|固定|[第2章 6.1 共通の形](../../../../docs/jp/design/02_基本設計書_境界.md#61-共通の形)|

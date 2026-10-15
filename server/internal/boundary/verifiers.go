@@ -21,6 +21,7 @@ type Verifiers struct {
 	Session    SessionVerifier
 	Shell      ShellTokenVerifier
 	Ws         WsTokenVerifier
+	UpWs       UpWsVerifier
 	Membership RoomMembership
 	State      ServerStateReader
 }
@@ -38,7 +39,12 @@ type ShellTokenVerifier interface {
 	Verify(ctx context.Context, token string) (Principal, *fault.Event)
 }
 
-// WsTokenVerifier は WebSocket の auth のトークン（60 秒の使い切り）を確かめる（srv-identity）。
+// UpWsVerifier は配布元の常時接続 /up/ws の秘密（Authorization: Bearer の ws_secret。第2章 4.4、6.4）を確かめ、端末の識別子を返す（srv-push）。
+type UpWsVerifier interface {
+	Verify(ctx context.Context, secret string) (uuid.UUID, *fault.Event)
+}
+
+// WsTokenVerifier は  WebSocket の auth のトークン（60 秒の使い切り）を確かめる（srv-identity）。
 type WsTokenVerifier interface {
 	Verify(ctx context.Context, token string) (Principal, *fault.Event)
 }

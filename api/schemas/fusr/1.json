@@ -2,7 +2,7 @@
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "https://family-talk.invalid/schemas/fusr/1",
   "title": "fusr/1",
-  "description": "第12章 12。本人の署名鍵の公開部",
+  "description": "第12章 12。本人の署名鍵の公開部。version は S の版（第12章 5.4）",
   "type": "object",
   "properties": {
     "v": {
@@ -13,6 +13,10 @@
     },
     "user_sig_pub": {
       "$ref": "../common/jwk_p256/1.json"
+    },
+    "version": {
+      "type": "integer",
+      "minimum": 1
     },
     "created_at": {
       "$ref": "../common/rfc3339/1.json"
@@ -25,6 +29,7 @@
     "v",
     "user_id",
     "user_sig_pub",
+    "version",
     "created_at"
   ],
   "additionalProperties": false

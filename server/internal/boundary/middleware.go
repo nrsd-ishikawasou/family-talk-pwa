@@ -12,6 +12,7 @@ import (
 	"math"
 	"net"
 	"net/http"
+	"net/netip"
 	"regexp"
 	"strconv"
 	"strings"
@@ -170,7 +171,8 @@ func (m *RouteMux) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 func (c *MiddlewareChain) RequestId(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		id := c.base.Ids.NewV7()
-		ri := &reqInfo{id: id, origin: c.origin, start: c.base.Deps.Clock.Now(),
+		ip, _ := netip.ParseAddr(clientIp(r))
+		ri := &reqInfo{id: id, origin: c.origin, start: c.base.Deps.Clock.Now(), ip: ip.Unmap(),
 			log: c.base.Log.With(logx.Field{Key: "req_id", Value: logx.Id(id)})}
 		rec := wrapWriter(w)
 		r = r.WithContext(withReq(r.Context(), ri))

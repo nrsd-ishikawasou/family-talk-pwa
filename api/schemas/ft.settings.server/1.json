@@ -104,10 +104,10 @@
       "default": false,
       "description": "第11章 3.2"
     },
-    "server.relay_turn_host": {
+    "server.relay_vps_host": {
       "type": "string",
       "default": "",
-      "description": "第11章 3.2。形 C の時"
+      "description": "第11章 3.2。形 C の時。VPS のグローバル IP（5）"
     },
     "server.hosting_provider": {
       "type": "string",

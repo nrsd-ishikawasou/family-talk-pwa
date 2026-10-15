@@ -132,10 +132,12 @@ classDiagram
     +onCommit(roomId, payload)
     +addMembers(roomId, userIds) Promise
     +removeDevices(roomId, deviceIds) Promise
+    +readdDevice(roomId, deviceId) Promise
     +takeover()
     +refresh(roomId) Promise
+    +reportFailure(roomId, generation, epoch, commitRef, reason) Promise
+    +reinit(roomId) Promise
     +replenishKeyPackages() Promise
-    +onDormantProposal(roomId, proposal)
   }
   class Inbox {
     +fetch() Promise
@@ -196,14 +198,14 @@ classDiagram
 
 |クラス|メンバー|注記|
 |---|---|---|
-|Sync|`+start()`|Startup の後：Db の sync.pos を読み、WsClient.connect で受けた ready{pos} と比べる。差があれば `/sync?since` で取り、queue を再送する|
+|Sync|`+start()`|Startup の後：Db の sync.pos を読み、WsClient.connect で受けた ready{pos} と比べる。ready の方が大きければ `/sync?since` で取り、queue を再送する。ready の方が小さければ fullResync（サーバーが復元で戻った。第2章 6.3）。`/sync` の応答の pos（続きが無ければ利用者の最新。他の端末宛ての行を含む）を sync.pos に保存する|
 |Sync|`+pull(since) Promise`|`GET /sync?since=&limit=`。NET-005（410）なら fullResync|
-|Sync|`+fullResync() Promise`|/sync（since なし）、rooms、各 room の events（before/after）の順に取る。コピーは保持し event_id で重複を除く|
-|Sync|`+onGap(reason)`|sync.gap で fullResync。queue の未送信は再送（Idempotency-Key で二重にならない）|
+|Sync|`+fullResync() Promise`|/sync（since なし）、rooms、各 room の events（before/after）と receipts（GET）、/me/notices、/me/inbox、/me/keybackup の順に取る。コピーは保持し event_id で重複を除く|
+|Sync|`+onGap(reason)`|sync.gap{restore}（サーバーの復元。本人の全端末に届く）で fullResync。queue の未送信は再送（Idempotency-Key で二重にならない）。保持の外はイベントではなく pull の 410|
 |Sync|`+state`|connected、longpoll、offline、resyncing のいずれか|
 |Sync|`+initialHistory(progress) Promise`|新しい端末：全トークの履歴の取得、復号（KeyBackup）、索引の順。最新から画面に要る範囲を先に（7 日以上の不在）|
-|Ingest|`+apply(frame)`|pos の順（飛びは pull）。種類ごとの渡し先：room.event は Events.store の後に Decrypt。room.receipt は Receipts。room.member は Members。room.settings と room.me は Rooms。room.mls は Mls.onCommit。room.scheduled。device.inbox は Inbox.fetch。device.changed は Devices（公開鍵の更新、自分の端末の承認・取り消し）。user.changed は Users。keybundle.changed は web-crypto Copies.rebuild*。recovery.request と recovery.used は web-ui の求めの画面。call.ring と call.state は CallSignal。session.revoked は Session.onRevoked。notice は Notices。sync.gap は Sync.onGap|
-|Ingest|`+applyEvent(event) Promise`|SW も使う最小（Events.store、Decrypt、Relations）|
+|Ingest|`+apply(frame)`|pos の順。pos の飛びは他の端末宛ての行の分で欠けではないので、飛びで pull しない（取りこぼしは再接続の時に Sync.start が `/sync?since=` で埋める。第2章 6.1）。種類ごとの渡し先：room.event は Events.store の後に Decrypt。room.receipt は Receipts。room.member は Members。room.settings と room.me は Rooms。room.mls は Mls.onCommit。room.scheduled。device.inbox は Inbox.fetch。device.changed は Devices（公開鍵の更新、自分の端末の承認・取り消し、保護者の承認、片のコピーの追加）。user.changed は Users（fields に signing_key があれば web-crypto Sender の TOFU の警告と known_user_sig_pubs の更新）。keybundle.changed は web-crypto Copies.rebuildAll（kinds に family）か Recovery（自分の端末の分の取り直し）。recovery.request と recovery.used は web-ui の求めの画面。call.ring と call.state は CallSignal。session.revoked は Session.onRevoked。notice は Notices。sync.gap は Sync.onGap|
+|Ingest|`+applyEvent(event) Promise`|SW も使う最小（Events.store、Decrypt、Relations）。イベントの epoch が端末の mls_state より新しければ、先に `GET /rooms/{id}/mls/commits`（since_epoch）を取り Mls.onCommit で取り込む（SW でも同じ。第7章 5.1）|
 |Events|`+store(event)`|IndexedDB events（暗号文のまま + 平文の欄）。重複は event_id|
 |Events|`+markTombstone(eventId, by, reason)`|本文とコピーを消し「取り消しました」|
 |Events|`+deleteRoomLocal(roomId)`|端末から消す（hidden_before_pos）|
@@ -227,7 +229,7 @@ classDiagram
 |Users|`+flushProfile() Promise`|家族全員のトークの welcome を取り込んだ後（Ingest）と起動の時に呼ぶ。pending_profile があれば web-media で上げて publishProfile し、消す|
 |Users|`+onNamesChanged()`|表示名か別名が変わった時：Platform.updateNameCache({user_id: 表示名}) をシェルに渡す（G-03。シェルでなければ何もしない）|
 |Devices|`+ofUser(userId) [Fdev]`|E2EE の送信先|
-|Devices|`+onChanged(payload)`|added/approved/revoked/renamed。自分の端末の revoked なら Session.onRevoked と Db.wipe|
+|Devices|`+onChanged(payload)`|added/approved/guardian_approved/revoked/renamed。自分の端末の revoked なら Session.onRevoked と Db.wipe。自分の端末の guardian_approved なら web-crypto Recovery.approveDevice（自己承認）をやり直す（第3章 4.4）。他の構成員の approved なら、その構成員が自分の片を持つ人（自分のコピー (c) の対象）であれば web-crypto Copies.addShareFor（新しい端末へ片を足す。第12章 5.4 (c)）|
 |Receipts|`+onEvent(roomId, eventId)`|画面に出した時 read（公開）。位置の同期で read_private と fully_read。まとめて POST /rooms/{id}/receipts（1 秒に 1 回）|
 |Receipts|`+of(roomId) [Receipt]`|既読の名前と時刻|
 |Typing|`+input(roomId, hasText)`|5 秒ごとに typing: true、空で false（設定で自分の送信を止める）|
@@ -235,14 +237,16 @@ classDiagram
 |SendQueue|`+enqueue(roomId, content, attachments[]) Promise~TransactionId~`|家族ごとに 1 本（Locks "queue:&lt;family&gt;"）。暗号化（Sender.encryptContent）は送る直前（epoch の変化に追従）。画面に「送信中」|
 |SendQueue|`+run()`|1 件ずつ POST /rooms/{id}/events（Idempotency-Key = transaction_id）。1,2,4,…,60 秒。ROOM-006 なら Mls.refresh で取り込み、作り直して再送。7 日で expired（「送れませんでした」：再送か破棄）|
 |SendQueue|`+onEcho(event)`|自分の送信のエコーを受けたら sent（pos）|
-|Mls|`+onCommit(roomId, payload)`|`GET /rooms/{id}/mls/commits?since_epoch=`（自分の epoch）で取り、GroupStore.withGroup(processCommit) で順に取り込む。Welcome は inbox から。epoch が進んだら KeyBackup.onEpochAdvanced。Decrypt.retryWaiting|
-|Mls|`+addMembers(roomId, userIds) Promise`|各端末の KeyPackage を取り（KEY-006 は補充の警告）、addMembers の後に POST /rooms/{id}/mls/commit（KEY-007 なら最新を取り込んで作り直し）。Welcome はサーバーがメールボックスへ置く|
-|Mls|`+takeover()`|起動時と room.member(pending_*) の時：追加待ち・削除待ちを自分が引き継ぐか（Members.Takeover の判定を端末の側で：最初に処理した端末）|
-|Mls|`+refresh(roomId) Promise`|/mls/epoch と commit の差分を取り込む|
-|Mls|`+replenishKeyPackages() Promise`|残数 < 10 で補充（20 + 最後の手段）|
-|Mls|`+onDormantProposal(roomId, proposal)`|休眠の leaf の Remove を自分が Commit|
-|Inbox|`+fetch() Promise`|`GET /me/inbox?since` で取り、ToDevice.open で開いて種類で渡し、最後に DELETE。渡し先（第12章 5.2 の表）：welcome は Mls。keybundle、key_backup、share は web-crypto Recovery。key_request は web-crypto KeyBackup.answerRequest。call_key_request と call_key は web-calls Keys。sticker_remove_request は web-ui|
-|Members|`+onChange(roomId, payload)`|room.member（added、removed、left、pending_add、pending_remove）を Rooms の構成員に反映。SystemEvent の表示は Events|
+|Mls|`+onCommit(roomId, payload)`|payload の `generation` が自分の世代より新しければ再初期化（第12章 5.2 の復旧の 2）：そのグループの現在の状態を捨て（過去の epoch の受信専用の状態は残す）、Welcome を待つ（inbox）。同じ世代なら `GET /rooms/{id}/mls/commits?since_epoch=`（自分の epoch）で取り、各項目の `commit_ref` が `room.mls` の値と合うことを確かめ、GroupStore.withGroup(processCommit) で順に取り込む（Commit は PublicMessage。第12章 5.2）。Welcome は inbox から。epoch が進んだら KeyBackup.onEpochAdvanced。Decrypt.retryWaiting。自分の leaf が Remove されていれば（processCommit の結果）そのグループの状態を捨てる。processCommit が失敗したら reportFailure（下）|
+|Mls|`+addMembers(roomId, userIds) Promise`|各端末の KeyPackage を取り（KEY-006 は補充の警告。有効期間が今の時刻を外れていれば捨てて取り直す。第12章 5.2）、MlsEngine.commit（Add。Commit は PublicMessage、Welcome は ratchet_tree 付き）の後に POST /rooms/{id}/mls/commit {epoch, commit, welcome}（KEY-007 なら最新（世代と epoch）を取り込んで作り直し。KEY-009 なら `/mls/epoch` を取り直して作り直し、記録する）。Welcome はサーバーがメールボックスへ置く。Add と Remove の申告は無い（サーバーが Commit を読む）|
+|Mls|`+readdDevice(roomId, deviceId) Promise`|再参加待ちの端末（room.member の pending_readd、`/mls/epoch` の pending_readd）を引き継いだ時：その端末の leaf の番号（MlsEngine.members）と新しい KeyPackage（`POST /users/{uid}/devices/{did}/keypackage`）で、Remove と Add を 1 つの Commit にする（MlsEngine.commit。第12章 5.2 の復旧の 1）。送り方は addMembers と同じ|
+|Mls|`+takeover()`|起動時と room.member(pending_*) の時：追加待ち・削除待ち・再参加待ちを自分が引き継ぐか（Members.Takeover の判定を端末の側で：最初に処理した端末）。端末の追加待ち（`/mls/epoch` の pending_add_devices、room.member の device_id 付き pending_add）も同じ規則で、その端末の KeyPackage を取って Add（自分の端末の待ちは自分では解けない）。再参加待ちは readdDevice。引き継げるのはサーバーの世代と epoch にある端末だけ（自分が再参加待ちか世代が古ければ引き継がない）。起動時に、自分が構成員で leaf の無いグループがあれば `POST /me/mls/rejoin`（第12章 5.5）。起動時に自分が再参加待ちのグループ（`/mls/epoch` の pending_readd に自分）があれば、保存した `reinit_allowed_at` を過ぎていれば reinit|
+|Mls|`+refresh(roomId) Promise`|/mls/epoch と commit の差分を取り込む。世代が自分より新しければ onCommit と同じ（状態を捨てて Welcome を待つ）|
+|Mls|`+reportFailure(roomId, generation, epoch, commitRef, reason) Promise`|Commit か Welcome を処理できなかった時（第12章 5.2 の復旧の 1）。1. refresh で取りこぼしを全部取り込み直し、それで通れば終わり。2. 通らなければ `POST /rooms/{id}/mls/reject {generation, epoch, commit_ref, reason}`（reason は MlsEngine の失敗の種類：signature、membership_tag、confirmation_tag、proposals、path、tree、welcome、lifetime、other）。KEY-007 なら世代が変わっているので refresh。3. そのグループの現在の状態を捨て（GroupStore。受信専用の過去の状態は残す）、応答の `reinit_allowed_at` を IndexedDB の `mls_readd` に置き、その時刻の timer を組む（SW にはこの処理を置かない。画面の側だけ）。4. Welcome が届けば joinFromWelcome で戻り、`mls_readd` を消す。取りこぼした epoch の本文は Decrypt が鍵のバックアップと key_request で読む（第12章 13）。Welcome の処理に失敗した時も同じ（reason welcome）|
+|Mls|`+reinit(roomId) Promise`|`reinit_allowed_at` を過ぎてまだ再参加待ちなら `POST /rooms/{id}/mls/reinit`（第12章 5.2 の復旧の 2）。応答の group_id で MlsEngine.createGroup（自分が leaf 0）し、takeover で入るべき端末を Add する（サーバーが全端末を追加待ちにしている）。KEY-013 の too_early なら allowed_at で組み直す。not_pending なら Welcome が来ている（inbox）。limit ならそのグループを「この端末では読めない」（web-ui。KEY-013 の文言）にして止め、アプリの更新（web-shell）を待つ。更新の後に再開する|
+|Mls|`+replenishKeyPackages() Promise`|残数 < 10 で補充（20 + 最後の手段）。KeyPackage は MLSMessage の base64url|
+|Inbox|`+fetch() Promise`|`GET /me/inbox?since` で取り、ToDevice.open で開いて種類で渡し、最後に DELETE。渡し先（第12章 5.2 の表）：welcome は Mls（包まれていないので open を通さず、Welcome の MLSMessage をそのまま joinFromWelcome へ。失敗すれば Mls.reportFailure(reason welcome)）。keybundle、key_backup、share は web-crypto Recovery。key_request は web-crypto KeyBackup.answerRequest。call_key_request と call_key は web-calls Keys。sticker_remove_request は web-ui|
+|Members|`+onChange(roomId, payload)`|room.member（added、removed、left、pending_add、pending_remove）を Rooms の構成員に反映。device_id 付きは構成員の一覧を変えず Mls.takeover へ（pending_remove は端末の取り消し・削除・休眠。引き継いだ端末が Mls.removeDevices で Remove の Commit）。SystemEvent の表示は Events|
 |Scheduled|`+create(roomId, sendAt, content) Promise`|現在の epoch で暗号化して POST /rooms/{id}/scheduled|
 |Scheduled|`+onEpochAdvanced(roomId)`|自分の予約が古い epoch なら作り直す（次にオンラインの時）|
 |Reminders|`+onEventSaved(roomId, event)`|自分の端末が `ft.content.event/1` を作った・変えた・取り消した時：前の予約を `Scheduled.cancel`、`remind_before` の値ごとに `Scheduled.create`（`ft.content.reminder/1`）。受け取りは通常のトークのイベントと通知（第4章 5.8。端末の中の予約は持たない）|
@@ -267,8 +271,8 @@ classDiagram
 |事項|実装|切り替え|由来|
 |---|---|---|---|
 |表示の順|トークの中はサーバーの `ts`。取り込みは pos|固定|[第4章 5.2 受信と表示](../../../../docs/jp/design/04_基本設計書_トークとメッセージ.md#52-受信と表示)|
-|未読の数|`fully_read` より後の件数（system、receipt、typing、自分の送信を除く）を端末で計算|固定|[第4章 4.2 一覧（DD-4-13）](../../../../docs/jp/design/04_基本設計書_トークとメッセージ.md#42-一覧dd-4-13)|
-|追加待ちの引き継ぎ|最初に処理した端末。`room.member(pending_add)` を受けた端末は乱数の待ち（0〜3 秒）の後に `/mls/epoch` を見て未処理なら Commit（KEY-007 で負けたら諦める）|固定|[第4章 4.1 種類と状態](../../../../docs/jp/design/04_基本設計書_トークとメッセージ.md#41-種類と状態)|
+|未読の数|正はサーバー（`/rooms` の unread）。端末は同期の間だけ同じ規則で進める（`fully_read` より後の件数。system、receipt、typing、通話の記録、削除済みの印、annotation、自分の送信を除く）|固定|[第4章 4.2 一覧（DD-4-13）](../../../../docs/jp/design/04_基本設計書_トークとメッセージ.md#42-一覧dd-4-13)|
+|追加待ちの引き継ぎ|最初に処理した端末。`room.member(pending_add)` を受けた端末は乱数の待ち（0〜3 秒）の後に `/mls/epoch` を見て未処理なら Commit（KEY-007 で負けたら諦める）。構成員（pending_add）と端末（pending_add_devices）で同じ|固定|[第4章 4.1 種類と状態](../../../../docs/jp/design/04_基本設計書_トークとメッセージ.md#41-種類と状態)|
 |履歴の同期の順|最新の 7 日分を先に、残りは後から（背景）|固定|[第1章 7.11 回線の切断と再接続（端末）](../../../../docs/jp/design/01_基本設計書_全体構成.md#711-回線の切断と再接続端末)|
 |復号の並列|トークごと直列、トーク間 4|固定|全体実装設計書 2.3|
 

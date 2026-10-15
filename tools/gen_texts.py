@@ -5,12 +5,15 @@
 1. エラーの文言の表：第10章 9.2 の表（番号、1 文目、2 文目）から web/src/ui/i18n/errors.json を作る。鍵は err.<番号>
    （エラーコード表の user_text_key）、値は {"what": 1 文目, "next": 2 文目}。生成した物はコミットし、CI は --check で
    差分 0 を確かめる。エラーコード表の番号と表の番号が 1 対 1 でなければ誤り。
-2. 明示の文：第12章 7.1 の引用と 8 の表の行から <置き場>/disclosure.json を作る（--disclosure-out。make gen が
+2. 知らせの文言の表：第10章 9.4 の表（識別子、1 文目、2 文目）から web/src/ui/i18n/notices.json を作る。鍵は
+   notice.<識別子>（notice のイベントの text_key）、値は {"what": 1 文目, "next": 2 文目}。第7章 9 の表の識別子と 1 対 1 で
+   なければ誤り。
+3. 明示の文：第12章 7.1 の引用と 8 の表の行から <置き場>/disclosure.json を作る（--disclosure-out。make gen が
    server/internal/identity/gen に作る。コミットしない）。「（VPS の場合）」で始まる行は mode D の印を付け、行頭の括弧を除く。
-   {admin} と {provider} の埋め込みと版の計算はサーバーが行う（第12章 7.1）。
+   {admin}、{provider}、{card_holders} の埋め込みと版の計算はサーバーが行う（第12章 7.1）。
 
 使い方：
-  python -m tools.gen_texts [--check]          エラーの文言の表を作る（--check は差分を見るだけ）
+  python -m tools.gen_texts [--check]          エラーと知らせの文言の表を作る（--check は差分を見るだけ）
   python -m tools.gen_texts --disclosure-out DIR 明示の文だけを DIR に作る
 """
 import argparse
@@ -25,9 +28,13 @@ ROOT = pathlib.Path(__file__).resolve().parents[1]
 DESIGN = ROOT / 'docs' / 'jp' / 'design'
 CHAPTER = DESIGN / '10_基本設計書_画面.md'
 DATA_CHAPTER = DESIGN / '12_基本設計書_データと暗号化.md'
+NOTICE_CHAPTER = DESIGN / '07_基本設計書_通知.md'
 ERRORS = ROOT / 'api' / 'errors.yaml'
 OUT = ROOT / 'web' / 'src' / 'ui' / 'i18n' / 'errors.json'
+NOTICE_OUT = ROOT / 'web' / 'src' / 'ui' / 'i18n' / 'notices.json'
 ROW = re.compile(r'^\|([A-Z]+-\d{3})\|([^|]+)\|([^|]+)\|$')
+NOTICE_ROW = re.compile(r'^\|([a-z][a-z0-9_]*)\|([^|]+)\|([^|]*)\|$')
+KIND_CELL = re.compile(r'^`([a-z][a-z0-9_]*)`$')
 VPS = '（VPS の場合）'
 
 
@@ -58,6 +65,48 @@ def build(chapter_text, errors_rows):
     if missing or extra:
         raise ValueError(f'エラーコード表と第10章 9.2 の表が合わない（無い {missing}、余る {extra}）')
     out = {want[c]: {'what': what, 'next': nxt} for c, what, nxt in rows}
+    return json.dumps(dict(sorted(out.items())), ensure_ascii=False, indent=2) + '\n'
+
+
+def notice_table(text):
+    """第10章 9.4 の節の表の行（識別子、1 文目、2 文目。2 文目は空でもよい）。"""
+    rows = []
+    for line in section(text, '9.4 ').splitlines():
+        m = NOTICE_ROW.match(line.strip())
+        if m:
+            rows.append((m.group(1), m.group(2).strip(), m.group(3).strip()))
+    return rows
+
+
+def notice_kinds(text):
+    """第7章 9 の表の識別子の列（2 列目。`—` の行はトークだけの知らせで識別子を持たない）。"""
+    kinds = []
+    for line in section(text, '9. ', level='##').splitlines():
+        if not line.startswith('|'):
+            continue
+        cells = [c.strip() for c in line.strip().strip('|').split('|')]
+        if len(cells) < 2:
+            continue
+        m = KIND_CELL.match(cells[1])
+        if m:
+            kinds.append(m.group(1))
+    return kinds
+
+
+def build_notices(chapter_text, notice_chapter_text):
+    rows = notice_table(chapter_text)
+    ids = [r[0] for r in rows]
+    if len(ids) != len(set(ids)):
+        raise ValueError('第10章 9.4 の表に同じ識別子が 2 つある')
+    kinds = notice_kinds(notice_chapter_text)
+    if len(kinds) != len(set(kinds)):
+        raise ValueError('第7章 9 の表に同じ識別子が 2 つある')
+    if not kinds:
+        raise ValueError('第7章 9 の表に識別子が無い')
+    missing, extra = sorted(set(kinds) - set(ids)), sorted(set(ids) - set(kinds))
+    if missing or extra:
+        raise ValueError(f'第7章 9 の識別子と第10章 9.4 の表が合わない（無い {missing}、余る {extra}）')
+    out = {f'notice.{k}': {'what': what, 'next': nxt} for k, what, nxt in rows}
     return json.dumps(dict(sorted(out.items())), ensure_ascii=False, indent=2) + '\n'
 
 
@@ -109,22 +158,29 @@ def main(argv=None):
     ap.add_argument('--check', action='store_true', help='作り直した結果とコミットした物の差分が 0 かを見る')
     ap.add_argument('--disclosure-out', help='明示の文の生成ファイル（disclosure.json）を置くディレクトリ')
     a = ap.parse_args(argv)
-    text = build(CHAPTER.read_text(encoding='utf-8'), yaml.safe_load(ERRORS.read_text(encoding='utf-8'))['rows'])
+    chapter = CHAPTER.read_text(encoding='utf-8')
+    text = build(chapter, yaml.safe_load(ERRORS.read_text(encoding='utf-8'))['rows'])
+    notices = build_notices(chapter, NOTICE_CHAPTER.read_text(encoding='utf-8'))
     if a.disclosure_out:
         out = pathlib.Path(a.disclosure_out)
         out.mkdir(parents=True, exist_ok=True)
         (out / 'disclosure.json').write_text(build_disclosure(DATA_CHAPTER.read_text(encoding='utf-8')), encoding='utf-8')
         print(f'書いた：{out / "disclosure.json"}')
     if a.check:
-        if not OUT.exists() or OUT.read_text(encoding='utf-8') != text:
-            print(f'{OUT.relative_to(ROOT)} が第10章 9.2 の表と違う（python -m tools.gen_texts で作り直す）')
-            return 1
-        print(f'{OUT.relative_to(ROOT)} は第10章 9.2 の表と同じ')
-        return 0
+        bad = 0
+        for path, want, sec in ((OUT, text, '9.2'), (NOTICE_OUT, notices, '9.4')):
+            if not path.exists() or path.read_text(encoding='utf-8') != want:
+                print(f'{path.relative_to(ROOT)} が第10章 {sec} の表と違う（python -m tools.gen_texts で作り直す）')
+                bad += 1
+            else:
+                print(f'{path.relative_to(ROOT)} は第10章 {sec} の表と同じ')
+        return 1 if bad else 0
     if not a.disclosure_out:
         OUT.parent.mkdir(parents=True, exist_ok=True)
         OUT.write_text(text, encoding='utf-8')
         print(f'書いた：{OUT.relative_to(ROOT)}')
+        NOTICE_OUT.write_text(notices, encoding='utf-8')
+        print(f'書いた：{NOTICE_OUT.relative_to(ROOT)}')
     return 0
 
 

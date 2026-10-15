@@ -168,6 +168,10 @@ func (h *WsHandler) writeLoop(ctx context.Context, conn *WsConn) {
 		case <-conn.closed:
 			return
 		case f := <-conn.Send:
+			if f == nil {
+				conn.closeWith(closeRevoked, "revoked")
+				return
+			}
 			if writeFrame(ctx, conn.conn, f) != nil {
 				conn.closeWith(closeInternal, "write")
 				return
@@ -216,16 +220,20 @@ func (h *UpWsHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	h.Upgrade(w, r)
 }
 
-// Upgrade はシェルのトークン（Session の middleware が Bearer を確かめた主体）で受け、未配信を古い順に送り、ack を受ける。
+// Upgrade は配布元の接続の秘密（Authorization: Bearer の ws_secret。Verifiers.UpWs。第2章 4.4）で受け、未配信を古い順に送り、ack を受ける。
 // Origin は無い要求を許し、ある時は WsHandler と同じ一致を求める。1 端末 1 本（2 本目は古い方を 4002）。
 func (h *UpWsHandler) Upgrade(w http.ResponseWriter, r *http.Request) {
 	if !checkOrigin(r, h.origin, false) {
 		http.Error(w, http.StatusText(http.StatusForbidden), http.StatusForbidden)
 		return
 	}
-	p := PrincipalFrom(r.Context())
-	if p.Kind != KindShell || p.DeviceId == nil {
+	if h.verifiers.UpWs == nil || bearer(r) == "" {
 		Problem(w, r, fault.New(cgen.AUTH001, nil))
+		return
+	}
+	deviceId, ev := h.verifiers.UpWs.Verify(r.Context(), bearer(r))
+	if ev != nil {
+		Problem(w, r, ev)
 		return
 	}
 	c, err := websocket.Accept(w, r, acceptOptions(h.origin))
@@ -235,7 +243,7 @@ func (h *UpWsHandler) Upgrade(w http.ResponseWriter, r *http.Request) {
 	c.SetReadLimit(ReadLimit)
 	ctx, cancel := context.WithCancel(context.WithoutCancel(r.Context()))
 	defer cancel()
-	conn := newWsConn(c, uuid.Nil, *p.DeviceId, 0)
+	conn := newWsConn(c, uuid.Nil, deviceId, 0)
 	conn.LastPong = h.base.Deps.Clock.Now()
 	h.mu.Lock()
 	if old, ok := h.conns[conn.DeviceId]; ok {

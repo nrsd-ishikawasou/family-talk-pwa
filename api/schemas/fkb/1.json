@@ -2,7 +2,7 @@
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "https://family-talk.invalid/schemas/fkb/1",
   "title": "fkb/1",
-  "description": "第12章 12。鍵バンドルのコピー",
+  "description": "第12章 12。鍵バンドルのコピー。key_version は作った時の S の版（第12章 5.4）",
   "type": "object",
   "properties": {
     "v": {
@@ -23,6 +23,10 @@
     },
     "target_id": {
       "type": "string"
+    },
+    "key_version": {
+      "type": "integer",
+      "minimum": 1
     },
     "alg": {
       "type": "string",
@@ -91,22 +95,6 @@
       ],
       "additionalProperties": false
     },
-    "prf": {
-      "type": "object",
-      "properties": {
-        "credential_id": {
-          "$ref": "../common/base64url/1.json"
-        },
-        "salt": {
-          "$ref": "../common/base64url/1.json"
-        }
-      },
-      "required": [
-        "credential_id",
-        "salt"
-      ],
-      "additionalProperties": false
-    },
     "created_at": {
       "$ref": "../common/rfc3339/1.json"
     }
@@ -116,6 +104,7 @@
     "kind",
     "user_id",
     "target_id",
+    "key_version",
     "alg",
     "nonce",
     "ciphertext",
@@ -148,20 +137,6 @@
       "then": {
         "required": [
           "share"
-        ]
-      }
-    },
-    {
-      "if": {
-        "properties": {
-          "kind": {
-            "const": "prf"
-          }
-        }
-      },
-      "then": {
-        "required": [
-          "prf"
         ]
       }
     }

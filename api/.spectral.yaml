@@ -17,7 +17,7 @@ rules:
     then:
       function: enumeration
       functionOptions:
-        values: [none, session, approved, device_self, room_member, admin, shell, setup_token, invite_token, reset_token, device_code, ws_token, internal]
+        values: [none, session, approved, device_self, room_member, admin, shell, setup_token, invite_token, reset_token, device_code, ws_token, internal, up_secret]
   ft-x-idempotency-values:
     description: x-idempotency は key、natural、none
     severity: error

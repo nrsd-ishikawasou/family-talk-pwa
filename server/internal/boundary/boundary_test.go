@@ -60,6 +60,13 @@ type fakeToken struct {
 
 func (f fakeToken) Verify(context.Context, string) (Principal, *fault.Event) { return f.p, f.ev }
 
+type fakeUpWs struct {
+	id uuid.UUID
+	ev *fault.Event
+}
+
+func (f fakeUpWs) Verify(context.Context, string) (uuid.UUID, *fault.Event) { return f.id, f.ev }
+
 type fakeMembership map[uuid.UUID]bool
 
 func (f fakeMembership) IsMember(_ context.Context, _, roomId uuid.UUID) (bool, error) {
@@ -111,7 +118,7 @@ func newTestChain(t *testing.T, v Verifiers) *MiddlewareChain {
 
 func defaultVerifiers() Verifiers {
 	return Verifiers{Session: fakeSession{p: member()}, Shell: fakeToken{ev: fault.New(cgen.AUTH001, nil)},
-		Ws: fakeToken{p: member()}, Membership: fakeMembership{roomA: true},
+		Ws: fakeToken{p: member()}, UpWs: fakeUpWs{ev: fault.New(cgen.AUTH001, nil)}, Membership: fakeMembership{roomA: true},
 		State: fakeState{s: StateNormal}}
 }
 
@@ -137,7 +144,7 @@ func TestFromSpecReadsEveryOperationOnce(t *testing.T) {
 		t.Fatal(err)
 	}
 	routes := authz.Routes()
-	if len(routes) != 155 { // 163 の operation から caddy が配る 8 を除く
+	if len(routes) != 163 { // 171 の operation から caddy が配る 8 を除く
 		t.Fatalf("経路の数が違う: %d", len(routes))
 	}
 	ws, ok := authz.Route("connectWs")
@@ -475,6 +482,39 @@ func TestRateLimitHeadersAndCodes(t *testing.T) {
 	}
 	if code, params := onExceed("send"); code != cgen.NET004 || params["policy"] != "send" {
 		t.Fatalf("NET-004 の params.policy が違う：%s %v", code, params)
+	}
+}
+
+func TestClientIpFrom(t *testing.T) {
+	c := newTestChain(t, defaultVerifiers())
+	cases := []struct {
+		xff, remote, want string
+	}{
+		{"", "192.0.2.10:5000", "192.0.2.10"},
+		{"198.51.100.1, 203.0.113.7", "172.18.0.2:443", "203.0.113.7"},
+		{"2001:db8::1", "172.18.0.2:443", "2001:db8::1"},
+		{"", "[::ffff:192.0.2.11]:5000", "192.0.2.11"},
+		{"not-an-ip", "172.18.0.2:443", ""},
+	}
+	for _, cs := range cases {
+		var got string
+		h := c.RequestId(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			if ip := ClientIpFrom(r.Context()); ip.IsValid() {
+				got = ip.String()
+			}
+		}))
+		r := httptest.NewRequest("GET", "/x", nil)
+		r.RemoteAddr = cs.remote
+		if cs.xff != "" {
+			r.Header.Set("X-Forwarded-For", cs.xff)
+		}
+		h.ServeHTTP(httptest.NewRecorder(), r)
+		if got != cs.want {
+			t.Fatalf("%q %q：%q（期待 %q）", cs.xff, cs.remote, got, cs.want)
+		}
+	}
+	if ClientIpFrom(context.Background()).IsValid() {
+		t.Fatal("RequestId を通らない ctx は空の値")
 	}
 }
 

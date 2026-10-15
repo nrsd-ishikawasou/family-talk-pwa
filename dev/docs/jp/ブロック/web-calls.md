@@ -48,6 +48,7 @@ classDiagram
     +call Option~CallInfo~
     +start(roomId, video) Promise~Result~
     +onRing(payload)
+    +resumeIncoming(callId Option) Promise
     +answer(audioOnly) Promise
     +decline() Promise
     +cancel() Promise
@@ -64,7 +65,7 @@ classDiagram
     +connect(url, token) Promise
     +publish(tracks)
     +subscribe()
-    +keyProvider ExternalKeyProvider
+    +keyProvider CallKeyProvider
     +onReconnecting / onReconnected / onDisconnected
     +stats() Stats
     +shareScreen(kind)
@@ -128,6 +129,7 @@ classDiagram
 |CallSession|`+call Option~CallInfo~`|call_id、room_id、kind、video、participants、started_at|
 |CallSession|`+start(roomId, video) Promise~Result~`|POST /rooms/{id}/calls（CALL-002 合流、CALL-003、CALL-005、CALL-004、CALL-006）の後、Sfu.connect(token)。dm は鍵 0 を配り（Keys.issue）、outgoing にする（呼び出し画面。60 秒は相手の側）。シェル：Platform.callStarted(outgoing)|
 |CallSession|`+onRing(payload)`|web-sync CallSignal：call_id で重複を除く（通知と二重）。前面なら incoming の画面 + Ringtone。シェル：シェルが CallStyle（WebView には callAnswered が来る）|
+|CallSession|`+resumeIncoming(callId Option) Promise`|閉じている間の着信（第6章 4.1）：起動、前面化（Platform の visibilitychange）、`/call/<call_id>` の 3 つの入口から web-ui が呼ぶ。callId が無ければ web-sync の `call.ring` のコピーのうち後に `call.state` が無い物を候補にする。GET /calls/{id} が ringing かつ expires_at が未来（web-core Clock のサーバーとのずれを含む）なら onRing と同じ incoming の画面 + Ringtone。そうでなければ Rooms の不在の記録へ。シェルでは呼ばない（着信は CallStyle）|
 |CallSession|`+answer(audioOnly) Promise`|POST /calls/{id}/join の後、Sfu.connect で active にする。シェル：callAnswered から|
 |CallSession|`+decline() Promise`|POST /calls/{id}/decline|
 |CallSession|`+cancel() Promise`|POST /calls/{id}/end（outgoing のまま）|
@@ -140,7 +142,7 @@ classDiagram
 |Sfu|`+connect(url, token) Promise`|wss://<サーバー>/rtc。SDK の Room。トークンは 5 分（参加の前に取り直す）|
 |Sfu|`+publish(tracks)`|サイマルキャスト 180p/360p/720p（E2EE と iOS 17.2 未満は 1 層 360p）。コーデック H.264/VP8、Opus（DTX、RED なし）|
 |Sfu|`+subscribe()`|受信の層の選択（節約）|
-|Sfu|`+keyProvider ExternalKeyProvider`|keySize 128、keyringSize 256、ratchet 0、sharedKey false、failureTolerance -1|
+|Sfu|`+keyProvider CallKeyProvider`|SDK の BaseKeyProvider の継承。setKey(key, index) は保護された onSetEncryptionKey(key, undefined, index)。設定は keySize 128、keyringSize 256、ratchetWindowSize 0、sharedKey true（1 つの鍵を番号で切り替える）、failureTolerance -1。SDK の ExternalE2EEKeyProvider は番号を持たないので使わない。E2EE の worker は SDK の別バンドル（livekit-client/e2ee-worker）。変換の経路は SDK が選ぶ（WebKit 系は RTCRtpScriptTransform、Chromium 系は createEncodedStreams。第6章 7）|
 |Sfu|`+onReconnecting / onReconnected / onDisconnected`|SDK の自動再接続 30 秒。超えたら「接続が切れました」+ 再参加|
 |Sfu|`+stats() Stats`|接続の種類（直接／TURN）、往復、損失|
 |Sfu|`+shareScreen(kind)`|PC：画面／ウィンドウ／タブ（音声は対応ブラウザ）|
@@ -159,7 +161,7 @@ classDiagram
 |Blur|`+enable(track) MediaStreamTrack`|分割のモデル（MediaRuntime）、canvas の合成、MediaStreamTrackProcessor または canvas.captureStream の順|
 |Blur|`+autoDisableBelow(15fps)`|「この端末では使えません」|
 |Permissions|`+request(video) Promise~Result~`|getUserMedia を通話の開始・応答のたび。拒否されたら OS の設定への案内。音声のみ／受けるだけで参加|
-|IphoneGuards|`+wakeLock()`|navigator.wakeLock（iOS 18.4 以上）。16.4〜18.3 は無音の小さな映像のループ（効かなければ「自動ロックを切ってください」）|
+|IphoneGuards|`+wakeLock()`|navigator.wakeLock（iOS 18.4 以上）。18.0〜18.3 は無音の小さな映像のループ（効かなければ「自動ロックを切ってください」）|
 |IphoneGuards|`+lockBanner()`|「画面をロックするかアプリを閉じると通話が切れます」（開始時 5 秒）|
 |IphoneGuards|`+onVisibility()`|背景に回ったら相手に「離れました（再接続を待っています）」。復帰したら再接続|
 |Layout|`+mode`|grid（2×2、5 人以上はページ。PC は 3×3）、focus（話者の自動または固定）、list（音声のみ）のいずれか|
