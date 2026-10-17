@@ -112,8 +112,9 @@ func freshPool(t *testing.T) *store.Pool {
 	return p
 }
 
-// noticeRec はコミットされた知らせの 1 件。
+// noticeRec はコミットされた知らせの宛先の 1 つ（1 回の OnNotice の宛先の列を 1 つずつの行にする。call は何回目の呼び出しか）。
 type noticeRec struct {
+	call     int
 	kind     string
 	key      string
 	audience AudienceKind
@@ -129,8 +130,8 @@ func wantNoticeKey(n Notice) (string, bool) {
 		return v
 	}
 	self := ""
-	if n.Audience.UserId != nil {
-		self = n.Audience.UserId.String()
+	if len(n.Audiences) > 0 && n.Audiences[0].Kind == AudienceSelf && n.Audiences[0].UserId != nil {
+		self = n.Audiences[0].UserId.String()
 	}
 	switch n.Kind {
 	case noticeCardHolderChanged, noticeChildRelaxed16, noticeChildReleased18, noticeChildFlagSet, noticeChildFlagCleared, noticeChildFlagSuggested:
@@ -156,22 +157,51 @@ func wantNoticeKey(n Notice) (string, bool) {
 }
 
 // noticeLog は hook OnNotice に渡った知らせのうち、コミットされた物だけを覚える（rollback の知らせは数えない）。
+// 同じトランザクションで同じ (kind, key) が 2 回来たら誤りを返す（srv-push の重複の抑えで 2 回目が落ちる形。第7章 9、I-17）。
+// 宛先の列が空でも誤り。
 type noticeLog struct {
 	mu   sync.Mutex
 	rows []noticeRec
+	seq  int
+	inTx map[*store.Tx]map[string]bool
 }
 
 func (l *noticeLog) hook(_ context.Context, tx *store.Tx, n Notice) error {
 	if want, ok := wantNoticeKey(n); !ok || want == "" || n.Key != want {
 		return fmt.Errorf("知らせ %s の事象の鍵 %q が表の欄と違う（期待 %q）", n.Kind, n.Key, want)
 	}
-	r := noticeRec{kind: n.Kind, key: n.Key, audience: n.Audience.Kind, params: n.Params}
-	if n.Audience.UserId != nil {
-		r.user = *n.Audience.UserId
+	if len(n.Audiences) == 0 {
+		return fmt.Errorf("知らせ %s の宛先の列が空", n.Kind)
+	}
+	l.mu.Lock()
+	if l.inTx == nil {
+		l.inTx = map[*store.Tx]map[string]bool{}
+	}
+	seen := l.inTx[tx]
+	if seen == nil {
+		seen = map[string]bool{}
+		l.inTx[tx] = seen
+	}
+	dup := seen[n.Kind+"\x00"+n.Key]
+	seen[n.Kind+"\x00"+n.Key] = true
+	l.seq++
+	call := l.seq
+	l.mu.Unlock()
+	if dup {
+		return fmt.Errorf("知らせ %s（鍵 %q）を同じトランザクションで 2 回発行した", n.Kind, n.Key)
+	}
+	var rs []noticeRec
+	for _, a := range n.Audiences {
+		r := noticeRec{call: call, kind: n.Kind, key: n.Key, audience: a.Kind, params: n.Params}
+		if a.UserId != nil {
+			r.user = *a.UserId
+		}
+		rs = append(rs, r)
 	}
 	tx.AfterCommit(func() {
 		l.mu.Lock()
-		l.rows = append(l.rows, r)
+		l.rows = append(l.rows, rs...)
+		delete(l.inTx, tx)
 		l.mu.Unlock()
 	})
 	return nil
@@ -199,17 +229,35 @@ func (l *noticeLog) keys(kind string) []string {
 	return out
 }
 
-// to は kind の知らせの宛先を「audience:利用者」の並びにする（利用者が無ければ audience だけ）。
+// to は kind の知らせの宛先を「audience:利用者」の並びにする（利用者が無ければ audience だけ。呼び出しをまたいで出た順）。
 func (l *noticeLog) to(kind string) []string {
 	var out []string
 	for _, r := range l.of(kind) {
-		s := string(r.audience)
-		if r.user != uuid.Nil {
-			s += ":" + r.user.String()
-		}
-		out = append(out, s)
+		out = append(out, r.target())
 	}
 	return out
+}
+
+// calls は kind の知らせを呼び出しごとの宛先の列にする（出た順）。
+func (l *noticeLog) calls(kind string) [][]string {
+	var out [][]string
+	last := -1
+	for _, r := range l.of(kind) {
+		if r.call != last {
+			out = append(out, nil)
+			last = r.call
+		}
+		out[len(out)-1] = append(out[len(out)-1], r.target())
+	}
+	return out
+}
+
+func (r noticeRec) target() string {
+	s := string(r.audience)
+	if r.user != uuid.Nil {
+		s += ":" + r.user.String()
+	}
+	return s
 }
 
 // hookLog は本ブロックの hook の呼び出し（コミットされた物）。
@@ -224,6 +272,19 @@ func (l *hookLog) add(tx *store.Tx, s string) {
 		l.rows = append(l.rows, s)
 		l.mu.Unlock()
 	})
+}
+
+// find は prefix で始まる記録を呼ばれた順に返す。
+func (l *hookLog) find(prefix string) []string {
+	l.mu.Lock()
+	defer l.mu.Unlock()
+	var out []string
+	for _, r := range l.rows {
+		if strings.HasPrefix(r, prefix) {
+			out = append(out, r)
+		}
+	}
+	return out
 }
 
 func (l *hookLog) count(prefix string) int {
@@ -281,6 +342,18 @@ func newEnv(t *testing.T, extra ...func(h *Hooks)) *env {
 	e.id.SetState(fakeState{})
 	h := e.id.Hooks
 	h.RegisterOnNotice(e.notices.hook)
+	h.RegisterOnBeforeUserChange(func(_ context.Context, tx *store.Tx, u uuid.UUID, devs []uuid.UUID) error {
+		ds := make([]string, len(devs))
+		for i, d := range devs {
+			ds[i] = d.String()
+		}
+		e.hooks.add(tx, "before_user_change:"+u.String()+":"+strings.Join(ds, ","))
+		return nil
+	})
+	h.RegisterOnBeforeDeviceRevoke(func(_ context.Context, tx *store.Tx, d uuid.UUID) error {
+		e.hooks.add(tx, "before_device_revoke:"+d.String())
+		return nil
+	})
 	h.RegisterOnDeviceRevoked(func(_ context.Context, tx *store.Tx, d uuid.UUID) error {
 		e.hooks.add(tx, "device_revoked:"+d.String())
 		return nil
@@ -447,7 +520,7 @@ func (e *env) tryAccept(token, name string) (*member, error) {
 	return e.adopt(name, res, cred), nil
 }
 
-// join は by の招待で構成員を作り、端末を承認する（srv-keys の S-32 の代わり）。child は子ども区分の指定。
+// join は by の招待で構成員を作り、端末を承認する（srv-keys の鍵の承認 DeviceKeys.Approve が残す状態の代わり）。child は子ども区分の指定。
 func (e *env) join(by *member, name string, child *ChildSpec) *member {
 	e.t.Helper()
 	m := e.accept(e.issueInvite(by, InviteSpec{Role: boundary.RoleMember, Child: child}), name)

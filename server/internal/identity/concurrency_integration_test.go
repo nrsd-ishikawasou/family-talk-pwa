@@ -277,6 +277,9 @@ func TestExpiredGuardianApprovalReturnsWithoutWaiting(t *testing.T) {
 	if len(got) != 2 || got[0] != "self:"+kid.id.String() || got[1] != "guardians:"+kid.id.String() {
 		t.Fatalf("失効の知らせが子と保護者へ 1 回ずつでない: %v", got)
 	}
+	if calls := e.notices.calls(noticeEraseApprovalExpired); len(calls) != 1 {
+		t.Fatalf("失効の知らせが 1 回の発行でない: %v", calls)
+	}
 	if n, _ := e.id.Guardians.ExpireDue(e.ctx); n != 0 || len(e.notices.of(noticeEraseApprovalExpired)) != 2 {
 		t.Fatal("ExpireDue の 2 回目が失効させた、または知らせを出した")
 	}
@@ -537,5 +540,57 @@ func TestRowLockOrderUserBeforeGuardianApproval(t *testing.T) {
 		case <-time.After(stuck):
 			t.Fatalf("%s が終わらない", op.name)
 		}
+	}
+}
+
+// R: R-1-6-2
+// 停止は本人の全端末の行を識別子の順に取る（全体実装設計書 2.4、I-18。T-L1-09）。小さい端末の行を後ろへ動かして走査の順を識別子の
+// 逆にし（索引の列 last_seen_at の値を変える更新。値の変わらない更新は HOT で索引の項目が元の位置のまま）、試験のトランザクションが小さい端末の行を共有の錠（Groups.Commit の Devices.LockShared と同じ）で持つ間に停止を走らせる。
+// 停止は小さい端末で待ち、大きい端末の行の錠をまだ取っていない（試験が NOWAIT で取れる）。
+func TestRowLockOrderSuspendDevicesInIdOrder(t *testing.T) {
+	e := newEnv(t)
+	admin := e.setupAdmin("花子")
+	m := e.join(admin, "太郎", nil)
+	var second Device
+	e.must(e.tx(func(tx *store.Tx) error {
+		var err error
+		second, err = e.id.Devices.Register(e.ctx, tx, m.id, PlatformPc, "太郎のパソコン")
+		return err
+	}))
+	e.approve(second.Id, m.id)
+	lo, hi := m.device, second.Id
+	if bytes.Compare(lo[:], hi[:]) > 0 {
+		lo, hi = hi, lo
+	}
+	_, err := e.pool.Exec(e.ctx, `UPDATE devices SET last_seen_at = last_seen_at + interval '1 microsecond' WHERE id = $1`, lo)
+	e.must(err)
+	hold, err := e.pool.Begin(e.ctx)
+	e.must(err)
+	t.Cleanup(func() { hold.Rollback(context.Background()) })
+	_, err = hold.Exec(e.ctx, `SELECT 1 FROM devices WHERE id = $1 FOR SHARE`, lo)
+	e.must(err)
+	done := make(chan error, 1)
+	go func() {
+		done <- e.tx(func(tx *store.Tx) error { return e.id.Users.Suspend(e.ctx, tx, m.id, admin.id, "") })
+	}()
+	time.Sleep(300 * time.Millisecond)
+	select {
+	case err := <-done:
+		t.Fatalf("停止が小さい端末の行の錠を待たずに終わった（試験の前提）: %v", err)
+	default:
+	}
+	probe, err := e.pool.Begin(e.ctx)
+	e.must(err)
+	_, perr := probe.Exec(e.ctx, `SELECT 1 FROM devices WHERE id = $1 FOR UPDATE NOWAIT`, hi)
+	probe.Rollback(e.ctx)
+	hold.Rollback(e.ctx)
+	if perr != nil {
+		t.Fatalf("停止が小さい端末で待つ間に大きい端末の行の錠を持っている: %v", perr)
+	}
+	select {
+	case err := <-done:
+		e.must(err)
+	case <-time.After(stuck):
+		t.Fatal("停止が終わらない")
 	}
 }

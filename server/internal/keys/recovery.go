@@ -90,16 +90,13 @@ func (r *Recovery) NotifyUsed(ctx context.Context, tx *store.Tx, userId, deviceI
 	}
 	if method == MethodFamily {
 		return r.d.Identity.Hooks.Notify(ctx, tx, identity.Notice{Kind: noticeFamilyKeyUsed, Key: userId.String() + ":" + devKey,
-			Audience: identity.Audience{Kind: identity.AudienceAll},
-			Params:   map[string]any{"user_id": userId.String(), "name": usr.DisplayName, "result": string(result)}})
+			Audiences: []identity.Audience{{Kind: identity.AudienceAll}},
+			Params:    map[string]any{"user_id": userId.String(), "name": usr.DisplayName, "result": string(result)}})
 	}
 	params := map[string]any{"user_id": userId.String(), "name": usr.DisplayName, "method": string(method), "result": string(result)}
 	key := userId.String() + ":" + devKey + ":" + string(method) + ":" + string(result)
+	// 本人と管理者は 1 つの事象で、1 回の発行に宛先を 2 つ並べる（第7章 9、全体実装設計書 I-17）。
 	self := userId
-	for _, a := range []identity.Audience{{Kind: identity.AudienceSelf, UserId: &self}, {Kind: identity.AudienceAdmins}} {
-		if err := r.d.Identity.Hooks.Notify(ctx, tx, identity.Notice{Kind: noticeRecoveryUsed, Key: key, Audience: a, Params: params}); err != nil {
-			return err
-		}
-	}
-	return nil
+	return r.d.Identity.Hooks.Notify(ctx, tx, identity.Notice{Kind: noticeRecoveryUsed, Key: key, Params: params,
+		Audiences: []identity.Audience{{Kind: identity.AudienceSelf, UserId: &self}, {Kind: identity.AudienceAdmins}}})
 }

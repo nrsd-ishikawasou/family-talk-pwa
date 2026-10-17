@@ -8,6 +8,7 @@ package keys
 import (
 	"bytes"
 	"crypto/rand"
+	"slices"
 	"testing"
 	"time"
 
@@ -212,6 +213,12 @@ func TestRecoveryCode(t *testing.T) {
 	if n := len(e.notices.of(noticeRecoveryUsed)); n != 8 {
 		t.Fatalf("知らせ recovery_used（本人と管理者の 2 つずつ）: %d", n)
 	}
+	// 本人と管理者は 1 つの事象で、1 回の発行に宛先を 2 つ並べる（第7章 9、全体実装設計書 I-17）。
+	for _, c := range e.notices.calls(noticeRecoveryUsed) {
+		if !slices.Equal(c, []string{"self:" + a.id.String(), "admins"}) {
+			t.Fatalf("recovery_used が 1 回の発行で本人と管理者へでない: %v", c)
+		}
+	}
 }
 
 // R: R-12-3-2
@@ -263,6 +270,11 @@ func TestSharesRecovery(t *testing.T) {
 	}
 	if n := len(e.notices.of(noticeRecoveryRequested)); n != 2 {
 		t.Fatalf("知らせ recovery_requested: %d", n)
+	}
+	// 断片の持ち主（太郎と次郎）は 1 回の発行の self の列（srv-push は持ち主を解けない。第7章 9）。
+	if rc := e.notices.calls(noticeRecoveryRequested); len(rc) != 1 || len(rc[0]) != 2 ||
+		!slices.Contains(rc[0], "self:"+b.id.String()) || !slices.Contains(rc[0], "self:"+c.id.String()) {
+		t.Fatalf("recovery_requested が 1 回の発行で持ち主の数の self でない: %v", rc)
 	}
 	share, err := e.k.Shares.ShareFor(e.ctx, e.pool, rid, b2.deviceId)
 	e.must(err)

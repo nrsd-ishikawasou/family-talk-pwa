@@ -2858,6 +2858,8 @@ paths:
       - ROOM-001
       - ROOM-005
       - ROOM-010
+      - ROOM-012
+      - ROOM-013
       - MEDIA-002
       - MEDIA-005
       - AUTH-001

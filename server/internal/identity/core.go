@@ -236,6 +236,19 @@ func uuids(ctx context.Context, q querier, sql string, args ...any) ([]uuid.UUID
 	return out, wrap(rows.Err())
 }
 
+// distinct は重なりを除いた識別子（順は最初に現れた順）。
+func distinct(ids []uuid.UUID) []uuid.UUID {
+	seen := make(map[uuid.UUID]bool, len(ids))
+	var out []uuid.UUID
+	for _, id := range ids {
+		if !seen[id] {
+			seen[id] = true
+			out = append(out, id)
+		}
+	}
+	return out
+}
+
 // aad はエンベロープの認証の追加データの文脈 ft/<表>/<列>/<行の識別子>（第12章 12）。
 func aad(table, column string, row ...string) []byte {
 	return []byte("ft/" + table + "/" + column + "/" + strings.Join(row, "/"))

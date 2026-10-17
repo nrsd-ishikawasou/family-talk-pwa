@@ -40,7 +40,7 @@ jobs:
       - name: エラーの文言の表と第10章 9.2 の表（差分 0）
         run: python -m tools.gen_texts --check
       - name: エラーコード表と L1 の試験の名と文言の表（T-L2-05。試験を求める番号は作り終えたブロックの分）
-        run: python -m tools.errors_check --tests NET,SRV-001,SRV-003,SRV-004,AUTH,MEM,KEY --texts web/src/ui/i18n/errors.json
+        run: python -m tools.errors_check --tests NET,SRV-001,SRV-003,SRV-004,AUTH,MEM,KEY,ROOM --texts web/src/ui/i18n/errors.json
       - name: 生成してコミットする形の再現（第14章 8）
         run: python -m tools.gen_config --check
       - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0

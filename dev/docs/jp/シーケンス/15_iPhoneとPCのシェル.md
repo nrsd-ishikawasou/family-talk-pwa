@@ -80,6 +80,8 @@ sequenceDiagram
 - Share Target が無い：アプリ内の「写真を選ぶ」。PiP はアプリ内の小窓。画面共有は見る側だけ。
 - 保存領域が消え得る：`Persist`、サーバーが正本、鍵バンドルのコピーで補う。
   - 消えた時（`sync.pos` と `keys` のどちらも無い）は `Persist::onStorageLost` が新しい端末として承認に進める（S-04c）
+  - 鍵が残っていて読めない時（`DeviceKeys::load` が `SHELL-004`。第12章 5.3、DD-12-19）も同じ `Persist::onStorageLost` が受ける。起きるのは Apple 版 WebKit のキーチェーンのマスター鍵が失われた時。前の端末の識別子を書き留め、web-push `Subscription` の購読を解除し、保存を全部消して承認に進める。承認の後に web-ui が前の端末を `DELETE /me/devices/{id}` で取り消す（第3章 5.2。再認証）
+  - 初回に鍵を保存できない時（`DataCloneError`）は web-crypto `DeviceKeys::create` が `SHELL-006` を返し、作りかけを消す（開き直せば初回から）
 - 設定 > ヘルプ >「iPhone でできないこと」（`Limitations::list`）。
 
 ## S-15d PC のブラウザの差（第8章 7）

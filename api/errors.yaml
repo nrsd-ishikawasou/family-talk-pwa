@@ -452,6 +452,16 @@ rows:
     scope: route
     user_text_key: err.ROOM-012
     test: TestErr_ROOM_012
+  - code: ROOM-013
+    status: 422
+    title: "Relation not allowed in scheduled send"
+    meaning: "予約送信に付けられない関係（編集、リアクション・票・出欠。第4章 5.8）"
+    retryable: false
+    params: {"type": "object", "properties": {}, "additionalProperties": false}
+    log: false
+    scope: route
+    user_text_key: err.ROOM-013
+    test: TestErr_ROOM_013
   - code: MEDIA-001
     status: 413
     title: "Attachment limit exceeded"
@@ -814,8 +824,8 @@ rows:
     test: TestErr_SHELL_003
   - code: SHELL-004
     status: null
-    title: "Keystore key lost"
-    meaning: "鍵保管庫の鍵が失われた（端末鍵を復号できない）"
+    title: "Device key unreadable"
+    meaning: "端末の鍵が読めない（Android：鍵保管庫の鍵が失われ端末鍵を復号できない。iPhone と PC：IndexedDB の CryptoKey が得られない・使えない。第12章 5.3）"
     retryable: false
     params: {"type": "object", "properties": {}, "additionalProperties": false}
     log: true
@@ -832,4 +842,14 @@ rows:
     scope: route
     user_text_key: err.SHELL-005
     test: TestErr_SHELL_005
+  - code: SHELL-006
+    status: null
+    title: "Device key not storable"
+    meaning: "端末の鍵を保存できない（初回に抽出不可の CryptoKey の保存を IndexedDB が拒んだ。iPhone と PC。第12章 5.3）"
+    retryable: true
+    params: {"type": "object", "properties": {}, "additionalProperties": false}
+    log: true
+    scope: route
+    user_text_key: err.SHELL-006
+    test: TestErr_SHELL_006
 retired: []

@@ -161,14 +161,18 @@ func (id *Identity) SetState(s boundary.ServerStateReader) {
 	id.d.State = s
 }
 
-// Ready は起動の最後に呼ぶ。上のブロックの interface が揃っていない、または OnNotice の登録が無ければ Fault
-// （知らせを黙って捨てない）。以後の hook の登録はプログラムの誤り。
+// Ready は起動の最後に呼ぶ。上のブロックの interface が揃っていない、または OnNotice・OnBeforeUserChange・
+// OnBeforeDeviceRevoke の登録が無ければ Fault（知らせを黙って捨てない。トークの錠の順が守れない組み立てで動かさない。I-18）。
+// 以後の hook の登録はプログラムの誤り。
 func (id *Identity) Ready() error {
 	if id.d.Keys == nil || id.d.Push == nil || id.d.Audit == nil || id.d.State == nil {
 		return fault.Wrap(errors.New("identity: Keys、Push、Audit、State のどれかが渡されていない"))
 	}
 	if len(id.Hooks.notice) == 0 {
 		return fault.Wrap(errNoNoticeHook)
+	}
+	if len(id.Hooks.beforeUserChange) == 0 || len(id.Hooks.beforeDeviceRevoke) == 0 {
+		return fault.Wrap(errNoBeforeHook)
 	}
 	id.Hooks.sealed = true
 	return nil

@@ -204,7 +204,7 @@ classDiagram
 |Settings|`+DbLayerGet(key) Option~Value~`|srv-common DbLayer|
 |AdminApi|`+Users(ctx) [AdminUserView]`|/admin/users：状態、端末の数、最終の利用、容量|
 |AdminApi|`+Suspend / Unsuspend / Delete / RevokeDevice / ResetLink / SetRole / Guardians / Child`|srv-identity の関数 + Audit + Notices。Child は Users.SetChild（18 歳以上の誕生日があれば MEM-012。第3章 9.1）、Guardians は Guardians.Set|
-|AdminApi|`+Rooms(ctx) [AdminRoomView]`|識別子、種類、人数、容量（名前は見えない）。DELETE /admin/rooms/{id}（空のグループ）|
+|AdminApi|`+Rooms(ctx) [AdminRoomView]`|識別子、種類、人数、容量（名前は見えない）。DELETE /admin/rooms/{id}（空のグループ）は次の順：srv-rooms `Rooms.LockAll(tx, [id, FamilyRoom.Id])`（消すトークと、監査の記録が書く家族全員のトークの錠を識別子の順に先に取る。全体実装設計書 2.4、I-18）、`Rooms.Delete(rule empty_group)`、`Audit.Record`|
 |AdminApi|`+Storage(ctx) UsageReport`|srv-media Quota|
 |AdminApi|`+Retention(ctx) / PutRetention(tx, rules)`|retention_rules + バックアップの保持期間。30 日前の知らせの予約|
 |AdminApi|`+Backup(ctx) BackupView / RunBackup / RestoreTest / BackupKeys(reauth)`|backup_state、jobs backup / restore_test、バックアップの鍵と KEK の紙の再表示（再認証）|
@@ -217,7 +217,7 @@ classDiagram
 |AdminApi|`+MarkCardPrinted(tx, principal) Time`|`POST /admin/family/recovery-key/printed`。srv-identity Families.MarkCardPrinted。ダッシュボードの注意のバナーは families.card_printed_at が空の間|
 |AdminApi|`+LogsSummary(ctx) [CodeCount]`|`GET /admin/logs/summary`（G-01）：LogStats.Summary(28)。本文と秘密なし（第11章 12）|
 |AdminApi|`+DisposeGuide(ctx) Text`|/admin/disk/dispose の手順|
-|Audit|`+Record(tx, actor, action, target, params)`|audit 表 + 本人と全員へのイベント（FamilyRoom.Flow(admin_action)）+ notice。対象の構成員がいない操作（設定の変更等）は audience = all（S-11）|
+|Audit|`+Record(tx, actor, action, target, params)`|audit 表 + 本人と全員へのイベント（FamilyRoom.Flow(admin_action)）+ notice。対象の構成員がいない操作（設定の変更等）は audience = all（S-11）。家族全員のトークの錠を取るので、同じトランザクションで他のトークの錠も取る操作では、その錠が先に和として取られていること（停止・削除・端末の取り消しは srv-identity の hook `OnBeforeUserChange`・`OnBeforeDeviceRevoke` の和に家族全員のトークが入る。空のグループの削除は `Rooms.LockAll`。全体実装設計書 2.4、I-18）|
 |Erasures|`+Record(tx, userId, at)`|抹消の実行の記録（srv-identity Users.Erase から）|
 |Erasures|`+Reapply(ctx)`|起動時：erasures の各行に DEK の破棄を再実行（復元の後。第11章 9.2 の 4）|
 |Erasures|`+Export(ctx) [Erasure]`|ft restore の先行適用|

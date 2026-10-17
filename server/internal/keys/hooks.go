@@ -13,7 +13,10 @@ import (
 )
 
 // Hooks は srv-identity の hook に登録する本ブロックの処理（B-087。Keys.Register が登録する）。どれも呼び出しと同じトランザクションで、
-// 錠の順（ブロックのページ「錠の順」）に従う。鍵や leaf の無い端末・構成員では何もしない。
+// 錠の順（ブロックのページ「錠の順」）に従う。鍵や leaf の無い端末・構成員では何もしない。本ブロックの hook が取る RoomLock
+// （RemoveLeafsOfDevice、removeLeafsOfDevices、dropPendingAdds）は、srv-identity が先に呼ぶ hook OnBeforeUserChange・
+// OnBeforeDeviceRevoke で srv-rooms が和として識別子の順に取り済みで、待たない（全体実装設計書 2.4、I-18）。hook の中の順は、単独で
+// 呼ばれる経路（休眠）のために残す。
 type Hooks struct {
 	d        *Deps
 	devices  *DeviceKeys

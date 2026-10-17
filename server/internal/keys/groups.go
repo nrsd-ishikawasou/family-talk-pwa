@@ -877,7 +877,7 @@ func (g *Groups) notifyReinit(ctx context.Context, tx *store.Tx, roomId, byDevic
 		params["generation"] = *generation
 		key = roomId.String() + ":" + strconv.Itoa(*generation)
 	}
-	return g.d.Identity.Hooks.Notify(ctx, tx, identity.Notice{Kind: kind, Key: key, Params: params, Audience: identity.Audience{Kind: identity.AudienceAdmins}})
+	return g.d.Identity.Hooks.Notify(ctx, tx, identity.Notice{Kind: kind, Key: key, Params: params, Audiences: []identity.Audience{{Kind: identity.AudienceAdmins}}})
 }
 
 // reinitTarget は再初期化で追加待ちにする端末とその持ち主。
@@ -1110,14 +1110,28 @@ func (g *Groups) RemoveLeafsOfDevice(ctx context.Context, tx *store.Tx, deviceId
 	return g.removeLeafsOfDevices(ctx, tx, []uuid.UUID{deviceId})
 }
 
-// removeLeafsOfDevices は複数の端末の分をまとめ、トークの錠をトークの識別子の順に取る（削除の hook が全端末を 1 度に渡す）。
+// RoomsOfDevices は端末の列のどれかが leaf（mls_leaves）か待ち（mls_pending の add・remove・readd）を持つトークの識別子（重なりを除き
+// 識別子の順。錠は取らない）。srv-rooms が hook OnBeforeUserChange・OnBeforeDeviceRevoke で触れ得るトークの和を組むために読む（本ブロック
+// の hook が後で RoomLock を取る集合と同じ。全体実装設計書 2.4、I-18）。q は呼ぶ側のトランザクション（devices の行の錠の後に読むので、
+// Add・RequestAdd・Reinit による増加と直列）。
+func (g *Groups) RoomsOfDevices(ctx context.Context, q store.Querier, deviceIds []uuid.UUID) ([]uuid.UUID, error) {
+	rooms, err := scanIds(ctx, q, `SELECT room_id FROM mls_leaves WHERE device_id = ANY($1::uuid[]) UNION SELECT room_id FROM mls_pending WHERE device_id = ANY($1::uuid[])`, idStrings(deviceIds))
+	if err != nil {
+		return nil, err
+	}
+	return sortedIds(rooms), nil
+}
+
+// removeLeafsOfDevices は複数の端末の分をまとめ、トークの錠をトークの識別子の順に取る（削除の hook が全端末を 1 度に渡す）。取り消し・
+// 削除では srv-rooms が hook OnBeforeDeviceRevoke・OnBeforeUserChange で同じ集合を和として取り済みで、2 度目は待たない。休眠では
+// 本操作が最初に取る（全体実装設計書 2.4、I-18）。
 func (g *Groups) removeLeafsOfDevices(ctx context.Context, tx *store.Tx, devices []uuid.UUID) error {
 	ids := idStrings(devices)
-	rooms, err := scanIds(ctx, tx, `SELECT room_id FROM mls_leaves WHERE device_id = ANY($1::uuid[]) UNION SELECT room_id FROM mls_pending WHERE device_id = ANY($1::uuid[])`, ids)
+	rooms, err := g.RoomsOfDevices(ctx, tx, devices)
 	if err != nil {
 		return err
 	}
-	for _, r := range sortedIds(rooms) {
+	for _, r := range rooms {
 		if err := g.d.RoomLock.Lock(ctx, tx, r); err != nil {
 			return err
 		}
@@ -1292,7 +1306,8 @@ func (g *Groups) PendingDevices(ctx context.Context) ([]PendingDevice, error) {
 	return out, wrap(rows.Err())
 }
 
-// dropPendingAdds は停止で本人の端末の追加待ちを消す（hook OnUserSuspended。leaf と削除待ちは触らない）。トークの錠を識別子の順に取る。
+// dropPendingAdds は停止で本人の端末の追加待ちを消す（hook OnUserSuspended。leaf と削除待ちは触らない）。トークの錠を識別子の順に取る
+// （srv-rooms が hook OnBeforeUserChange で和として取り済みで、2 度目は待たない。全体実装設計書 2.4、I-18）。
 func (g *Groups) dropPendingAdds(ctx context.Context, tx *store.Tx, userId uuid.UUID) error {
 	devs, err := g.d.Identity.Devices.OfUser(ctx, tx, userId)
 	if err != nil {

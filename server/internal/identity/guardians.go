@@ -91,7 +91,7 @@ func (g *Guardians) Set(ctx context.Context, tx *store.Tx, childId uuid.UUID, gu
 	}
 	params := map[string]any{"child_id": childId.String(), "child_name": child.DisplayName, "guardian_names": names}
 	to := append(append([]uuid.UUID{childId}, old...), guardianIds...)
-	return g.hooks.notifyEach(ctx, tx, to, noticeGuardiansChanged, noticeKey(childId.String()), params)
+	return g.hooks.notifySelves(ctx, tx, to, noticeGuardiansChanged, noticeKey(childId.String()), params)
 }
 
 // Of は子の保護者を返す。
@@ -169,7 +169,7 @@ func (g *Guardians) PutSettings(ctx context.Context, tx *store.Tx, childId, by u
 		return err
 	}
 	params := map[string]any{"child_id": childId.String(), "child_name": child.DisplayName, "by_user_id": by.String(), "by_name": writer.DisplayName}
-	return g.hooks.notifyEach(ctx, tx, append([]uuid.UUID{childId}, others...), noticeGuardianSettings, noticeKey(childId.String(), by.String()), params)
+	return g.hooks.notifySelves(ctx, tx, append([]uuid.UUID{childId}, others...), noticeGuardianSettings, noticeKey(childId.String(), by.String()), params)
 }
 
 // write は与えた項目を今の値に重ねて child_controls に置く（upsert）。
@@ -428,10 +428,7 @@ func (g *Guardians) expire(ctx context.Context, tx *store.Tx, approvalId uuid.UU
 		return err
 	}
 	params := map[string]any{"approval_id": approvalId.String(), "child_id": childId.String(), "child_name": child.DisplayName}
-	if err := g.hooks.notifySelf(ctx, tx, childId, noticeEraseApprovalExpired, noticeKey(approvalId.String()), params); err != nil {
-		return err
-	}
-	return g.hooks.notifyGuardians(ctx, tx, childId, noticeEraseApprovalExpired, noticeKey(approvalId.String()), params)
+	return g.hooks.notify(ctx, tx, noticeEraseApprovalExpired, noticeKey(approvalId.String()), params, selfOf(childId), guardiansOf(childId))
 }
 
 // ExpireDue は srv-worker の PruneHandler から。open で期限を過ぎた求めを自分のトランザクションで 1,000 行ずつ expire する。

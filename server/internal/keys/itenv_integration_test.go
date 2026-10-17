@@ -189,8 +189,9 @@ func (f *fakeRooms) IsMemberOrPending(_ context.Context, _ *store.Tx, room, user
 	return s == "active" || s == "pending_add", nil
 }
 
-// noticeRec はコミットされた知らせの 1 件。
+// noticeRec はコミットされた知らせの宛先の 1 つ（1 回の Notify の宛先の列を 1 つずつの行にする。call は何回目の呼び出しか）。
 type noticeRec struct {
+	call     int
 	kind     string
 	key      string
 	audience identity.AudienceKind
@@ -198,10 +199,13 @@ type noticeRec struct {
 	params   map[string]any
 }
 
-// noticeLog は hook OnNotice に渡った知らせのうち、コミットされた物だけを覚える。
+// noticeLog は hook OnNotice に渡った知らせのうち、コミットされた物だけを覚える。同じトランザクションで同じ (kind, key) が 2 回来たら
+// 誤りを返す（srv-push の重複の抑えで 2 回目が落ちる形。第7章 9、全体実装設計書 I-17）。宛先の列が空でも誤り。
 type noticeLog struct {
 	mu   sync.Mutex
 	rows []noticeRec
+	seq  int
+	inTx map[*store.Tx]map[string]bool
 }
 
 // checkNoticeKey は第7章 9 の表の「事象の鍵」の欄で、本ブロックの 6 つの kind の鍵を確かめる（他の kind は空でないこと）。params に無い欄（端末）は
@@ -227,7 +231,8 @@ func checkNoticeKey(n identity.Notice) error {
 	case noticeMlsReinitLimit:
 		ok = len(f) == 2 && f[0] == p("room_id") && isId(f[1])
 	case noticeStickerRemove:
-		ok = len(f) == 2 && f[0] == p("user_id") && isId(f[1]) && n.Audience.UserId != nil && f[1] == n.Audience.UserId.String()
+		ok = len(f) == 2 && f[0] == p("user_id") && isId(f[1]) && len(n.Audiences) == 1 &&
+			n.Audiences[0].UserId != nil && f[1] == n.Audiences[0].UserId.String()
 	default:
 		// srv-identity の kind（new_device など）。形は srv-identity の試験が確かめ、ここでは空でないことだけを見る。
 		ok = n.Key != ""
@@ -242,16 +247,59 @@ func (l *noticeLog) hook(_ context.Context, tx *store.Tx, n identity.Notice) err
 	if err := checkNoticeKey(n); err != nil {
 		return err
 	}
-	r := noticeRec{kind: n.Kind, key: n.Key, audience: n.Audience.Kind, params: n.Params}
-	if n.Audience.UserId != nil {
-		r.user = *n.Audience.UserId
+	if len(n.Audiences) == 0 {
+		return fmt.Errorf("知らせ %s の宛先の列が空", n.Kind)
+	}
+	l.mu.Lock()
+	if l.inTx == nil {
+		l.inTx = map[*store.Tx]map[string]bool{}
+	}
+	seen := l.inTx[tx]
+	if seen == nil {
+		seen = map[string]bool{}
+		l.inTx[tx] = seen
+	}
+	dup := seen[n.Kind+"\x00"+n.Key]
+	seen[n.Kind+"\x00"+n.Key] = true
+	l.seq++
+	call := l.seq
+	l.mu.Unlock()
+	if dup {
+		return fmt.Errorf("知らせ %s（鍵 %q）を同じトランザクションで 2 回発行した", n.Kind, n.Key)
+	}
+	var rs []noticeRec
+	for _, a := range n.Audiences {
+		r := noticeRec{call: call, kind: n.Kind, key: n.Key, audience: a.Kind, params: n.Params}
+		if a.UserId != nil {
+			r.user = *a.UserId
+		}
+		rs = append(rs, r)
 	}
 	tx.AfterCommit(func() {
 		l.mu.Lock()
-		l.rows = append(l.rows, r)
+		l.rows = append(l.rows, rs...)
+		delete(l.inTx, tx)
 		l.mu.Unlock()
 	})
 	return nil
+}
+
+// calls は kind の知らせを呼び出しごとの宛先の列（「audience:利用者」。利用者が無ければ audience だけ）にする（出た順）。
+func (l *noticeLog) calls(kind string) [][]string {
+	var out [][]string
+	last := -1
+	for _, r := range l.of(kind) {
+		if r.call != last {
+			out = append(out, nil)
+			last = r.call
+		}
+		t := string(r.audience)
+		if r.user != uuid.Nil {
+			t += ":" + r.user.String()
+		}
+		out[len(out)-1] = append(out[len(out)-1], t)
+	}
+	return out
 }
 
 func (l *noticeLog) of(kind string) []noticeRec {
@@ -309,6 +357,9 @@ func newEnv(t *testing.T) *env {
 	id.SetAudit(fakeAudit{})
 	id.SetState(fakeState{})
 	id.Hooks.RegisterOnNotice(e.notices.hook)
+	// トークの錠の和を取る hook（srv-rooms が登録する。本ブロックの試験に srv-rooms は無く、本ブロックの hook が自分の集合を取る）。
+	id.Hooks.RegisterOnBeforeUserChange(func(context.Context, *store.Tx, uuid.UUID, []uuid.UUID) error { return nil })
+	id.Hooks.RegisterOnBeforeDeviceRevoke(func(context.Context, *store.Tx, uuid.UUID) error { return nil })
 	k.SetRooms(e.rooms)
 	if err := k.Ready(); err != nil {
 		t.Fatal(err)

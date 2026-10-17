@@ -315,7 +315,8 @@ func newBare(t *testing.T) *Identity {
 }
 
 // R: R-7-6-1
-// Ready は上のブロックの interface と OnNotice の登録が揃うまで Fault（知らせを黙って捨てない）。Ready の後の登録は panic。
+// Ready は上のブロックの interface と OnNotice・OnBeforeUserChange・OnBeforeDeviceRevoke の登録が揃うまで Fault（知らせを黙って
+// 捨てない。トークの錠の順が守れない組み立てで動かさない。全体実装設計書 I-18）。Ready の後の登録は panic。
 // 登録の無い Notify は Fault。必須の Deps が無ければ New が panic。
 func TestReadyRequiresInterfacesAndNoticeHook(t *testing.T) {
 	id := newBare(t)
@@ -335,6 +336,14 @@ func TestReadyRequiresInterfacesAndNoticeHook(t *testing.T) {
 	}
 	var got []Notice
 	id.Hooks.RegisterOnNotice(func(_ context.Context, _ *store.Tx, n Notice) error { got = append(got, n); return nil })
+	if err := id.Ready(); !errors.As(err, &f) || !errors.Is(f.Cause, errNoBeforeHook) {
+		t.Fatalf("OnBeforeUserChange・OnBeforeDeviceRevoke の登録の無い Ready が Fault でない: %v", err)
+	}
+	id.Hooks.RegisterOnBeforeUserChange(func(context.Context, *store.Tx, uuid.UUID, []uuid.UUID) error { return nil })
+	if err := id.Ready(); !errors.As(err, &f) || !errors.Is(f.Cause, errNoBeforeHook) {
+		t.Fatalf("OnBeforeDeviceRevoke の登録の無い Ready が Fault でない: %v", err)
+	}
+	id.Hooks.RegisterOnBeforeDeviceRevoke(func(context.Context, *store.Tx, uuid.UUID) error { return nil })
 	if err := id.Ready(); err != nil {
 		t.Fatal(err)
 	}
@@ -360,31 +369,36 @@ func TestReadyRequiresInterfacesAndNoticeHook(t *testing.T) {
 }
 
 // R: R-7-6-1
-// 知らせの宛先を構成員ごとに出す時は同じ人に 1 回（新旧の保護者が重なる時。第7章 9）。hook は登録の順に呼び、最初の誤りで止まる。
-func TestNotifyEachOnceAndHookOrder(t *testing.T) {
+// 構成員の列への知らせは 1 回の OnNotice で self の列を渡し、同じ人は 1 回にする（新旧の保護者が重なる時。第7章 9、
+// 全体実装設計書 I-17）。hook は登録の順に呼び、最初の誤りで止まる。
+func TestNotifySelvesOnceAndHookOrder(t *testing.T) {
 	h := &Hooks{}
 	var order []string
-	var to []uuid.UUID
+	var got []Notice
 	h.RegisterOnNotice(func(_ context.Context, _ *store.Tx, n Notice) error {
 		order = append(order, "a")
-		to = append(to, *n.Audience.UserId)
+		got = append(got, n)
 		return nil
 	})
 	stop := errors.New("止める")
 	h.RegisterOnNotice(func(context.Context, *store.Tx, Notice) error { order = append(order, "b"); return stop })
 	h.RegisterOnNotice(func(context.Context, *store.Tx, Notice) error { order = append(order, "c"); return nil })
 	a, b := uuid.Must(uuid.NewV7()), uuid.Must(uuid.NewV7())
-	if err := h.notifyEach(context.Background(), nil, []uuid.UUID{a, b, a}, noticeGuardiansChanged, "k", nil); !errors.Is(err, stop) {
+	if err := h.notifySelves(context.Background(), nil, []uuid.UUID{a, b, a}, noticeGuardiansChanged, "k", nil); !errors.Is(err, stop) {
 		t.Fatalf("最初の誤りで止まらない: %v", err)
 	}
-	if strings.Join(order, "") != "ab" || len(to) != 1 || to[0] != a {
-		t.Fatalf("登録の順に呼び誤りで止まる形でない: %v %v", order, to)
+	if strings.Join(order, "") != "ab" || len(got) != 1 {
+		t.Fatalf("登録の順に呼び誤りで止まる形でない: %v %v", order, got)
 	}
 	h2 := &Hooks{}
-	to = nil
-	h2.RegisterOnNotice(func(_ context.Context, _ *store.Tx, n Notice) error { to = append(to, *n.Audience.UserId); return nil })
-	if err := h2.notifyEach(context.Background(), nil, []uuid.UUID{a, b, a, b}, noticeGuardiansChanged, "k", nil); err != nil || len(to) != 2 {
-		t.Fatalf("同じ人に 2 回出した: %v %v", to, err)
+	got = nil
+	h2.RegisterOnNotice(func(_ context.Context, _ *store.Tx, n Notice) error { got = append(got, n); return nil })
+	if err := h2.notifySelves(context.Background(), nil, []uuid.UUID{a, b, a, b}, noticeGuardiansChanged, "k", nil); err != nil || len(got) != 1 {
+		t.Fatalf("1 回の呼び出しでない: %v %v", got, err)
+	}
+	au := got[0].Audiences
+	if len(au) != 2 || au[0].Kind != AudienceSelf || *au[0].UserId != a || au[1].Kind != AudienceSelf || *au[1].UserId != b {
+		t.Fatalf("self の列が a、b の 1 回ずつでない: %+v", au)
 	}
 }
 

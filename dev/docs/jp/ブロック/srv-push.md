@@ -128,7 +128,7 @@ classDiagram
     +Get(ctx, userId) Option~Time~
   }
   class Notices {
-    +Emit(tx, kind, key, level, textKey, params, audience)
+    +Emit(tx, kind, key, level, textKey, params, audiences)
     +Kinds() [NoticeKind]
     +ListMine(ctx, userId, cursor) Page~NoticeView~
     +Get(ctx, userId, id) Result~NoticeView, Event~
@@ -184,7 +184,7 @@ classDiagram
 |UpBox|`+Deliver(deviceId, item)`|srv-boundary `UpWsHandler.Deliver` を呼ぶ（接続の表は srv-boundary が持つ）。false ならメールボックスに残る|
 |UpItem|`+Body []byte`|RFC 8291 の暗号文のまま|
 |Pause|`+Set(tx, userId, until)`|1 時間、翌朝 8 時まで（端末の tz）、指定|
-|Notices|`+Emit(tx, kind, key, level, textKey, params, audience)`|audience（self、all、admins、guardians、room のいずれか。self と guardians は構成員の識別子を、room はトークの識別子を伴う）を発行の時に構成員へ解く：self は本人、all は状態が停止・削除・抹消でない全員、admins は管理者、guardians は子の保護者（srv-identity Users.List、Guardians.Of）、room はそのトークの active の構成員のうち状態が停止・削除・抹消でない人（srv-rooms Members.Of。第7章 9 の `member_add_stalled`、`device_add_stalled`、`device_remove_stalled`）。notices 表に 1 行、notice_recipients に宛先ごとに 1 行、各宛先の feed に `notice` のイベントを積み、宛先の構成員の端末のうち開いていない端末へ通知（`ft.push/1` の kind notice、event_id は知らせの id。第7章 9、第2章 7）。srv-identity の hook OnNotice の実装は、kind から Kinds の表で level と text_key（`notice.<kind>`）を引いて Emit を呼ぶ。トークに残るものは FamilyRoom.Flow（srv-rooms）。key は事象の鍵（第7章 9 の表の「事象の鍵」の欄。呼ぶ側が欄の値を `:` で連ねて組む。hook OnNotice の実装は notice の key を渡す）。重複は notices 表の (kind, key, day) で抑える。day はサーバーの時刻帯（config `server.tz`）の暦日。`INSERT ... ON CONFLICT (kind, key, day) DO NOTHING` で行が入らなければ、宛先の記録、feed、通知、FamilyRoom.Flow のどれも行わずに戻る（第7章 9）|
+|Notices|`+Emit(tx, kind, key, level, textKey, params, audiences)`|audiences は宛先の列（1 つ以上。要素は self、all、admins、guardians、room のいずれかで、self と guardians は構成員の識別子を、room はトークの識別子を伴う。同じ種類を何度でも並べてよい：新旧の保護者や断片の持ち主は呼ぶ側が self の列で渡す。第7章 9）。1 つの事象は 1 回の Emit で宛先の全部を受ける。各宛先を発行の時に構成員へ解く：self は本人、all は全員、admins は管理者、guardians は子の保護者（srv-identity Users.List、Guardians.Of）、room はそのトークの active の構成員（srv-rooms Members.Of。第7章 9 の `member_add_stalled`、`device_add_stalled`、`device_remove_stalled`）。解いた人の和を取り、同じ人を 1 回にし、状態が停止・削除・抹消の人を除く（全体実装設計書 I-17）。notices 表に 1 行（audiences は渡された列のまま）、notice_recipients に解いた人ごとに 1 行（0 人でも notices の行は書く）、各宛先の feed に `notice` のイベントを積み、宛先の構成員の端末のうち開いていない端末へ通知（`ft.push/1` の kind notice、event_id は知らせの id。第7章 9、第2章 7）。srv-identity の hook OnNotice の実装は、kind から Kinds の表で level と text_key（`notice.<kind>`）を引いて Emit を呼ぶ。トークに残るものは FamilyRoom.Flow（srv-rooms）。key は事象の鍵（第7章 9 の表の「事象の鍵」の欄。呼ぶ側が欄の値を `:` で連ねて組む。hook OnNotice の実装は notice の key を渡す）。重複は notices 表の (kind, key, day) で抑える。day はサーバーの時刻帯（config `server.tz`）の暦日。`INSERT ... ON CONFLICT (kind, key, day) DO NOTHING` で行が入らなければ、宛先の記録、feed、通知、FamilyRoom.Flow のどれも行わずに戻る（第7章 9）|
 |Notices|`+Kinds() [NoticeKind]`|第7章 9 の表の全行（識別子、level、params の欄の名）。表に無い kind の Emit はプログラムの誤り|
 |Notices|`+Get(ctx, userId, id) Result~NoticeView, Event~`|`GET /me/notices/{id}`（第2章 5.3）。notice_recipients に本人の行が無ければ MEM-001|
 |Notices|`+ListMine(ctx, userId, cursor) Page~NoticeView~`|`GET /me/notices`（第2章 5.3）：notice_recipients を本人で引き notices を結合。要素は id、kind、level、text_key、params、ts（`notice` のイベントの payload と同じ欄に id と ts）。並びは id（UUIDv7）の降順。before、after、limit は第2章 3 の一覧の規則|
@@ -223,7 +223,7 @@ classDiagram
 |`up_tokens`|表|`token_sha256 PK`、`device_id`、`instance`、`ws_secret_sha256`（一意）、`created_at`。端末の取り消しで消す|[第7章 3.1 家族のサーバーの受け口（(i)）](../../../../docs/jp/design/07_基本設計書_通知.md#31-家族のサーバーの受け口i)|
 |`up_box`|表|`id`、`device_id`、`body bytea`、`expires_at`、`created_at`、`delivered_at?`。索引 (device_id, created_at)|[第7章 3.1 家族のサーバーの受け口（(i)）](../../../../docs/jp/design/07_基本設計書_通知.md#31-家族のサーバーの受け口i)|
 |`notification_pause`|表|`user_id PK`、`until`|[第7章 6 規則（DD-7-5、DD-7-6）](../../../../docs/jp/design/07_基本設計書_通知.md#6-規則dd-7-5dd-7-6)|
-|`notices`|表|`id`（UUIDv7）、`kind`、`key`、`day`、`level`、`text_key`、`params jsonb`、`audience`、`created_at`。一意 (kind, key, day)。30 日（`Prune`）|[第7章 9 システムの知らせ（DD-7-9）](../../../../docs/jp/design/07_基本設計書_通知.md#9-システムの知らせdd-7-9)|
+|`notices`|表|`id`（UUIDv7）、`kind`、`key`、`day`、`level`、`text_key`、`params jsonb`、`audiences jsonb`（発行の時に渡された宛先の列。要素は `{kind, user_id?, room_id?}`。解いた結果は notice_recipients）、`created_at`。一意 (kind, key, day)。30 日（`Prune`）|[第7章 9 システムの知らせ（DD-7-9）](../../../../docs/jp/design/07_基本設計書_通知.md#9-システムの知らせdd-7-9)|
 |`notice_recipients`|表|`notice_id`（notices へ。削除に従う）、`user_id`。PK (notice_id, user_id)、索引 (user_id, notice_id)。発行の時に宛先を解いた結果|[第2章 5.3 構成員とプロフィール（第3章）](../../../../docs/jp/design/02_基本設計書_境界.md#53-構成員とプロフィール第3章)|
 |通知の中身|`ft.push/1`|`{v: 1, event_id, room_id, sender_id, kind, call_id?}`（api/schemas。kind は message、call、call_end、notice のいずれか）|[第2章 7 通知の中身（第7章）](../../../../docs/jp/design/02_基本設計書_境界.md#7-通知の中身第7章)|
 |宣言型の包み|JSON|`ft.push.declarative/1`（第2章 7。`web_push: 8030`、`mutable: true`、`notification: {title, body, navigate, tag, silent, app_badge, data: ft.push/1}`）|[第2章 7 通知の中身（第7章）](../../../../docs/jp/design/02_基本設計書_境界.md#7-通知の中身第7章)|

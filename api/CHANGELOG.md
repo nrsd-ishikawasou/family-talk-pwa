@@ -6,13 +6,19 @@
 
 ### 追加
 
+- 0.1.0：`SHELL-006`（端末の鍵を保存できない。iPhone と PC。基本設計書 第12章 5.3、第2章 9.2）。
+  - 初回に抽出不可の CryptoKey の保存を IndexedDB が拒んだ時の番号。作りかけの鍵を消し、開き直せば初回からやり直す
+  - `SHELL-004` の意味を、Android の鍵保管庫と iPhone・PC の IndexedDB の CryptoKey の両方に広げた。title は `Device key unreadable`
+  - Apple 版の WebKit は IndexedDB の CryptoKey をキーチェーンのマスター鍵で包む。無いと保存が失敗し、開けないと読み出しが失敗する。読めない時は保存を消して新しい端末として入り直す
+- 0.1.0：`ROOM-013`（422。予約送信に付けられない関係。基本設計書 第4章 5.8、第2章 9.2）。`POST /rooms/{id}/scheduled` の x-errors に `ROOM-012`、`ROOM-013`。
+  - 予約送信に付けられる関係は返信だけ。編集とリアクション・票・出欠の予約は予約の時に `ROOM-013`、別のトークの対象は `ROOM-012`。元は予約の時に関係を確かめる番号が無く、送る時に黙って取り消す形だった
 - 0.1.0：`ft.room_event/1` に `scheduled_at`（任意。予約送信から来たイベントだけが持つ予約の時刻。基本設計書 第4章 5.8、第2章 12）。
   - `ts` は送った時刻。受け手の端末は差が 1 分を超えれば「遅れて送られました」を出す。元は予約の時刻が線の上に無く、印を判定できなかった
-- 0.1.0：`POST /rooms/{id}/scheduled` の x-errors に `MEDIA-002`、`MEDIA-005`（添付は予約の時に予約へ結び付ける。基本設計書 第4章 5.8、第2章 5.5）。
-- 0.1.0：設定 `room.scheduled_late_threshold`（固定 1 分。基本設計書 第4章 7）と `media.unbound_grace`（固定 8 日。完了して結び付かない添付を消すまで。第5章 9）。
+- 0.1.0：`POST /rooms/{id}/scheduled` の x-errors に `MEDIA-002`、`MEDIA-005`。添付は予約の時に予約へ結び付ける（基本設計書 第4章 5.8、第2章 5.5）。
+- 0.1.0：設定 `room.scheduled_late_threshold`（固定 1 分。基本設計書 第4章 7）。設定 `media.unbound_grace`（固定 8 日。完了して結び付かない添付を消すまで。第5章 9）。
 - 0.1.0：端末宛メールボックスの種類に `sticker_remove_withdrawal`（スタンプの削除の求めの取り下げ。基本設計書 第12章 5.2、第4章 5.9、第2章 5.4）。`InboxItem.kind` と `putDeviceInbox` の `kind` に加えた。
   - 求めの中身をサーバーは読めないので、取り下げを同じ種類の中の旗にすると取り下げでも知らせ `sticker_remove_requested` が出る。種類で分けた
-- 0.1.0：`ft.content.sticker_remove_request/1` に `requested_at`（必須。最初に求めた時刻。7 日ごとの送り直しでも変えない。基本設計書 第4章 3.1、5.9）。
+- 0.1.0：`ft.content.sticker_remove_request/1` に `requested_at`（必須。最初に求めた時刻。基本設計書 第4章 3.1、5.9）。7 日ごとの送り直しでも変えない。
   - 受けた端末が求めた日を出し、送り直しを 1 件にまとめる
 
 - 0.1.0：`DELETE /rooms/{id}`（グループの削除。基本設計書 第4章 4.1、第12章 9、第2章 5.5）。

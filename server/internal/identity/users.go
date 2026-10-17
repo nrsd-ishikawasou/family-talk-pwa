@@ -140,6 +140,33 @@ func (u *Users) Get(ctx context.Context, q store.Querier, id uuid.UUID) (User, e
 	return u.get(ctx, q, id, false)
 }
 
+// LockShared は users の行を識別子の順に共有の錠（FOR SHARE）で読む。無い識別子があれば MEM-001。srv-rooms Members.Add と
+// Rooms.Create が、その人をトークに入れる前に RoomLock より先に呼ぶ。停止・削除・抹消が users の行を錠で持つ間は待ち、終わった
+// 後の状態を返す（呼ぶ側が停止・削除・抹消を断る）。停止・削除・抹消が触れ得るトークの和を読んだ後に、その人のトークが増えない
+// （全体実装設計書 2.4、I-18）。戻りは識別子の順。
+func (u *Users) LockShared(ctx context.Context, tx *store.Tx, userIds []uuid.UUID) ([]User, error) {
+	rows, err := tx.Query(ctx, `SELECT `+userCols+` FROM users WHERE id = ANY($1) ORDER BY id FOR SHARE`, userIds)
+	if err != nil {
+		return nil, wrap(err)
+	}
+	defer rows.Close()
+	var out []User
+	for rows.Next() {
+		usr, err := scanUser(rows)
+		if err != nil {
+			return nil, wrap(err)
+		}
+		out = append(out, usr)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, wrap(err)
+	}
+	if len(out) != len(distinct(userIds)) {
+		return nil, ev(cgen.MEM001)
+	}
+	return out, nil
+}
+
 // get は 1 行を読む。lock なら FOR NO KEY UPDATE（キーの列は書かないので足り、外部キーで指す INSERT の FOR KEY SHARE を
 // 止めない。別のトランザクションで構成員を指す行を書いても待ち合わない）。
 func (u *Users) get(ctx context.Context, q querier, id uuid.UUID, lock bool) (User, error) {
@@ -603,8 +630,8 @@ func lastAdmin(ctx context.Context, q querier, usr User) (bool, error) {
 	return others == 0, wrap(err)
 }
 
-// Suspend は状態を suspended にする。Sessions.RevokeAllOfUser(suspended)、Devices.UnapproveAllOfUser、
-// 本人の未使用の招待の取り消し、hook OnUserSuspended、user.changed（第3章 8.1）。最後の管理者は MEM-003。
+// Suspend は状態を suspended にする。本人の全端末の行の錠、Devices.UnapproveAllOfUser、Sessions.RevokeAllOfUser(suspended)、
+// 本人の未使用の招待の取り消し、hook OnBeforeUserChange、hook OnUserSuspended、user.changed（第3章 8.1）。最後の管理者は MEM-003。
 // Families.HoldsCard なら管理者へ作り直しを勧める知らせ（第7章 9）。reason は記録しない（監査は srv-admin）。
 func (u *Users) Suspend(ctx context.Context, tx *store.Tx, id, by uuid.UUID, reason string) error {
 	usr, err := u.get(ctx, tx, id, true)
@@ -617,7 +644,7 @@ func (u *Users) Suspend(ctx context.Context, tx *store.Tx, id, by uuid.UUID, rea
 	return u.suspend(ctx, tx, usr, RevokeSuspended)
 }
 
-// suspend は停止の 2 と 3（Delete も同じ順を通る。セッションの失効の理由だけが違う）。
+// suspend は停止の 2〜6（Delete も同じ順を通る。セッションの失効の理由だけが違う）。
 func (u *Users) suspend(ctx context.Context, tx *store.Tx, usr User, reason RevokeReason) error {
 	last, err := lastAdmin(ctx, tx, usr)
 	if err != nil {
@@ -629,7 +656,12 @@ func (u *Users) suspend(ctx context.Context, tx *store.Tx, usr User, reason Revo
 	if _, err := tx.Exec(ctx, `UPDATE users SET state = 'suspended' WHERE id = $1`, usr.Id); err != nil {
 		return wrap(err)
 	}
-	// 錠の順は構成員、端末、セッション（端末の取り消しと同じ順）。
+	// 錠の順は構成員、端末、セッション（端末の取り消しと同じ順）。端末は全状態を識別子の順に先に取る（UPDATE ... WHERE user_id
+	// だけでは行の順が走査の順になり、端末を識別子の順に共有の錠で押さえる Groups.Commit と逆向きに待ち合う）。
+	devs, err := u.lockDevicesOf(ctx, tx, usr.Id)
+	if err != nil {
+		return err
+	}
 	if err := u.devices.UnapproveAllOfUser(ctx, tx, usr.Id); err != nil {
 		return err
 	}
@@ -639,6 +671,10 @@ func (u *Users) suspend(ctx context.Context, tx *store.Tx, usr User, reason Revo
 	if _, err := tx.Exec(ctx, `UPDATE invites SET revoked_at = $2 WHERE issuer = $1 AND used_at IS NULL AND revoked_at IS NULL`, usr.Id, u.d.now()); err != nil {
 		return wrap(err)
 	}
+	// 他の hook の前に、触れ得る全部のトークの錠を識別子の順に取らせる（全体実装設計書 2.4、I-18）。
+	if err := u.hooks.onBeforeUserChange(ctx, tx, usr.Id, devs); err != nil {
+		return err
+	}
 	if err := u.hooks.onUserSuspended(ctx, tx, usr.Id, reason); err != nil {
 		return err
 	}
@@ -646,6 +682,12 @@ func (u *Users) suspend(ctx context.Context, tx *store.Tx, usr User, reason Revo
 		return err
 	}
 	return u.d.emitUserChanged(ctx, tx, usr.Id, fieldState)
+}
+
+// lockDevicesOf は本人の全端末（全状態）の devices の行を識別子の順に錠で取り、その識別子を返す（停止・削除・抹消の 2。
+// 取り消し済みの端末も Remove の Commit まで leaf と削除待ちを持つので、hook OnBeforeUserChange に全部を渡す）。
+func (u *Users) lockDevicesOf(ctx context.Context, tx *store.Tx, userId uuid.UUID) ([]uuid.UUID, error) {
+	return uuids(ctx, tx, `SELECT id FROM devices WHERE user_id = $1 ORDER BY id FOR UPDATE`, userId)
 }
 
 // cardNotice はカードの持ち主の停止・削除・抹消の時に管理者へ作り直しを勧める（第12章 5.4 の持ち主の変化、第7章 9）。
@@ -678,6 +720,7 @@ func (u *Users) Unsuspend(ctx context.Context, tx *store.Tx, id, by uuid.UUID) e
 
 // Delete は停止 + hook OnUserDeleted + 状態 deleted。最後の管理者は MEM-003。状態が通常なら停止の順を先に通る
 // （セッションの失効の理由は deleted。カードの持ち主への知らせは停止の中で 1 回だけ。既に停止中なら出さない）。
+// hook OnBeforeUserChange は 1 回だけ：通常からは停止の中で、既に停止中なら端末の行の錠の後に呼ぶ（全体実装設計書 2.4、I-18）。
 func (u *Users) Delete(ctx context.Context, tx *store.Tx, id, by uuid.UUID, eraseContent bool) error {
 	usr, err := u.get(ctx, tx, id, true)
 	if err != nil {
@@ -694,6 +737,13 @@ func (u *Users) Delete(ctx context.Context, tx *store.Tx, id, by uuid.UUID, eras
 				return err
 			}
 			return ev(cgen.MEM003)
+		}
+		devs, err := u.lockDevicesOf(ctx, tx, id)
+		if err != nil {
+			return err
+		}
+		if err := u.hooks.onBeforeUserChange(ctx, tx, id, devs); err != nil {
+			return err
 		}
 	default:
 		return ev(cgen.MEM002)
@@ -779,7 +829,8 @@ func (u *Users) CancelErase(ctx context.Context, tx *store.Tx, id uuid.UUID) err
 }
 
 // Erase は srv-worker の erasure から。猶予の間で期限を過ぎた時だけ行う（2 回目と取り消しの後は何もしない。I-10）。
-// セッションの失効（erased）、全端末の取り消し、hook OnUserErased、DEK と user_private の削除（crypto-shredding）、状態 erased。
+// 本人の全端末の行の錠、セッションの失効（erased）、hook OnBeforeUserChange、全端末の取り消し、hook OnUserErased、
+// DEK と user_private の削除（crypto-shredding）、状態 erased。
 // erasures の記録は srv-admin（OnUserErased の登録）。持ち主の記録は残す（第12章 5.4）。
 func (u *Users) Erase(ctx context.Context, tx *store.Tx, id uuid.UUID) error {
 	usr, err := u.get(ctx, tx, id, true)
@@ -793,15 +844,21 @@ func (u *Users) Erase(ctx context.Context, tx *store.Tx, id uuid.UUID) error {
 	if usr.State != UserErasePending || at == nil || at.After(u.d.now()) {
 		return nil
 	}
-	// 錠の順は構成員、端末、セッション。端末の行を先に取り、セッションを erased で失効させてから端末を取り消す
+	// 錠の順は構成員、端末、セッション。端末の行（全状態）を先に取り、セッションを erased で失効させてから端末を取り消す
 	// （端末に届く session.revoked の理由を erased にする）。
-	devs, err := uuids(ctx, tx, `SELECT id FROM devices WHERE user_id = $1 AND state NOT IN ('revoked', 'expired') ORDER BY id FOR UPDATE`, id)
+	devs, err := u.lockDevicesOf(ctx, tx, id)
 	if err != nil {
 		return err
 	}
 	if err := u.sessions.RevokeAllOfUser(ctx, tx, id, RevokeErased); err != nil {
 		return err
 	}
+	// 端末を 1 台ずつ取り消す前に、触れ得る全部のトークの錠を識別子の順に取らせる。端末ごとの hook OnBeforeDeviceRevoke と
+	// srv-keys の錠はこの和の中で待たない（全体実装設計書 2.4、I-18）。
+	if err := u.hooks.onBeforeUserChange(ctx, tx, id, devs); err != nil {
+		return err
+	}
+	// Devices.Revoke は取り消し済み・期限切れの端末では何もしない。
 	for _, dv := range devs {
 		if err := u.devices.Revoke(ctx, tx, dv, id, false); err != nil {
 			return err
@@ -1024,7 +1081,7 @@ func (u *Users) SetChild(ctx context.Context, tx *store.Tx, id uuid.UUID, child 
 		if err != nil {
 			return err
 		}
-		return u.hooks.notifyEach(ctx, tx, append([]uuid.UUID{id}, former...), noticeChildFlagCleared, noticeKey(id.String()), params)
+		return u.hooks.notifySelves(ctx, tx, append([]uuid.UUID{id}, former...), noticeChildFlagCleared, noticeKey(id.String()), params)
 	}
 	b, err := u.readBirthday(ctx, tx, id)
 	if err != nil {
@@ -1039,10 +1096,7 @@ func (u *Users) SetChild(ctx context.Context, tx *store.Tx, id uuid.UUID, child 
 	if err := u.d.emitUserChanged(ctx, tx, id, fieldChild); err != nil {
 		return err
 	}
-	if err := u.hooks.notifySelf(ctx, tx, id, noticeChildFlagSet, noticeKey(id.String()), params); err != nil {
-		return err
-	}
-	return u.hooks.notifyGuardians(ctx, tx, id, noticeChildFlagSet, noticeKey(id.String()), params)
+	return u.hooks.notify(ctx, tx, noticeChildFlagSet, noticeKey(id.String()), params, selfOf(id), guardiansOf(id))
 }
 
 // clearChild は子ども区分を外し、消す前の保護者を返す（18 歳の解除と管理者の解除。第3章 9.1）。保護者の関係と
@@ -1092,7 +1146,7 @@ func (u *Users) applyAge(ctx context.Context, tx *store.Tx, id uuid.UUID, b birt
 		if err != nil {
 			return 0, err
 		}
-		return childAge, u.hooks.notifyEach(ctx, tx, append([]uuid.UUID{id}, former...), noticeChildReleased18, noticeKey(id.String()), params)
+		return childAge, u.hooks.notifySelves(ctx, tx, append([]uuid.UUID{id}, former...), noticeChildReleased18, noticeKey(id.String()), params)
 	}
 	var by *uuid.UUID
 	var updatedAt *time.Time
@@ -1112,10 +1166,7 @@ func (u *Users) applyAge(ctx context.Context, tx *store.Tx, id uuid.UUID, b birt
 	if err := u.guardians.relax(ctx, tx, id); err != nil {
 		return 0, err
 	}
-	if err := u.hooks.notifySelf(ctx, tx, id, noticeChildRelaxed16, noticeKey(id.String()), params); err != nil {
-		return 0, err
-	}
-	return relaxAge, u.hooks.notifyGuardians(ctx, tx, id, noticeChildRelaxed16, noticeKey(id.String()), params)
+	return relaxAge, u.hooks.notify(ctx, tx, noticeChildRelaxed16, noticeKey(id.String()), params, selfOf(id), guardiansOf(id))
 }
 
 // ChildTransitions は誕生日のある子ども区分で、今日 16 歳か 18 歳になる人（第3章 9.1）。人ごとに自分のトランザクションで

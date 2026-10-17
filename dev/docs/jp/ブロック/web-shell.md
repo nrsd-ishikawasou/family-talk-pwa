@@ -10,7 +10,8 @@
 - [第8章 4 iPhone の制約の補い方（DD-8-6）](../../../../docs/jp/design/08_基本設計書_iPhoneとPCのシェル.md#4-iphone-の制約の補い方dd-8-6)（iPhone の制約の補い方の表の判定と案内の置き場）
 - [第8章 5 更新とオフライン（DD-8-9）](../../../../docs/jp/design/08_基本設計書_iPhoneとPCのシェル.md#5-更新とオフラインdd-8-9) のオフラインのバナー
 - [第8章 7 PC のブラウザ（DD-8-7）](../../../../docs/jp/design/08_基本設計書_iPhoneとPCのシェル.md#7-pc-のブラウザdd-8-7)（PC のブラウザの差の判定と「できないこと」の一覧）
-- [第8章 8 失敗の扱い](../../../../docs/jp/design/08_基本設計書_iPhoneとPCのシェル.md#8-失敗の扱い) の `persist()` の拒否と保存が消えた時
+- [第8章 8 失敗の扱い](../../../../docs/jp/design/08_基本設計書_iPhoneとPCのシェル.md#8-失敗の扱い) の `persist()` の拒否と保存が消えた時、端末の鍵が読めない時
+- [第12章 5.3 端末の鍵（DD-12-3）](../../../../docs/jp/design/12_基本設計書_データと暗号化.md#53-端末の鍵dd-12-3) の「端末の鍵が読めない時と保存できない時」（DD-12-19）
 - [第9章 4.2 JS ブリッジの命令](../../../../docs/jp/design/09_基本設計書_Androidのシェル.md#42-js-ブリッジの命令)（JS ブリッジの命令とイベントのクライアントの側）
 - [第9章 4.1 設定](../../../../docs/jp/design/09_基本設計書_Androidのシェル.md#41-設定) のユーザーエージェント（`FamilyTalkShell/<版>` でシェルを検出）
 - [第9章 8 鍵保管庫と生体認証（DD-9-8）](../../../../docs/jp/design/09_基本設計書_Androidのシェル.md#8-鍵保管庫と生体認証dd-9-8) の端末鍵の包み（`wrapDeviceKey`／`unwrapDeviceKey`）と `biometricUnlock`
@@ -174,7 +175,7 @@ classDiagram
 |AppLock|`+scope`|画面の表示の前。通知と着信の応答は外|
 |Persist|`+ensure() Promise`|初回に navigator.storage.persist()。結果を settings。拒否は案内|
 |Persist|`+watch()`|estimate() が 90% なら web-media Cache.evict|
-|Persist|`+onStorageLost()`|sync.pos も keys も無ければ、新しい端末として承認に進む（web-ui）|
+|Persist|`+onStorageLost()`|2 つの時に呼ばれる。(1) sync.pos も keys も無い（保存が消えた）。(2) keys があるのに読めない（web-crypto `DeviceKeys.load` が `SHELL-004`。Apple 版 WebKit のキーチェーンのマスター鍵が失われた。第12章 5.3、DD-12-19）。(2) では、前の端末の識別子（web-core `Session.me.device`。無ければ端末の保存に書き留めた値）を `settings.key_loss` に書き、web-push `Subscription` の購読を解除し、`Db.wipe`（`settings.key_loss` だけ残す）、`SHELL-004` の文言を出す。どちらも新しい端末としてログインと承認に進む（web-ui。第3章 4.2、4.4、第8章 8）。承認の後、web-ui が `settings.key_loss` の前の端末を `DELETE /me/devices/{id}` で取り消し（再認証。第3章 5.2）、取り消せたら `key_loss` を消す|
 |Persist|`+untrustedBrowser`|設定「このブラウザを信頼しない」（PC。第12章 6.4、第3章 4.7）：セッションの終了（visibilitychange hidden + 一定時間、または明示のログアウト）で Db::wipe（鍵バンドルも）。次回は新しい端末|
 |Families|`+list() [FamilyEntry]`|シェル：Platform.families.list。iPhone/PC：1 つ（別のオリジン）|
 |ShareTarget|`+onReceive(fn)`|シェルの共有の受け口（画像、動画、テキスト、ファイル）。shareReceived を web-ui の「送る」画面に渡す|

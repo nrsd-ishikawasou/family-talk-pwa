@@ -5,7 +5,7 @@
 - [第14章 8 境界の型の生成](../../../../docs/jp/design/14_基本設計書_開発基盤.md#8-境界の型の生成)（生成の道具の呼び出し）
 - [第14章 9 ライセンスの方針と第三者の表示](../../../../docs/jp/design/14_基本設計書_開発基盤.md#9-ライセンスの方針と第三者の表示)（ライセンスの区分と道具）
 - [第14章 10 リポジトリの構成](../../../../docs/jp/design/14_基本設計書_開発基盤.md#10-リポジトリの構成)（リポジトリの構成、security.txt、CODEOWNERS、Rulesets）
-- [第14章 11 CI](../../../../docs/jp/design/14_基本設計書_開発基盤.md#11-ci)（CI：変更ごと、リリース 2 段、定期、ワークフローの安全、署名鍵の扱い）
+- [第14章 11 CI](../../../../docs/jp/design/14_基本設計書_開発基盤.md#11-ci)（CI：変更ごと、リリース 2 段、定期、ワークフローの安全、署名鍵の扱い。11.6 の iPhone の Safari の確かめ）
 - [第14章 12 配布物（第13章への入口）](../../../../docs/jp/design/14_基本設計書_開発基盤.md#12-配布物第13章への入口)（配布物の置き場と検証）
 - [第14章 13.2 脆弱性の確認](../../../../docs/jp/design/14_基本設計書_開発基盤.md#132-脆弱性の確認)（脆弱性の確認）
 - [第14章 14 書き方の取り決め](../../../../docs/jp/design/14_基本設計書_開発基盤.md#14-書き方の取り決め)（書き方の取り決めの検査：禁止語）
@@ -54,6 +54,7 @@ classDiagram
     +jobs android
     +jobs docs
     +jobs workflows
+    +jobs ios
     +permissions
   }
   class ReleaseWorkflow {
@@ -84,6 +85,7 @@ classDiagram
     +licenses
     +fetch_vectors
     +gen_testdata
+    +ios_probe
     +ftlint
     +bundle_openapi
     +genimpl
@@ -117,6 +119,7 @@ classDiagram
 |CiWorkflow|`+jobs android`|ktlint、detekt、Android Lint、kotlinc、fabrikt の生成の再現性、licensee、Gradle の依存検証、JUnit（L0）、Gradle Managed Devices（L4 のシェルの分。KVM）、未署名の APK（試験の鍵で署名した版も）|
 |CiWorkflow|`+jobs docs`|markdownlint-cli2、textlint、lychee、tools/forbidden_words（禁止語の一覧は secret。fork の PR では secret が無いため skip し、main への merge の前の run で必ず走る：Rulesets の必須の検査）|
 |CiWorkflow|`+jobs workflows`|zizmor、actionlint|
+|CiWorkflow|`+jobs ios`|L3 の iPhone の分（試験設計書 T-L3-12。第14章 11.6）。macOS の arm64 のイメージ（Xcode、iOS の Simulator、Safari と safaridriver が入っている物。E-11）。`tools/ios_probe` が `xcrun simctl` で iPhone の Simulator を起こし、`simctl keychain add-root-cert` で自前の認証局を入れ、確かめのページ（`web/probe/`）を HTTPS で配り、safaridriver（`platformName: ios`、`safari:useSimulator: true`）で開いて結果の JSON を成果物に残す。変更ごとはイメージに入っている iOS 18 系の最新と現行の版。最低要件 18.0 は `schedule`（日ごと）と `workflow_dispatch` の時だけ、`xcodebuild -downloadPlatform iOS -buildVersion 18.0` で取得して行う（3 回まで再試行。それでも取れなければ赤。一覧の赤にしない）。`permissions` は `contents: read` のまま。開発機（Linux）では回らない|
 |CiWorkflow|`+permissions`|contents: read 既定。書き込みはジョブ単位|
 |ReleaseWorkflow|`+stage1 build`|タグ vX.Y.Z：再現可能なビルド（SOURCE_DATE_EPOCH、-trimpath、CGO_ENABLED=0、Vite の決定性を 2 回で確認、Gradle の再現可能なアーカイブ、R8 の非決定を切る、baseline.prof 無効、PNG の最適化を切る）。成果物は ft（amd64、arm64）と sha256、未署名 APK 3 種、version.json の草案、SBOM、ビルド証明（attest-build-provenance。再利用可能なワークフロー。SLSA L3）。これらを Release の草案に載せる|
 |ReleaseWorkflow|`+manual sign`|保守者が次の順に行う：ビルド証明の検証、PKCS#11 で署名、一致の検証（署名を除いた中身）、apksigner verify、Release に署名済み APK と sha256 を載せる|
@@ -142,6 +145,7 @@ classDiagram
 |Tools|`+licenses`|3 層の THIRD_PARTY_NOTICES と許可リスト|
 |Tools|`+fetch_vectors`|MLS の相互運用の検証ベクトル（版と SHA-256）|
 |Tools|`+gen_testdata`|模擬の家族（D-1）|
+|Tools|`+ios_probe`|iPhone の Safari の確かめの道具（第14章 11.6、全体実装設計書 6.3）。Simulator の起動と証明書の投入、確かめのページの HTTPS の配信（実行環境の中だけ。自前の認証局は走るたびに作る）、safaridriver の WebDriver（HTTP）でのページの操作と結果の取得、試験設計書 T-L3-12 の判定。Python 3.12 の標準ライブラリだけで書く（`tools/requirements.txt` に部品を足さない）。`--runtime <版>` で Simulator の版を選び、`--download` で 18.0 を取得する|
 |Tools|`+tests/`|道具の試験（L0）|
 |RepoSkeleton|`+README.md`|第13章 7 の中身|
 |RepoSkeleton|`+SECURITY.md`|報告の手順、14 日、対象の版、公開の方針|
@@ -154,9 +158,9 @@ classDiagram
 
 |番号|物|使う側|由来|
 |---|---|---|---|
-|B-640|`ci.yml`（L0〜L4 の段）、`release.yml`（前段と後段）、`periodic.yml`|公開リポジトリの CI|[第14章 11 CI](../../../../docs/jp/design/14_基本設計書_開発基盤.md#11-ci)|
+|B-640|`ci.yml`（L0〜L4 の段と、iPhone の Safari の確かめ `ios`）、`release.yml`（前段と後段）、`periodic.yml`|公開リポジトリの CI|[第14章 11 CI](../../../../docs/jp/design/14_基本設計書_開発基盤.md#11-ci)|
 |B-641|`Dockerfile`、`Dockerfile.caddy`|`release.yml`、開発機（`ft` のイメージの手元のビルド）|[第14章 5.4 イメージ](../../../../docs/jp/design/14_基本設計書_開発基盤.md#54-イメージ)、[第13章 3 配布物（DD-13-2）](../../../../docs/jp/design/13_基本設計書_配布と更新.md#3-配布物dd-13-2)、全体実装設計書 7.1|
-|B-642|`tools/`（11 個 + 試験）|CI の各 job、開発機、試験設計書の記録|全体実装設計書 6.3|
+|B-642|`tools/`（12 個 + 試験）|CI の各 job、開発機、試験設計書の記録|全体実装設計書 6.3|
 |B-643|`README`、`LICENSE`、`NOTICE`、`SECURITY.md`、`CHANGELOG.md`、`LICENSES/`、`REUSE.toml`、`.github/*`|公開リポジトリ|[第13章 7 公開リポジトリの文書（DD-13-1、DD-13-9）](../../../../docs/jp/design/13_基本設計書_配布と更新.md#7-公開リポジトリの文書dd-13-1dd-13-9)、[第14章 10 リポジトリの構成](../../../../docs/jp/design/14_基本設計書_開発基盤.md#10-リポジトリの構成)|
 |B-644|THIRD_PARTY_NOTICES（イメージ、ウェブ、APK）|イメージ（`/srv/www/about/`）、web-ui（このアプリについて）、and-shell（`ShellSettings`）|[第14章 9.2 道具](../../../../docs/jp/design/14_基本設計書_開発基盤.md#92-道具)|
 

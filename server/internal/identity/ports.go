@@ -63,28 +63,32 @@ type Audience struct {
 }
 
 // Notice は OnNotice に渡す 1 件の知らせ（第7章 9 の表の kind と埋め込みの値）。Key は事象の鍵（第7章 9。srv-push が (kind, key, 日)
-// で同じ事象の重複を抑える）。
+// で同じ事象の重複を抑える）。Audiences は宛先の列（1 つ以上。同じ種類を何度でも並べてよい）。1 つの事象は 1 回の発行で宛先の全部を
+// 渡す（宛先ごとに分けて 2 回発行すると 2 回目以降は重複の抑えで何も出ない。第7章 9、全体実装設計書 I-17）。srv-push が宛先を
+// 構成員へ解いて和を取り、同じ人を 1 回にする。
 type Notice struct {
-	Kind     string
-	Key      string
-	Params   map[string]any
-	Audience Audience
+	Kind      string
+	Key       string
+	Params    map[string]any
+	Audiences []Audience
 }
 
 // Hooks は本ブロックの出来事を他のブロックへ渡す（B-070）。fn は呼び出しと同じトランザクションで、
 // 登録の順に走る。最初の誤りで止まり、その誤りでトランザクションを rollback させる（I-8）。
 // 登録は起動の時だけ（上のブロックの組み立ての中）。Identity.Ready の後の登録はプログラムの誤り。
 type Hooks struct {
-	deviceRevoked   []func(ctx context.Context, tx *store.Tx, deviceId uuid.UUID) error
-	userSuspended   []func(ctx context.Context, tx *store.Tx, userId uuid.UUID, reason RevokeReason) error
-	userUnsuspended []func(ctx context.Context, tx *store.Tx, userId uuid.UUID) error
-	userDeleted     []func(ctx context.Context, tx *store.Tx, userId uuid.UUID, eraseContent bool) error
-	userErased      []func(ctx context.Context, tx *store.Tx, userId uuid.UUID) error
-	userCreated     []func(ctx context.Context, tx *store.Tx, userId, firstDeviceId uuid.UUID) error
-	notice          []func(ctx context.Context, tx *store.Tx, n Notice) error
-	passkeyDeleted  []func(ctx context.Context, tx *store.Tx, userId uuid.UUID, credId []byte) error
-	passkeyReset    []func(ctx context.Context, tx *store.Tx, userId, deviceId uuid.UUID) error
-	sealed          bool
+	beforeUserChange   []func(ctx context.Context, tx *store.Tx, userId uuid.UUID, deviceIds []uuid.UUID) error
+	beforeDeviceRevoke []func(ctx context.Context, tx *store.Tx, deviceId uuid.UUID) error
+	deviceRevoked      []func(ctx context.Context, tx *store.Tx, deviceId uuid.UUID) error
+	userSuspended      []func(ctx context.Context, tx *store.Tx, userId uuid.UUID, reason RevokeReason) error
+	userUnsuspended    []func(ctx context.Context, tx *store.Tx, userId uuid.UUID) error
+	userDeleted        []func(ctx context.Context, tx *store.Tx, userId uuid.UUID, eraseContent bool) error
+	userErased         []func(ctx context.Context, tx *store.Tx, userId uuid.UUID) error
+	userCreated        []func(ctx context.Context, tx *store.Tx, userId, firstDeviceId uuid.UUID) error
+	notice             []func(ctx context.Context, tx *store.Tx, n Notice) error
+	passkeyDeleted     []func(ctx context.Context, tx *store.Tx, userId uuid.UUID, credId []byte) error
+	passkeyReset       []func(ctx context.Context, tx *store.Tx, userId, deviceId uuid.UUID) error
+	sealed             bool
 }
 
 // open は登録できるかを確かめる。
@@ -92,6 +96,22 @@ func (h *Hooks) open() {
 	if h.sealed {
 		panic("identity: 起動の後に hook を登録した")
 	}
+}
+
+// RegisterOnBeforeUserChange は停止・削除・抹消の始めの hook を足す（srv-rooms だけが登録する）。Users が users、devices、sessions
+// の行の錠の後、他の hook の前に呼ぶ。deviceIds は本人の全端末（全状態。識別子の順）。srv-rooms がそのトランザクションが触れ得る
+// 全部のトークの錠を識別子の順に取る（全体実装設計書 2.4、I-18）。
+func (h *Hooks) RegisterOnBeforeUserChange(fn func(ctx context.Context, tx *store.Tx, userId uuid.UUID, deviceIds []uuid.UUID) error) {
+	h.open()
+	h.beforeUserChange = append(h.beforeUserChange, fn)
+}
+
+// RegisterOnBeforeDeviceRevoke は端末の取り消しの始めの hook を足す（srv-rooms だけが登録する）。Devices.Revoke が devices と
+// sessions の行の錠の後、OnDeviceRevoked の前に呼ぶ。srv-rooms がその端末のトークと家族全員のトークの錠を識別子の順に取る
+// （全体実装設計書 2.4、I-18）。
+func (h *Hooks) RegisterOnBeforeDeviceRevoke(fn func(ctx context.Context, tx *store.Tx, deviceId uuid.UUID) error) {
+	h.open()
+	h.beforeDeviceRevoke = append(h.beforeDeviceRevoke, fn)
 }
 
 // RegisterOnDeviceRevoked は端末の取り消しの hook を足す（srv-keys の鍵の失効、srv-push の購読とメールボックスの削除）。
@@ -163,6 +183,9 @@ func (h *Hooks) Notify(ctx context.Context, tx *store.Tx, n Notice) error {
 // errNoNoticeHook は OnNotice の登録が無い（起動の組み立ての誤り）。
 var errNoNoticeHook = errors.New("identity: OnNotice の登録が無い")
 
+// errNoBeforeHook は OnBeforeUserChange か OnBeforeDeviceRevoke の登録が無い（トークの錠の順が守れない組み立て。I-18）。
+var errNoBeforeHook = errors.New("identity: OnBeforeUserChange か OnBeforeDeviceRevoke の登録が無い")
+
 // fire は登録の順に呼び、最初の誤りを返す。
 func fire[F any](fns []F, call func(F) error) error {
 	for _, fn := range fns {
@@ -171,6 +194,16 @@ func fire[F any](fns []F, call func(F) error) error {
 		}
 	}
 	return nil
+}
+
+func (h *Hooks) onBeforeUserChange(ctx context.Context, tx *store.Tx, userId uuid.UUID, deviceIds []uuid.UUID) error {
+	return fire(h.beforeUserChange, func(fn func(context.Context, *store.Tx, uuid.UUID, []uuid.UUID) error) error {
+		return fn(ctx, tx, userId, deviceIds)
+	})
+}
+
+func (h *Hooks) onBeforeDeviceRevoke(ctx context.Context, tx *store.Tx, deviceId uuid.UUID) error {
+	return fire(h.beforeDeviceRevoke, func(fn func(context.Context, *store.Tx, uuid.UUID) error) error { return fn(ctx, tx, deviceId) })
 }
 
 func (h *Hooks) onDeviceRevoked(ctx context.Context, tx *store.Tx, deviceId uuid.UUID) error {

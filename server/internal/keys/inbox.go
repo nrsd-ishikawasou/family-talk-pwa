@@ -114,8 +114,8 @@ func (i *Inbox) notifyStickerRemove(ctx context.Context, tx *store.Tx, from, to 
 		return err
 	}
 	return i.d.Identity.Hooks.Notify(ctx, tx, identity.Notice{Kind: noticeStickerRemove, Key: from.String() + ":" + to.String(),
-		Audience: identity.Audience{Kind: identity.AudienceSelf, UserId: &to},
-		Params:   map[string]any{"user_id": from.String(), "name": usr.DisplayName}})
+		Audiences: []identity.Audience{{Kind: identity.AudienceSelf, UserId: &to}},
+		Params:    map[string]any{"user_id": from.String(), "name": usr.DisplayName}})
 }
 
 // reachable は宛先の端末の鍵の登録と状態を確かめる（無いか取り消し済み・期限切れなら KEY-001）。

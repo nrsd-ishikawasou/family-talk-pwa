@@ -163,7 +163,7 @@ classDiagram
 |Session|`+onExpiresHeader(t)`|7 日前で expiring にする（静かな作り直しは web-ui が WebAuthn を呼ぶ：web-core は状態だけ）|
 |Session|`+onRevoked(reason)`|session.revoked で revoked にする。Db の消去は持ち主（web-sync、web-crypto）に通知|
 |Session|`+wsToken() Promise~string~`|POST /auth/ws-token|
-|Startup|`+run() Promise~AppState~`|次の順に確かめて AppState を決める：/health、/version（NET-006 の判定、サーバーが古い）、Session.load、Keys の有無（web-crypto）、leaf の有無（web-sync）。失敗は「サーバーに届かない」（読める範囲）|
+|Startup|`+run() Promise~AppState~`|次の順に確かめて AppState を決める：/health、/version（NET-006 の判定、サーバーが古い）、Session.load、端末の鍵の有無と読めるか（web-crypto `DeviceKeys.load`。`SHELL-004` なら web-shell `Persist.onStorageLost` を呼び、購読の解除と保存の消去の後にログイン前へ。第12章 5.3）、鍵バンドルの有無、leaf の有無（web-sync）。失敗は「サーバーに届かない」（読める範囲）|
 |WsClient|`+connect() Promise`|wss://&lt;origin&gt;/api/v1/ws に接続し、auth{token}（5 秒以内）を送り、ready{pos} を受けて Sync.onReady(pos) を呼ぶ|
 |WsClient|`+send(frame)`|typing、ping|
 |WsClient|`+onFrame(fn)`|pos つきは Sync.ingest、room.typing は Rooms、bye は再接続の待ち（retry_after）|
@@ -214,6 +214,6 @@ classDiagram
 
 |記録|形|欄|由来|
 |---|---|---|---|
-|IndexedDB `settings`|key-value|`persist_granted bool`、`persist_asked_at`、`app_lock {mode, timeout, pin_hash?, failures}`（web-shell が意味を持つ）、`font_scale`、`theme`、`reduce_motion`、`cache_limit_pct`、`maps_cache_mb`、`me_settings`（`/me/settings` のコピー）、`tz`、`last_version_seen`|[第10章 8 設定の分類と項目（DD-10-4）](../../../../docs/jp/design/10_基本設計書_画面.md#8-設定の分類と項目dd-10-4)、[第8章 3.4 保存（DD-8-4）](../../../../docs/jp/design/08_基本設計書_iPhoneとPCのシェル.md#34-保存dd-8-4)|
+|IndexedDB `settings`|key-value|`persist_granted bool`、`persist_asked_at`、`app_lock {mode, timeout, pin_hash?, failures}`（web-shell が意味を持つ）、`font_scale`、`theme`、`reduce_motion`、`cache_limit_pct`、`maps_cache_mb`、`me_settings`（`/me/settings` のコピー）、`tz`、`last_version_seen`、`key_loss {at, prev_device_id, code}`（端末の鍵が読めずに保存を消した記録。web-shell `Persist.onStorageLost` が書き、承認の後に前の端末を取り消したら消す。第12章 5.3、第3章 5.2）|[第10章 8 設定の分類と項目（DD-10-4）](../../../../docs/jp/design/10_基本設計書_画面.md#8-設定の分類と項目dd-10-4)、[第8章 3.4 保存（DD-8-4）](../../../../docs/jp/design/08_基本設計書_iPhoneとPCのシェル.md#34-保存dd-8-4)|
 |IndexedDB `sync`|key-value|`pos int64`、`last_ready_at`、`full_resync_needed bool`、`server_version`|[第8章 3.4 保存（DD-8-4）](../../../../docs/jp/design/08_基本設計書_iPhoneとPCのシェル.md#34-保存dd-8-4)、[第2章 6.3 接続の規則](../../../../docs/jp/design/02_基本設計書_境界.md#63-接続の規則)|
 |`AppError` の文言|`err.<code>.what`、`err.<code>.next`、`err.unknown.*`|web-ui の `errors.json`（P-8。第10章 9.2 から生成）|[第10章 9.2 エラーの文言のエラーコード表（第2章 9.2 の `code` に対応する文。例）](../../../../docs/jp/design/10_基本設計書_画面.md#92-エラーの文言第2章-92-のエラーコード表の全部の番号)|

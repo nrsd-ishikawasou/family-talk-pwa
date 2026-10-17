@@ -276,7 +276,7 @@ classDiagram
 |StickerRequests|`+sent() [StickerRequest]`|出した求めの一覧（web-ui の「削除の求め」）|
 |StickerRequests|`+received() [StickerRequest]`|受けた求めの一覧（求めた人、pack_id、sticker_id、requested_at）|
 |Members|`+onChange(roomId, payload)`|room.member（added、removed、left、pending_add、pending_remove）を Rooms の構成員に反映。device_id 付きは構成員の一覧を変えず Mls.takeover へ（pending_remove は端末の取り消し・削除・休眠・退出・外し。引き継いだ端末が Mls.removeDevices で Remove の Commit。自分の端末の分は自分では解けない）。user_id が自分で change が removed か left なら、そのトークを一覧から外し、Events.deleteRoomLocal、web-crypto GroupStore の破棄、Decrypt の待ちの破棄を行う（外し・退出・グループの削除のどれでも同じ扱い。第12章 9）。その後にそのトークの Welcome が inbox に届いても捨てる（`/mls/epoch` が ROOM-001 か ROOM-002）。SystemEvent の表示は Events|
-|Scheduled|`+create(roomId, sendAt, content) Promise`|現在の epoch で暗号化して POST /rooms/{id}/scheduled|
+|Scheduled|`+create(roomId, sendAt, content) Promise`|現在の epoch で暗号化して POST /rooms/{id}/scheduled。付ける関係は返信だけ（編集の入力とリアクションからは呼ばれない。第4章 5.8、第10章 5.2。サーバーは予約の時に ROOM-012・ROOM-013 で守る）|
 |Scheduled|`+onEpochAdvanced(roomId)`|自分の予約が古い epoch なら作り直す（次にオンラインの時）|
 |Reminders|`+onEventSaved(roomId, event)`|自分の端末が `ft.content.event/1` を作った・変えた・取り消した時：前の予約を `Scheduled.cancel`、`remind_before` の値ごとに `Scheduled.create`（`ft.content.reminder/1`）。受け取りは通常のトークのイベントと通知（第4章 5.8。端末の中の予約は持たない）|
 |Notices|`+onNotice(payload)`|notice のイベントを web-ui の知らせの一覧（IndexedDB notices）に置く。管理者向けは管理者だけ|

@@ -245,9 +245,12 @@ func TestSetChildAndClearExpiresOpenApprovals(t *testing.T) {
 	if !e.isChild(x.id) || !slices.Equal(e.notices.to(noticeChildFlagSet), []string{"self:" + x.id.String(), "guardians:" + x.id.String()}) {
 		t.Fatalf("区分を付けた知らせが違う: %v", e.notices.to(noticeChildFlagSet))
 	}
-	// 本人宛てと保護者宛ては同じ事象で、鍵は同じ（構成員の識別子。第7章 9）。
+	// 本人宛てと保護者宛ては同じ事象で、1 回の発行に宛先を 2 つ並べる（鍵は構成員の識別子。第7章 9、I-17）。
 	if k := e.notices.keys(noticeChildFlagSet); !slices.Equal(k, []string{x.id.String(), x.id.String()}) {
 		t.Fatalf("child_flag_set の鍵: %v", k)
+	}
+	if c := e.notices.calls(noticeChildFlagSet); len(c) != 1 || len(c[0]) != 2 {
+		t.Fatalf("child_flag_set が 1 回の発行で本人と保護者へでない: %v", c)
 	}
 	e.must(e.tx(func(tx *store.Tx) error { return e.id.Guardians.Set(e.ctx, tx, x.id, []uuid.UUID{admin.id}, admin.id) }))
 	e.wantCode(e.tx(func(tx *store.Tx) error { _, err := e.id.Users.RequestErase(e.ctx, tx, x.id); return err }), cgen.MEM006)
@@ -276,6 +279,9 @@ func TestSetChildAndClearExpiresOpenApprovals(t *testing.T) {
 	}
 	if got := e.notices.to(noticeChildFlagCleared); !slices.Equal(got, []string{"self:" + x.id.String(), "self:" + admin.id.String()}) {
 		t.Fatalf("区分を外した知らせが本人と消す前の保護者へ出ない: %v", got)
+	}
+	if c := e.notices.calls(noticeChildFlagCleared); len(c) != 1 {
+		t.Fatalf("child_flag_cleared が 1 回の発行でない: %v", c)
 	}
 	e.must(e.tx(func(tx *store.Tx) error { return e.id.Users.SetChild(e.ctx, tx, x.id, false, admin.id) })) // 同じ値は何もしない
 	if len(e.notices.of(noticeChildFlagCleared)) != 2 {
@@ -341,6 +347,9 @@ func TestBirthdaysAndAgeTransitions(t *testing.T) {
 	if got := e.notices.to(noticeChildRelaxed16); !slices.Equal(got, []string{"self:" + c2.id.String(), "guardians:" + c2.id.String()}) {
 		t.Fatalf("child_relaxed_16 が本人と保護者へ出ない: %v", got)
 	}
+	if c := e.notices.calls(noticeChildRelaxed16); len(c) != 1 {
+		t.Fatalf("child_relaxed_16 が 1 回の発行でない: %v", c)
+	}
 	e.must(setBirthday(c2, b16))
 	if len(e.notices.of(noticeChildRelaxed16)) != 2 {
 		t.Fatal("同じ日の 2 回目に緩和を繰り返した")
@@ -378,6 +387,9 @@ func TestBirthdaysAndAgeTransitions(t *testing.T) {
 	}
 	if got := e.notices.to(noticeChildReleased18); !slices.Equal(got, []string{"self:" + c4.id.String(), "self:" + g.id.String()}) {
 		t.Fatalf("child_released_18 が本人と消す前の保護者へ出ない: %v", got)
+	}
+	if c := e.notices.calls(noticeChildReleased18); len(c) != 1 {
+		t.Fatalf("child_released_18 が 1 回の発行でない: %v", c)
 	}
 	if tr, _ := e.id.Users.ChildTransitions(e.ctx, e.clk.Now()); len(tr) != 0 {
 		t.Fatalf("同じ日の 2 回目に解除を繰り返した: %v", tr)
@@ -429,6 +441,9 @@ func TestGuardiansSetSettingsAndRules(t *testing.T) {
 	if !slices.Equal(got, want) {
 		t.Fatalf("guardians_changed が子と新旧の保護者へ 1 回ずつでない: %v", got)
 	}
+	if c := e.notices.calls(noticeGuardiansChanged); len(c) != 1 || !slices.Equal(c[0], want) {
+		t.Fatalf("guardians_changed が 1 回の発行で子と新旧の保護者へでない: %v", c)
+	}
 	if names := e.notices.of(noticeGuardiansChanged)[0].params["guardian_names"].([]string); !slices.Equal(names, []string{"母", "父"}) {
 		t.Fatalf("guardian_names が新しい保護者の名前でない: %v", names)
 	}
@@ -436,6 +451,9 @@ func TestGuardiansSetSettingsAndRules(t *testing.T) {
 	e.putSettings(kid.id, g1.id, gen.FtSettingsGuardian1{AllowInvites: &allow})
 	if got := e.notices.to(noticeGuardianSettings); !slices.Equal(got, []string{"self:" + kid.id.String(), "self:" + g2.id.String()}) {
 		t.Fatalf("guardian_settings_changed が子と他の保護者へ出ない: %v", got)
+	}
+	if c := e.notices.calls(noticeGuardianSettings); len(c) != 1 {
+		t.Fatalf("guardian_settings_changed が 1 回の発行でない: %v", c)
 	}
 	me := e.id.Apis().Me
 	_, err := me.GetChildControls(e.as(admin), gen.GetChildControlsRequestObject{Id: kid.id.String()})
@@ -509,8 +527,9 @@ func TestChildDeviceNeedsGuardianApproval(t *testing.T) {
 	if ev := e.wantCode(flow(false), cgen.AUTH005); ev.Params["state"] != qrAccessDenied || ev.Retryable {
 		t.Fatalf("保護者が断った後の poll が access_denied（再試行不可）でない: %+v", ev)
 	}
-	if got := e.notices.of(noticeNewDevice); got[len(got)-1].audience != AudienceGuardians {
-		t.Fatalf("子の新しい端末の new_device が保護者へ出ない: %+v", got[len(got)-1])
+	// 子の新しい端末の new_device は 1 回の発行で本人と保護者へ（第7章 9、I-17）。
+	if c := e.notices.calls(noticeNewDevice); !slices.Equal(c[len(c)-1], []string{"self:" + kid.id.String(), "guardians:" + kid.id.String()}) {
+		t.Fatalf("子の新しい端末の new_device が 1 回の発行で本人と保護者へでない: %v", c[len(c)-1])
 	}
 }
 
@@ -714,5 +733,153 @@ func TestReauthRequiredRoutes(t *testing.T) {
 		if err := call(); codeOf(err) != cgen.AUTH006 {
 			t.Fatalf("%s が AUTH-006 でない: %v", name, err)
 		}
+	}
+}
+
+// R: R-1-6-2
+// トークの錠の和を取らせる hook は他の hook の前に 1 回（全体実装設計書 2.4、I-18。T-L1-09）。停止・削除（通常から、停止中から）・
+// 抹消は OnBeforeUserChange を本人の全端末（取り消し済みを含む全状態。識別子の順）で他の hook の前に 1 回呼ぶ。端末の取り消しは
+// OnBeforeDeviceRevoke を OnDeviceRevoked の前に呼び、未承認の期限切れでは呼ばない。
+func TestBeforeHooksComeFirst(t *testing.T) {
+	e := newEnv(t)
+	admin := e.setupAdmin("花子")
+	// seq は構成員 m とその端末に関わる hook の種類を呼ばれた順に返す（参加の created は除く）。
+	seq := func(m *member, devs ...uuid.UUID) []string {
+		keys := []string{m.id.String()}
+		for _, d := range devs {
+			keys = append(keys, d.String())
+		}
+		var out []string
+		for _, r := range e.hooks.find("") {
+			for _, k := range keys {
+				if kind, _, _ := strings.Cut(r, ":"); strings.Contains(r, k) {
+					if kind != "created" {
+						out = append(out, kind)
+					}
+					break
+				}
+			}
+		}
+		return out
+	}
+	// withRevoked は端末を 1 台足して取り消し、本人の全端末を識別子の順に返す。
+	withRevoked := func(m *member) []uuid.UUID {
+		var d Device
+		e.must(e.tx(func(tx *store.Tx) error {
+			var err error
+			if d, err = e.id.Devices.Register(e.ctx, tx, m.id, PlatformPc, "古いパソコン"); err != nil {
+				return err
+			}
+			return e.id.Devices.Revoke(e.ctx, tx, d.Id, m.id, false)
+		}))
+		devs := []uuid.UUID{m.device, d.Id}
+		slices.SortFunc(devs, func(a, b uuid.UUID) int { return bytes.Compare(a[:], b[:]) })
+		return devs
+	}
+	want := func(name string, got, want []string) {
+		t.Helper()
+		if !slices.Equal(got, want) {
+			t.Fatalf("%s の hook の順が違う: %v（期待 %v）", name, got, want)
+		}
+	}
+	wantDevs := func(name string, m *member, devs []uuid.UUID) {
+		t.Helper()
+		ds := make([]string, len(devs))
+		for i, d := range devs {
+			ds[i] = d.String()
+		}
+		rows := e.hooks.find("before_user_change:" + m.id.String() + ":")
+		if len(rows) != 1 || rows[0] != "before_user_change:"+m.id.String()+":"+strings.Join(ds, ",") {
+			t.Fatalf("%s の OnBeforeUserChange の端末が全状態の識別子の順でない: %v（期待 %v）", name, rows, ds)
+		}
+	}
+
+	m := e.join(admin, "太郎", nil)
+	devs := withRevoked(m)
+	want("端末の取り消し", seq(m, devs...), []string{"before_device_revoke", "device_revoked"})
+	e.must(e.tx(func(tx *store.Tx) error { return e.id.Users.Suspend(e.ctx, tx, m.id, admin.id, "") }))
+	want("停止", seq(m, devs...)[2:], []string{"before_user_change", "suspended"})
+	wantDevs("停止", m, devs)
+
+	d := e.join(admin, "次郎", nil)
+	ddevs := withRevoked(d)
+	e.must(e.tx(func(tx *store.Tx) error { return e.id.Users.Delete(e.ctx, tx, d.id, admin.id, false) }))
+	want("通常からの削除", seq(d, ddevs...)[2:], []string{"before_user_change", "suspended", "deleted"})
+	wantDevs("通常からの削除", d, ddevs)
+
+	e.must(e.tx(func(tx *store.Tx) error { return e.id.Users.Delete(e.ctx, tx, m.id, admin.id, true) }))
+	want("停止中からの削除", seq(m, devs...)[2:], []string{"before_user_change", "suspended", "before_user_change", "deleted"})
+	if n := len(e.hooks.find("before_user_change:" + m.id.String() + ":")); n != 2 {
+		t.Fatalf("停止と停止中からの削除で OnBeforeUserChange が 1 回ずつでない: %d", n)
+	}
+
+	r := e.join(admin, "三郎", nil)
+	rdevs := withRevoked(r)
+	e.must(e.tx(func(tx *store.Tx) error { _, err := e.id.Users.RequestErase(e.ctx, tx, r.id); return err }))
+	e.clk.Advance(eraseGrace + time.Minute)
+	e.must(e.tx(func(tx *store.Tx) error { return e.id.Users.Erase(e.ctx, tx, r.id) }))
+	want("抹消", seq(r, rdevs...)[2:], []string{"before_user_change", "before_device_revoke", "device_revoked", "erased"})
+	wantDevs("抹消", r, rdevs)
+
+	var fresh Device
+	e.must(e.tx(func(tx *store.Tx) error {
+		var err error
+		fresh, err = e.id.Devices.Register(e.ctx, tx, admin.id, PlatformPc, "新しいパソコン")
+		return err
+	}))
+	e.clk.Advance(8 * 24 * time.Hour)
+	_, err := e.id.Devices.ExpireUnapproved(e.ctx, e.clk.Now().Add(-7*24*time.Hour))
+	e.must(err)
+	if e.hooks.count("device_revoked:"+fresh.Id.String()) != 1 || e.hooks.count("before_device_revoke:"+fresh.Id.String()) != 0 {
+		t.Fatalf("未承認の期限切れで OnDeviceRevoked が 1 回、OnBeforeDeviceRevoke が 0 回でない: %v", e.hooks.find(""))
+	}
+}
+
+// R: R-1-6-2
+// Users.LockShared（全体実装設計書 2.4、I-18。T-L1-03）：識別子の順に返し（重なりは 1 回）、無い識別子は MEM-001。停止が users の
+// 行の錠を持つ間は待ち、停止のコミットの後の状態（suspended）を返す。
+func TestUsersLockShared(t *testing.T) {
+	e := newEnv(t)
+	admin := e.setupAdmin("花子")
+	b := e.join(admin, "太郎", nil)
+	var got []User
+	e.must(e.tx(func(tx *store.Tx) error {
+		var err error
+		got, err = e.id.Users.LockShared(e.ctx, tx, []uuid.UUID{b.id, admin.id, b.id})
+		return err
+	}))
+	want := []uuid.UUID{admin.id, b.id}
+	slices.SortFunc(want, func(x, y uuid.UUID) int { return bytes.Compare(x[:], y[:]) })
+	if len(got) != 2 || got[0].Id != want[0] || got[1].Id != want[1] {
+		t.Fatalf("識別子の順の 2 人でない: %+v", got)
+	}
+	e.wantCode(e.tx(func(tx *store.Tx) error {
+		_, err := e.id.Users.LockShared(e.ctx, tx, []uuid.UUID{b.id, uuid.Must(uuid.NewV7())})
+		return err
+	}), cgen.MEM001)
+	hold, err := e.pool.Begin(e.ctx)
+	e.must(err)
+	t.Cleanup(func() { hold.Rollback(context.Background()) })
+	e.must(e.id.Users.Suspend(e.ctx, hold, b.id, admin.id, ""))
+	done := make(chan []User, 1)
+	go func() {
+		var us []User
+		_ = e.tx(func(tx *store.Tx) error {
+			var err error
+			us, err = e.id.Users.LockShared(e.ctx, tx, []uuid.UUID{b.id})
+			return err
+		})
+		done <- us
+	}()
+	time.Sleep(300 * time.Millisecond)
+	select {
+	case us := <-done:
+		t.Fatalf("停止が users の行を持つ間に待たずに返った: %+v", us)
+	default:
+	}
+	e.must(hold.Commit(e.ctx))
+	us := within(t, 10*time.Second, func() []User { return <-done })
+	if len(us) != 1 || us[0].State != UserSuspended {
+		t.Fatalf("停止の後の状態を返さない: %+v", us)
 	}
 }

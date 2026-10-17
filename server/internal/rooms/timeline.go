@@ -451,7 +451,8 @@ WHERE room_id = $2 AND sender_id = $1 AND schema = 'ft.event.mls/1' AND redacted
 // 件まで処理する（I-16、I-10）。送り残しを錠なしで読んでトークを知り、トークごとに RoomLock の後にその行を FOR UPDATE で取り直す
 // （錠の順は rooms が先。読めない行は他の処理が消した物で出さない）。トークが無いか削除済みなら行を消すだけ（受け手が残らない）。
 // 他は各イベントに取消のイベント（sender は本人、端末は無し、by は本人）を active の構成員へ出し、行を消す。最後に Feed.Flush。
-// Notifier は呼ばず、last_event_at は進めない。戻りは取った行の数（0 なら終わり）。
+// Notifier は呼ばず、last_event_at は進めない。戻りは錠なしで読んだ行の数（0 なら終わり。読んだ行が全部他で消えていても 0 にしない：
+// limit の外の送り残しを残して終わらない）。
 func (t *Timeline) FanoutRedactions(ctx context.Context, userId uuid.UUID, limit int) (int, error) {
 	n := 0
 	err := t.d.Pool.InTx(ctx, func(tx *store.Tx) error {
@@ -476,6 +477,9 @@ func (t *Timeline) FanoutRedactions(ctx context.Context, userId uuid.UUID, limit
 		if err := rows.Err(); err != nil {
 			return wrap(err)
 		}
+		for _, ids := range byRoom {
+			n += len(ids)
+		}
 		now := t.d.now()
 		for _, roomId := range order {
 			room, ok, err := t.d.lockRoomAny(ctx, tx, roomId)
@@ -487,7 +491,6 @@ ORDER BY event_id FOR UPDATE`, userId, roomId, byRoom[roomId])
 			if err != nil {
 				return err
 			}
-			n += len(got)
 			if ok && room.State != RoomDeleted {
 				active, err := t.members.Of(ctx, tx, roomId)
 				if err != nil {
@@ -681,10 +684,10 @@ func (t *Timeline) Export(ctx context.Context, p boundary.Principal, roomId uuid
 // PostScheduled は srv-worker ScheduledSendHandler（仕事の payload は scheduled_id）から、予約送信を送る（第4章 5.8、第12章 5.7）。
 // 送らなかった時の戻りは空の Posted と nil。1. 予約の行を錠なしで読みトークを知る（無ければ空）。2. RoomLock の後にトークを読む
 // （無いか削除済みなら空：予約は削除の時に cancelled 済み）。3. 予約の行を FOR UPDATE、pending でなければ空（同じ仕事の 2 度目。
-// I-10）。4. 送信者が active でなければ cancelled（abandon）。5. relates_to の確かめ（Post と同じ）に当たらなければ同じく cancelled
-// （送る時の誤りは返す相手がいない）。6. ts は実際に送った時刻、予約の時刻は scheduled_at（ts を予約の時刻にすると遅れた予約が
-// 履歴の過去に入る）。CheckSender は呼ばない（epoch が古くてよい）。添付は MediaBinder.Rebind（確かめは予約の時に済み）。
-// 7. Post の 7〜8 と同じ。8. sent と room.scheduled{sent}。9. Feed.Flush。
+// I-10）。4. 送信者が active でなければ cancelled（abandon）。relates_to は確かめない（予約の時に Scheduled.Create が確かめ済み。
+// 対象はトークを移らず、送る前に取り消されていても返信は送る。第4章 5.8）。5. ts は実際に送った時刻、予約の時刻は scheduled_at
+// （ts を予約の時刻にすると遅れた予約が履歴の過去に入る）。CheckSender は呼ばない（epoch が古くてよい）。添付は MediaBinder.Rebind
+// （確かめは予約の時に済み）。6. Post の 7〜8 と同じ。7. sent と room.scheduled{sent}。8. Feed.Flush。
 func (t *Timeline) PostScheduled(ctx context.Context, tx *store.Tx, scheduledId uuid.UUID) (Posted, error) {
 	var roomId uuid.UUID
 	err := tx.QueryRow(ctx, `SELECT room_id FROM scheduled_events WHERE id = $1`, scheduledId).Scan(&roomId)
@@ -712,13 +715,6 @@ func (t *Timeline) PostScheduled(ctx context.Context, tx *store.Tx, scheduledId 
 	now := t.d.now()
 	if st != MemberActive {
 		return Posted{}, t.abandonScheduled(ctx, tx, s)
-	}
-	if err := t.checkRelation(ctx, tx, roomId, s.UserId, s.Body, now); err != nil {
-		var e *fault.Event
-		if errors.As(err, &e) {
-			return Posted{}, t.abandonScheduled(ctx, tx, s)
-		}
-		return Posted{}, err
 	}
 	e, err := t.newMls(roomId, s.UserId, s.DeviceId, s.Body, now)
 	if err != nil {

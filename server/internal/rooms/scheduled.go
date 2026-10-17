@@ -73,9 +73,10 @@ func (s ScheduledEvent) view() ScheduledView {
 
 // Create は POST /rooms/{id}/scheduled（第4章 5.8、第12章 5.7）。1. RoomLock（ROOM-001）、本人が active でなければ ROOM-002。
 // 2. 過去か 30 日（room.schedule_horizon）より先は ROOM-010。大きさ 256 KiB、暗号文の形、group_id がこのトークの物（20 バイトで先頭
-// 16 バイトがトークの識別子）でなければ ROOM-005（epoch と世代は見ない：送る時に古くてよい）。3. 添付があれば
-// MediaBinder.BindScheduled（MEDIA-002、MEDIA-005。予約の時に誤りを返す）。4. Jobs.Enqueue(scheduled_send、run_at = sendAt、重複の鍵
-// scheduled_send:<予約の識別子>)、行（device_id は要求の端末）、room.scheduled{pending} を本人へ。
+// 16 バイトがトークの識別子）でなければ ROOM-005（epoch と世代は見ない：送る時に古くてよい）。3. relates_to は予約の時に確かめる
+// （checkRelation。送る時には確かめない）。4. 添付があれば MediaBinder.BindScheduled（MEDIA-002、MEDIA-005。予約の時に誤りを返す）。
+// 5. Jobs.Enqueue(scheduled_send、run_at = sendAt、重複の鍵 scheduled_send:<予約の識別子>)、行（device_id は要求の端末）、
+// room.scheduled{pending} を本人へ。
 func (s *Scheduled) Create(ctx context.Context, tx *store.Tx, p boundary.Principal, roomId uuid.UUID, sendAt time.Time, body gen.FtEventMls1) (ScheduledView, error) {
 	me, device, err := self(p)
 	if err != nil {
@@ -104,6 +105,9 @@ func (s *Scheduled) Create(ctx context.Context, tx *store.Tx, p boundary.Princip
 	gid, err := base64.RawURLEncoding.DecodeString(body.GroupId)
 	if err != nil || len(gid) != 20 || !bytes.Equal(gid[:16], roomId.Bytes()) {
 		return ScheduledView{}, ev(cgen.ROOM005)
+	}
+	if err := s.checkRelation(ctx, tx, roomId, me, body, now); err != nil {
+		return ScheduledView{}, err
 	}
 	id := s.d.Ids.NewV7()
 	ids, err := attachmentIds(body)
@@ -134,17 +138,35 @@ VALUES ($1, $2, $3, $4, $5, $6, 'pending', $7, $8)`, id, roomId, me, device, sen
 	return row.view(), nil
 }
 
+// checkRelation は予約送信の relates_to の確かめ（第4章 5.8）。付けられる関係は返信（reply。thread も同じ）だけで、編集（replace）と
+// リアクション・票・出欠（annotation）は ROOM-013（編集の 15 分の期限は予約の時刻へ持ち越せない）。返信は Timeline.checkRelation と同じ
+// （対象が別のトークなら ROOM-012、無ければ受け付ける）。
+func (s *Scheduled) checkRelation(ctx context.Context, q store.Querier, roomId, me uuid.UUID, body gen.FtEventMls1, now time.Time) error {
+	if body.RelatesTo == nil {
+		return nil
+	}
+	switch body.RelatesTo.RelType {
+	case gen.FtEventMls1RelatesToRelTypeReplace, gen.FtEventMls1RelatesToRelTypeAnnotation:
+		return ev(cgen.ROOM013)
+	}
+	return s.timeline.checkRelation(ctx, q, roomId, me, body, now)
+}
+
 // scheduledJobKey は予約送信の仕事の重複の鍵（取り消しは同じ鍵で消す）。
 func scheduledJobKey(id uuid.UUID) string {
 	return "scheduled_send:" + id.String()
 }
 
-// Cancel は DELETE /rooms/{id}/scheduled/{sid}（規則 own_scheduled：他人の物と無い物は ROOM-007。在ることを漏らさない）。pending で
-// なければ何もしない。cancelled、Jobs.Cancel、MediaBinder.UnbindScheduled（参照が 0 なら 7 日の猶予の後に消える。I-5）、
+// Cancel は DELETE /rooms/{id}/scheduled/{sid}（規則 own_scheduled：他人の物と無い物は ROOM-007。在ることを漏らさない）。RoomLock
+// （ROOM-001。錠の順は rooms が先：トークの削除が RoomLock の後に媒体の参照と予約の行を取るので、予約の行を先に取ると逆向きに待ち合う）。
+// pending でなければ何もしない。cancelled、Jobs.Cancel、MediaBinder.UnbindScheduled（参照が 0 なら 7 日の猶予の後に消える。I-5）、
 // room.scheduled{cancelled} を本人へ。
 func (s *Scheduled) Cancel(ctx context.Context, tx *store.Tx, p boundary.Principal, roomId, id uuid.UUID) error {
 	me, _, err := self(p)
 	if err != nil {
+		return err
+	}
+	if _, err := s.d.lockRoom(ctx, tx, roomId); err != nil {
 		return err
 	}
 	row, err := scanScheduled(tx.QueryRow(ctx, `SELECT `+scheduledCols+` FROM scheduled_events WHERE id = $1 AND room_id = $2 AND user_id = $3 FOR UPDATE`,

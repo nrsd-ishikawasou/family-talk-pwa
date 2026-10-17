@@ -52,8 +52,10 @@ func (t *Typing) Set(userId, roomId uuid.UUID, typing bool, timeout time.Duratio
 	if typing {
 		e := typingEntry{gen: room[userId].gen + 1, until: t.d.now().Add(timeout)}
 		room[userId] = e
+		// 期限は Set の時から数える（goroutine の中で After を呼ぶと、走り出すまでの間だけ期限がずれる）。
+		expired := t.d.Clock.After(timeout)
 		go func() {
-			<-t.d.Clock.After(timeout)
+			<-expired
 			t.mu.Lock()
 			cur, ok := t.rooms[roomId][userId]
 			if !ok || cur.gen != e.gen {

@@ -49,34 +49,44 @@ func noticeKey(parts ...string) string {
 	return strings.Join(parts, ":")
 }
 
-// notifySelf は本人への知らせ。key は事象の鍵（noticeKey）。
+// selfOf は本人の宛先、guardiansOf は子の保護者の宛先。
+func selfOf(userId uuid.UUID) Audience { return Audience{Kind: AudienceSelf, UserId: &userId} }
+
+func guardiansOf(childId uuid.UUID) Audience {
+	return Audience{Kind: AudienceGuardians, UserId: &childId}
+}
+
+// notify は 1 つの事象の知らせを 1 回の OnNotice で宛先の全部へ渡す（第7章 9、全体実装設計書 I-17）。key は事象の鍵（noticeKey）。
+func (h *Hooks) notify(ctx context.Context, tx *store.Tx, kind, key string, params map[string]any, audiences ...Audience) error {
+	return h.onNotice(ctx, tx, Notice{Kind: kind, Key: key, Params: params, Audiences: audiences})
+}
+
+// notifySelf は本人への知らせ（宛先 1 つの省略形）。
 func (h *Hooks) notifySelf(ctx context.Context, tx *store.Tx, userId uuid.UUID, kind, key string, params map[string]any) error {
-	u := userId
-	return h.onNotice(ctx, tx, Notice{Kind: kind, Key: key, Params: params, Audience: Audience{Kind: AudienceSelf, UserId: &u}})
+	return h.notify(ctx, tx, kind, key, params, selfOf(userId))
 }
 
-// notifyAdmins は管理者への知らせ。
+// notifyAdmins は管理者への知らせ（宛先 1 つの省略形）。
 func (h *Hooks) notifyAdmins(ctx context.Context, tx *store.Tx, kind, key string, params map[string]any) error {
-	return h.onNotice(ctx, tx, Notice{Kind: kind, Key: key, Params: params, Audience: Audience{Kind: AudienceAdmins}})
+	return h.notify(ctx, tx, kind, key, params, Audience{Kind: AudienceAdmins})
 }
 
-// notifyGuardians は子の保護者への知らせ。
+// notifyGuardians は子の保護者への知らせ（宛先 1 つの省略形）。
 func (h *Hooks) notifyGuardians(ctx context.Context, tx *store.Tx, childId uuid.UUID, kind, key string, params map[string]any) error {
-	c := childId
-	return h.onNotice(ctx, tx, Notice{Kind: kind, Key: key, Params: params, Audience: Audience{Kind: AudienceGuardians, UserId: &c}})
+	return h.notify(ctx, tx, kind, key, params, guardiansOf(childId))
 }
 
-// notifyEach は構成員ごとに本人宛ての知らせを出す（宛先が保護者の一部や外れた保護者を含む時。同じ人には 1 回）。
-func (h *Hooks) notifyEach(ctx context.Context, tx *store.Tx, to []uuid.UUID, kind, key string, params map[string]any) error {
+// notifySelves は構成員の列を本人の宛先の列にして 1 回で渡す（新旧の保護者・他の保護者のように、srv-push が保護者の表から
+// 解けない宛先。第7章 9）。同じ人は渡す側でも 1 回にする。
+func (h *Hooks) notifySelves(ctx context.Context, tx *store.Tx, to []uuid.UUID, kind, key string, params map[string]any) error {
 	seen := map[uuid.UUID]bool{}
+	audiences := make([]Audience, 0, len(to))
 	for _, u := range to {
 		if seen[u] {
 			continue
 		}
 		seen[u] = true
-		if err := h.notifySelf(ctx, tx, u, kind, key, params); err != nil {
-			return err
-		}
+		audiences = append(audiences, selfOf(u))
 	}
-	return nil
+	return h.notify(ctx, tx, kind, key, params, audiences...)
 }

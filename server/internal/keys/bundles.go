@@ -465,7 +465,7 @@ func (s *Shares) Holders(ctx context.Context, q store.Querier, ownerUserId uuid.
 
 // Request は POST /me/recovery/request。承認済みか休眠の端末は KEY-002。本人の open の求めがあればそれを返す（冪等）。Holders が 2 人に
 // 満たなければ KEY-005（params.kind share）。無ければ 24 時間の求めを置き、recovery.request を Holders へ、知らせ recovery_requested を
-// srv-identity Hooks.Notify で Holders の各人へ（Audience self、UserId はその人。1 人に 1 回）。
+// srv-identity Hooks.Notify の 1 回で Holders の全員へ（宛先は Holders の各人の self の列。srv-push は断片の持ち主を解けない。第7章 9）。
 func (s *Shares) Request(ctx context.Context, tx *store.Tx, requesterDevice uuid.UUID) (RecoveryRequest, error) {
 	dv, err := s.d.Identity.Devices.Get(ctx, tx, requesterDevice)
 	if err != nil {
@@ -513,14 +513,16 @@ ON CONFLICT (user_id) WHERE state = 'open' DO NOTHING`, id, userId, requesterDev
 	if err := s.d.emit(tx, holders, "recovery.request", uuid.Nil, uuid.Nil, payload); err != nil {
 		return RecoveryRequest{}, err
 	}
+	to := make([]identity.Audience, 0, len(holders))
 	for _, h := range holders {
 		hid := h
-		n := identity.Notice{Kind: noticeRecoveryRequested, Key: id.String(), Audience: identity.Audience{Kind: identity.AudienceSelf, UserId: &hid},
-			Params: map[string]any{"request_id": id.String(), "user_id": userId.String(), "name": usr.DisplayName, "device_name": name,
-				"expires_at": expires.Format(time.RFC3339)}}
-		if err := s.d.Identity.Hooks.Notify(ctx, tx, n); err != nil {
-			return RecoveryRequest{}, err
-		}
+		to = append(to, identity.Audience{Kind: identity.AudienceSelf, UserId: &hid})
+	}
+	n := identity.Notice{Kind: noticeRecoveryRequested, Key: id.String(), Audiences: to,
+		Params: map[string]any{"request_id": id.String(), "user_id": userId.String(), "name": usr.DisplayName, "device_name": name,
+			"expires_at": expires.Format(time.RFC3339)}}
+	if err := s.d.Identity.Hooks.Notify(ctx, tx, n); err != nil {
+		return RecoveryRequest{}, err
 	}
 	return RecoveryRequest{RequestId: id.String(), ExpiresAt: expires}, nil
 }

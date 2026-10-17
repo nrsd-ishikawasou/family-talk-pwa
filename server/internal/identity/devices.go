@@ -74,13 +74,12 @@ func (v *Devices) Register(ctx context.Context, tx *store.Tx, userId uuid.UUID, 
 		return Device{}, wrap(err)
 	}
 	params := map[string]any{"user_id": userId.String(), "name": userName, "device_id": dv.Id.String(), "device_name": name, "platform": string(kind)}
-	if err := v.hooks.notifySelf(ctx, tx, userId, noticeNewDevice, noticeKey(dv.Id.String()), params); err != nil {
-		return Device{}, err
-	}
+	to := []Audience{selfOf(userId)}
 	if child {
-		if err := v.hooks.notifyGuardians(ctx, tx, userId, noticeNewDevice, noticeKey(dv.Id.String()), params); err != nil {
-			return Device{}, err
-		}
+		to = append(to, guardiansOf(userId))
+	}
+	if err := v.hooks.notify(ctx, tx, noticeNewDevice, noticeKey(dv.Id.String()), params, to...); err != nil {
+		return Device{}, err
 	}
 	return dv, nil
 }
@@ -281,15 +280,17 @@ func (v *Devices) Approve(ctx context.Context, tx *store.Tx, deviceId, by uuid.U
 	return v.d.emitDeviceChanged(ctx, tx, dv.UserId, deviceId, changeApproved, &by)
 }
 
-// UnapproveAllOfUser は停止で、承認済みと休眠の端末を未承認に戻す（取り消しではない。hook は呼ばない。第3章 8.1）。
+// UnapproveAllOfUser は停止で、承認済みと休眠の端末を未承認に戻す（取り消しではない。hook は呼ばない。第3章 8.1）。呼ぶ側
+// （Users.suspend）が本人の全端末の行を識別子の順に錠で取った後に呼ぶ。
 // device.changed は出さない（change の列挙に当たる値が無く、本人のセッションは同じトランザクションで失効し、家族は user.changed で知る）。
 func (v *Devices) UnapproveAllOfUser(ctx context.Context, tx *store.Tx, userId uuid.UUID) error {
 	_, err := tx.Exec(ctx, `UPDATE devices SET state = 'unapproved' WHERE user_id = $1 AND state IN ('approved', 'dormant')`, userId)
 	return wrap(err)
 }
 
-// Revoke は状態を revoked にし、Sessions.RevokeAllOfDevice(device_revoked)、hook OnDeviceRevoked、device.changed
-// （家族の全員）を行う。既に取り消し済み・期限切れなら何もしない。self は自分の端末（再認証なし、応答で Cookie を消す。第3章 4.5）。
+// Revoke は状態を revoked にし、Sessions.RevokeAllOfDevice(device_revoked)、hook OnBeforeDeviceRevoke、hook OnDeviceRevoked、
+// device.changed（家族の全員）を行う。既に取り消し済み・期限切れなら何もしない。self は自分の端末（再認証なし、応答で Cookie を消す。
+// 第3章 4.5）。
 func (v *Devices) Revoke(ctx context.Context, tx *store.Tx, deviceId, by uuid.UUID, self bool) error {
 	dv, err := v.get(ctx, tx, deviceId, true)
 	if err != nil {
@@ -302,6 +303,11 @@ func (v *Devices) Revoke(ctx context.Context, tx *store.Tx, deviceId, by uuid.UU
 		return wrap(err)
 	}
 	if err := v.sessions.RevokeAllOfDevice(ctx, tx, deviceId, RevokeDeviceRevoked); err != nil {
+		return err
+	}
+	// OnDeviceRevoked の前に、その端末のトークと家族全員のトークの錠を識別子の順に取らせる（管理者の取り消しの後の監査の記録が
+	// 家族全員のトークへ書く。全体実装設計書 2.4、I-18）。抹消の中の呼び出しは OnBeforeUserChange の和の中で待たない。
+	if err := v.hooks.onBeforeDeviceRevoke(ctx, tx, deviceId); err != nil {
 		return err
 	}
 	if err := v.hooks.onDeviceRevoked(ctx, tx, deviceId); err != nil {
@@ -339,6 +345,8 @@ func (v *Devices) Touch(ctx context.Context, tx *store.Tx, deviceId uuid.UUID, i
 // する（7 日。srv-worker）。停止で未承認に戻った端末（first_approved_at あり）は対象にしない（再開の後の自己承認を待つ。第3章 5.1、
 // 8.1）。そのセッションを失効（expired）させ、
 // hook OnDeviceRevoked で他のブロックの記録（鍵の登録、メールボックス、購読）を消す。自分のトランザクションで 1,000 台ずつ。
+// hook OnBeforeDeviceRevoke は呼ばない：承認されたことのない端末は MLS のグループに加えられず leaf も待ちも無いので、このトランザクション
+// は RoomLock を 1 つも取らない（全体実装設計書 2.4 の対象外）。
 func (v *Devices) ExpireUnapproved(ctx context.Context, olderThan time.Time) (int64, error) {
 	var total int64
 	for {

@@ -5,8 +5,8 @@
 // 基本設計書 第4章、第2章 5.5、6、11、12、第12章 5.2、5.7、9）。本文は暗号文のまま記録し、平文を持たない（I-1）。
 // MLS のグループの記録は srv-keys の Groups が持ち、本ブロックは /rooms/{id}/mls/* を受けて Groups を呼び、構成員の待ちを解く。
 // 予期した失敗はエラーコード表の *fault.Event、予期しない失敗は *fault.Fault を error で返す（全体実装設計書 2.7）。
-// 書き込みは呼ぶ側が渡す *store.Tx の中で行う（I-8）。feed への書き込みは store.Feed.Append だけで、Feed.Flush を自分で呼ぶのは
-// Timeline.Post だけ（応答の pos。全体実装設計書 2.4）。
+// 書き込みは呼ぶ側が渡す *store.Tx の中で行う（I-8）。feed への書き込みは store.Feed.Append で、Feed.Flush を自分で呼ぶのは
+// Timeline.Post（応答の pos）と、裏の処理の Timeline.PostScheduled・FanoutRedactions だけ（他は Tx.Commit が呼ぶ。全体実装設計書 2.4）。
 package rooms
 
 import (
@@ -231,7 +231,8 @@ const (
 )
 
 // Create は POST /rooms（第4章 4.1、DD-4-1）。memberIds は作成者を含めない。dm は 1 人で本人でない、group は 2 人以上。重なりと本人と
-// 人数の誤りは NET-001（path body/members）。人が無いか抹消済みは MEM-001、停止中か削除済みは MEM-002。dm は同じ 2 人の dm_key が
+// 人数の誤りは NET-001（path body/members）。memberIds の users の行を srv-identity Users.LockShared で識別子の順に共有の錠で読み、
+// 人が無いか抹消済みは MEM-001、停止中か削除済みは MEM-002。dm は同じ 2 人の dm_key が
 // あれば ROOM-004（params.room_id）。同時の 2 つの作成は ON CONFLICT で後の方が先のコミットを待ち、先の行を読んで ROOM-004
 // （第2章 11）。作成者は active、他は pending_add。Groups.Create（leaf 0 は作成者の端末。同じ tx）。room.settings と各構成員の
 // room.member（作成者は added、他は pending_add）を Audience へ。group は room_created。
@@ -253,11 +254,13 @@ func (r *Rooms) Create(ctx context.Context, tx *store.Tx, p boundary.Principal, 
 	if (kind == KindDm && len(memberIds) != 1) || (kind == KindGroup && len(memberIds) < 2) {
 		return RoomView{}, netError("body/members", "人数が種類に合わない")
 	}
-	for _, id := range memberIds {
-		usr, err := r.d.Identity.Users.Get(ctx, tx, id)
-		if err != nil {
-			return RoomView{}, err
-		}
+	// 入れる人の users の行を共有の錠で押さえ、読んだ状態で断る（新しいトークの行と RoomLock の前。停止・削除・抹消と直列にし、それらが
+	// 読んだトークの和を後から増やさない。全体実装設計書 2.4、I-18）。
+	users, err := r.d.Identity.Users.LockShared(ctx, tx, memberIds)
+	if err != nil {
+		return RoomView{}, err
+	}
+	for _, usr := range users {
 		switch usr.State {
 		case identity.UserErased:
 			return RoomView{}, ev(cgen.MEM001)
@@ -638,14 +641,82 @@ func (r *Rooms) MarkEmptyIfNoMembers(ctx context.Context, tx *store.Tx, roomId u
 	return wrap(err)
 }
 
-// Register は srv-identity の hook の 5 つに本ブロックの処理を登録する（組み立ての中で 1 回）。
+// Register は srv-identity の hook の 7 つに本ブロックの処理を登録する（組み立ての中で 1 回）。
 func (r *Rooms) Register(id *identity.Identity) {
 	h := id.Hooks
+	h.RegisterOnBeforeUserChange(r.onBeforeUserChange)
+	h.RegisterOnBeforeDeviceRevoke(r.onBeforeDeviceRevoke)
 	h.RegisterOnUserCreated(r.onUserCreated)
 	h.RegisterOnUserSuspended(r.onUserSuspended)
 	h.RegisterOnUserUnsuspended(r.onUserUnsuspended)
 	h.RegisterOnUserDeleted(r.onUserDeleted)
 	h.RegisterOnUserErased(r.onUserErased)
+}
+
+// LockAll は複数のトークの RoomLock を識別子の順に取る（重なりを除く。行の無いトークは飛ばす。削除済みは取る）。1 つのトランザクション
+// で 2 つ以上のトークの錠を取る処理の最初の 1 回（全体実装設計書 2.4、I-18）。本ブロックの hook OnBeforeUserChange・
+// OnBeforeDeviceRevoke と、srv-admin の空のグループの削除（消すトークと家族全員のトーク）が呼ぶ。
+func (r *Rooms) LockAll(ctx context.Context, tx *store.Tx, roomIds []uuid.UUID) error {
+	for _, id := range sortedIds(roomIds) {
+		if _, _, err := r.d.lockRoomAny(ctx, tx, id); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+// onBeforeUserChange は hook OnBeforeUserChange（停止・削除・抹消の始め。srv-identity が users、devices、sessions の行の錠の後、他の
+// hook の前に呼ぶ）：そのトランザクションが触れ得る全部のトークの和を識別子の順に取る。和は本人が active か pending_add のトーク
+// （外す対象）、本人の端末が leaf か待ちを持つトーク（srv-keys Groups.RoomsOfDevices。srv-keys の hook が取る集合）、本人が送った
+// ft.event.mls/1 で削除済みの印でない物のあるトーク（一括の取消。退出済みを含む）、家族全員のトーク（停止・削除・抹消の知らせと
+// 監査の記録）。以後の srv-keys・本ブロック・srv-push・srv-admin の RoomLock は全部この和の中で、2 度目なので待たない。和は増えない：
+// 構成員の追加とトークの作成は Users.LockShared、端末の leaf と待ちは Devices.LockShared で直列、送信は構成員のトークだけ
+// （全体実装設計書 2.4、I-18）。
+func (r *Rooms) onBeforeUserChange(ctx context.Context, tx *store.Tx, userId uuid.UUID, deviceIds []uuid.UUID) error {
+	ids, err := r.members.RoomsOf(ctx, tx, userId)
+	if err != nil {
+		return err
+	}
+	leafs, err := r.d.Keys.Groups.RoomsOfDevices(ctx, tx, deviceIds)
+	if err != nil {
+		return err
+	}
+	sent, err := scanUuids(ctx, tx, `SELECT DISTINCT room_id FROM events WHERE sender_id = $1 AND schema = 'ft.event.mls/1' AND redacted_at IS NULL`, userId)
+	if err != nil {
+		return err
+	}
+	ids = append(append(ids, leafs...), sent...)
+	if ids, err = r.withFamily(ctx, tx, ids); err != nil {
+		return err
+	}
+	return r.LockAll(ctx, tx, ids)
+}
+
+// onBeforeDeviceRevoke は hook OnBeforeDeviceRevoke（端末の取り消しの始め。devices と sessions の行の錠の後、OnDeviceRevoked の前）：
+// その端末が leaf か待ちを持つトーク（srv-keys Groups.RoomsOfDevices）と家族全員のトークの和を識別子の順に取る。家族全員のトークは
+// 管理者の取り消しの後の監査の記録が書く（本人の取り消しでも取る）。抹消の中の端末ごとの呼び出しは OnBeforeUserChange の和の中で
+// 待たない（全体実装設計書 2.4、I-18）。
+func (r *Rooms) onBeforeDeviceRevoke(ctx context.Context, tx *store.Tx, deviceId uuid.UUID) error {
+	ids, err := r.d.Keys.Groups.RoomsOfDevices(ctx, tx, []uuid.UUID{deviceId})
+	if err != nil {
+		return err
+	}
+	if ids, err = r.withFamily(ctx, tx, ids); err != nil {
+		return err
+	}
+	return r.LockAll(ctx, tx, ids)
+}
+
+// withFamily は ids に家族全員のトークを足す（設置の前で無ければ足さない）。
+func (r *Rooms) withFamily(ctx context.Context, tx *store.Tx, ids []uuid.UUID) ([]uuid.UUID, error) {
+	fam, err := r.family.Id(ctx, tx)
+	switch {
+	case isEvent(err, cgen.ROOM001):
+		return ids, nil
+	case err != nil:
+		return nil, err
+	}
+	return append(ids, fam), nil
 }
 
 // onUserCreated は hook OnUserCreated：家族全員のトークが無ければ CreateFamilyRoom（設置）、あれば Members.Add（参加。by 無し）。
@@ -685,7 +756,7 @@ func (r *Rooms) onUserUnsuspended(ctx context.Context, tx *store.Tx, userId uuid
 // onUserDeleted は hook OnUserDeleted：本人が active か pending_add のトーク（家族全員を含む）をトークの識別子の順に外す（サーバーの
 // 処理なので by は無く、left にしない。Members.removeByServer）。eraseContent なら本人の送ったイベントを一括の取消（Timeline.redactAllOf）。
 // 最後に家族全員のトークに member_deleted（外れた本人には届かない）。自分用メモは他の構成員がいないのでグループの記録が消え、
-// トークの行は残る（本文は既定で残す。第12章 9）。
+// トークの行は残る（本文は既定で残す。第12章 9）。トークの錠は hook OnBeforeUserChange で和として取り済み（全体実装設計書 2.4、I-18）。
 func (r *Rooms) onUserDeleted(ctx context.Context, tx *store.Tx, userId uuid.UUID, eraseContent bool) error {
 	if err := r.removeEverywhere(ctx, tx, userId); err != nil {
 		return err
@@ -699,7 +770,7 @@ func (r *Rooms) onUserDeleted(ctx context.Context, tx *store.Tx, userId uuid.UUI
 }
 
 // onUserErased は hook OnUserErased：本人の送ったイベントを一括の取消、まだ外れていないトークの構成員の行を外し、家族全員のトークに
-// member_erased（第12章 9）。
+// member_erased（第12章 9）。トークの錠は hook OnBeforeUserChange で和として取り済み（全体実装設計書 2.4、I-18）。
 func (r *Rooms) onUserErased(ctx context.Context, tx *store.Tx, userId uuid.UUID) error {
 	if err := r.timeline.redactAllOf(ctx, tx, userId); err != nil {
 		return err

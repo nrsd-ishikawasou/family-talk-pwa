@@ -230,6 +230,8 @@ classDiagram
 |MlsEngine|`+members(state) [LeafInfo]`|leaf index、credential（device_id、user_id）、sig pub|
 |CryptoProvider|`+engine() MlsEngine`|設定 or 試験で切り替え|
 |CryptoProvider|`+historicEngine() MlsEngine`|capabilities.historic を持つ方|
+|DeviceKeys|`+static create() Promise~DeviceKeys~`|端末の初回。3 つの CryptoKey を作り IndexedDB `keys` に置く。保存が `DataCloneError` で失敗したら（Apple 版 WebKit のキーチェーンのマスター鍵が無い。第12章 5.3）、作った物を捨てて `AppError`（`SHELL-006`）で失敗する。サーバーへの登録（web-sync の `PUT /me/devices/{id}/keys`）は保存が通った後に呼ぶ|
+|DeviceKeys|`+static load(db) Promise~Option~DeviceKeys~~`|IndexedDB `keys` から 3 つの CryptoKey を読む。行が無ければ None（新しい端末）。行があるのに CryptoKey が得られない、得られても使えない（`sign`・`deriveBits`・`unwrapKey` が失敗する）、端末鍵で `S_wrapped` か `local_storage_key_wrapped` を開けない時は、`AppError`（`SHELL-004`）で失敗する。受けた web-shell `Persist.onStorageLost` が購読を解除し保存を全部消して新しい端末として入り直す（第12章 5.3、DD-12-19）。読み戻した鍵が使えるかは、起動のたびに `sign` と `deriveBits` を 1 回ずつ呼んで確かめる（読めても使えない時が Apple 版 WebKit の失敗の形）|
 |DeviceKeys|`+sig CryptoKeyPair`|P-256 ECDSA、抽出不可（IndexedDB keys）|
 |DeviceKeys|`+kem CryptoKeyPair`|P-256 ECDH、抽出不可|
 |DeviceKeys|`+deviceKey CryptoKey`|AES-256-GCM、抽出不可。Android はシェルが包んだ物を JS ブリッジから（web-shell Platform.unwrapDeviceKey）|
@@ -329,3 +331,4 @@ classDiagram
 |回復コード|文字列|base32（RFC 4648、小文字なし）26 文字 + 検査 2 文字（CRC-16 の上位）を 4 文字 × 7 に区切る|[第12章 12 データの形式（本章が定めるもの）](../../../../docs/jp/design/12_基本設計書_データと暗号化.md#12-データの形式本章が定めるもの)|
 |カード|`fcard/1`|片の番号（1〜3）、しきい値 2、25 語（5 語 × 5 行）、検査語|[第12章 12 データの形式（本章が定めるもの）](../../../../docs/jp/design/12_基本設計書_データと暗号化.md#12-データの形式本章が定めるもの)、[第10章 10 語表（DD-10-9）](../../../../docs/jp/design/10_基本設計書_画面.md#10-語表dd-10-9)|
 |`fkb/1`、`fkb-history/1`、`fdev/1`、`fusr/1`、`ft.content.attachment_item/1`、`ft.content.call_key/1`|api/schemas|第12章 12（本ブロックは生成した型を使う）|[第12章 12 データの形式（本章が定めるもの）](../../../../docs/jp/design/12_基本設計書_データと暗号化.md#12-データの形式本章が定めるもの)|
+|`web/probe/`（iPhone の Safari の確かめのページ）|静的な HTML と JS（ビルドしない 1 枚。本ブロックの手順 9 からは本ブロックの鍵の操作のバンドルも読む）|結果は JSON（項目ごとに ok、ng と理由、所要 ms。`tools/ios_probe` が読む）。項目は試験設計書 T-L3-12 の (1)〜(4)。WP-3 の前は WebCrypto・IndexedDB・パスキーの OS の挙動だけ。手順 9 からは `DeviceKeys`、`KeyBundle`、`Copies`、`Shamir` の第12章 5.3・5.4 のベクトルを同じページで走らせる|[第14章 11.6 iPhone の Safari の確かめ（DD-14-16）](../../../../docs/jp/design/14_基本設計書_開発基盤.md#116-iphone-の-safari-の確かめdd-14-16)、[第12章 5.3 端末の鍵（DD-12-3）](../../../../docs/jp/design/12_基本設計書_データと暗号化.md#53-端末の鍵dd-12-3)|

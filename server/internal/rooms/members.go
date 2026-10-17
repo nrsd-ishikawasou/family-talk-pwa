@@ -52,11 +52,18 @@ type Members struct {
 	timeline *Timeline
 }
 
-// Add は POST /rooms/{id}/members と家族全員の参加の hook（by が nil は hook だけ）。RoomLock。グループだけ（1 対 1・自分用メモは
+// Add は POST /rooms/{id}/members と家族全員の参加の hook（by が nil は hook だけ）。最初に srv-identity Users.LockShared で入れる人の
+// users の行を共有の錠で押さえ（RoomLock より先。停止・削除・抹消と直列にし、読んだ状態で断る。全体実装設計書 2.4、I-18）、次に
+// RoomLock。グループだけ（1 対 1・自分用メモは
 // ROOM-003。家族全員は参加の hook だけが by 無しで足し、by があれば ROOM-003）。by が active でなければ ROOM-002。人が無いか抹消済みは
 // MEM-001、停止中か削除済みは MEM-002。既に active・pending_add・pending_remove なら今の行を返して何も変えない（pending_remove を
 // 取り下げない。第4章 4.1）。無いか removed・left なら pending_add（since now、by）。room.member(pending_add) を Audience（本人を含む）へ。
 func (m *Members) Add(ctx context.Context, tx *store.Tx, roomId uuid.UUID, by *uuid.UUID, userId uuid.UUID) (Member, error) {
+	users, err := m.d.Identity.Users.LockShared(ctx, tx, []uuid.UUID{userId})
+	if err != nil {
+		return Member{}, err
+	}
+	usr := users[0]
 	room, err := m.d.lockRoom(ctx, tx, roomId)
 	if err != nil {
 		return Member{}, err
@@ -77,10 +84,6 @@ func (m *Members) Add(ctx context.Context, tx *store.Tx, roomId uuid.UUID, by *u
 		if st != MemberActive {
 			return Member{}, ev(cgen.ROOM002)
 		}
-	}
-	usr, err := m.d.Identity.Users.Get(ctx, tx, userId)
-	if err != nil {
-		return Member{}, err
 	}
 	switch usr.State {
 	case identity.UserErased:

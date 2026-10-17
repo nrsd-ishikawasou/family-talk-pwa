@@ -39,7 +39,8 @@
   - srv-identity の hook の 6 つに登録する。登録は `Keys.Register` が組み立ての中で 1 回行う。
     - `OnDeviceRevoked`、`OnUserSuspended`、`OnUserErased`
     - `OnUserDeleted`、`OnPasskeyDeleted`、`OnPasskeyReset`
-  - 知らせは srv-identity `Hooks.Notify` から出す。第7章 9 の recovery_used、family_key_used、recovery_requested の 3 つ。mls_reinit、mls_reinit_limit、sticker_remove_requested の 3 つ。事象の鍵は第7章 9 の表の「事象の鍵」の欄のとおりに本ブロックが組む。srv-push は本ブロックの上で直に呼べない。
+    - 本ブロックの hook が取る `RoomLock`（`RemoveLeafsOfDevice`、`removeLeafsOfDevices`、`dropPendingAdds`）は待たない。同じトランザクションで srv-identity が先に `OnBeforeUserChange`・`OnBeforeDeviceRevoke` を呼ぶ。それで srv-rooms が和を識別子の順に取り済みだからである（全体実装設計書 2.4、I-18）。srv-rooms はその和を本ブロックの読み `Groups.RoomsOfDevices` で知る。本ブロックの hook の中の順は、単独で呼ばれる経路（休眠）のために残す
+  - 知らせは srv-identity `Hooks.Notify` から出す。第7章 9 の recovery_used、family_key_used、recovery_requested の 3 つ。mls_reinit、mls_reinit_limit、sticker_remove_requested の 3 つ。事象の鍵は第7章 9 の表の「事象の鍵」の欄のとおりに本ブロックが組む。1 つの事象は 1 回の Notify で宛先の全部を列で渡す（recovery_used は self と admins、recovery_requested は断片の持ち主ごとの self）。宛先ごとに分けて呼ぶと、同じ鍵の 2 回目が srv-push の重複の抑えで落ちる（全体実装設計書 I-17）。srv-push は本ブロックの上で直に呼べない。
   - srv-rooms との向き：本ブロックは srv-rooms を呼ばない。srv-rooms が本ブロックの `Groups` を呼ぶ（作成、送信の時の確かめ、`/rooms/{id}/mls/*` の 5 操作）。
   - トークの一覧と構成員は `RoomReader` で読む。本ブロックが定め、srv-rooms が実装して組み立ての後に `Keys.SetRooms` で渡す。使い道は、端末の追加待ちを立てるトーク、Commit の Add の端末が構成員の物かの確かめ、`room.mls`・`room.member` の宛先。
   - 家族全員のトークへの記録（第7章 9 の経路「トーク」）は、srv-push の OnNotice が `FamilyRoom.Flow` で行う。本ブロックは `Hooks.Notify` を呼ぶだけ。
@@ -166,6 +167,7 @@ classDiagram
     +DormantLeafs(ctx, olderThan) [RoomDevice]
     +RetireDormant(tx, deviceId, olderThan)
     +RemoveLeafsOfDevice(tx, deviceId)
+    +RoomsOfDevices(ctx, q, deviceIds) [RoomId]
     +RequestRemoveUser(tx, roomId, userId) int
     +Drop(tx, roomId)
     +RequestAdd(tx, deviceId) int
@@ -385,7 +387,7 @@ classDiagram
 |RecoveryCode|`+PutVerifier(tx, userId, byDevice, verifier, params RecoveryParams) Result~Event~`|`PUT /me/recovery-code`。端末が作った照合の値（第12章 5.4 (b)。32 バイト）と Argon2id の params。初回（行が無い）は未承認の端末でも置ける。置き換え（再発行）は承認済みの端末だけ（KEY-004）で再認証。verifier が 32 バイトでないか、params.salt が本人の識別子の 16 バイトでなければ NET-001（形の誤り）|
 |RecoveryCode|`+Verify(tx, userId, deviceId, verifier) Result~Fkb, Event~`|`POST /me/keybundle/recovery-code/verify`。試行の制限は境界のレート制限の policy `recovery`（第2章 9.3。構成員あたり 10 回/日、KEY-008。`useFamilyRecoveryKey` と同じ枠）。保存した照合の値と定数時間で比べる。成功：コピー (b)（無ければ KEY-005）を返し、同じトランザクションで recovery.used(method: recovery-code、success)。失敗（照合の値が無いか合わない）：recovery.used(recovery-code、failure) を別のトランザクションで確定してから（誤りの応答では要求のトランザクションが戻るため）、照合の値が無ければ KEY-005（params.kind recovery-code）、合わなければ KEY-012（第2章 9.2。32 バイトでない値と base64url で解けない値も合わない物）。照合の後にコピー (b) が無ければ KEY-005 で、使用の記録は書かない（渡していない）|
 |Shares|`+Holders(ctx, q, ownerUserId) [UserId]`|owner の kind share のコピーの対象の端末の持ち主（承認済みか休眠の端末に限る）を、重複を除いて返す|
-|Shares|`+Request(tx, requesterDevice) Result~RecoveryRequest, Event~`|`POST /me/recovery/request`。承認済みの端末は KEY-002。Holders が 2 人に満たなければ KEY-005（params.kind share）。本人の open の求めがあればそれを返す（冪等）。無ければ recovery_requests に open で置き（24 時間）、`recovery.request` を Holders の全端末へ（宛先の端末は持たない）、知らせ recovery_requested（params に request_id、user_id、name、device_name（Devices.NameOf）、expires_at）を Hooks.Notify で Holders の各人へ（Audience self、UserId はその人。1 人に 1 回。srv-push は self をその人に解く）|
+|Shares|`+Request(tx, requesterDevice) Result~RecoveryRequest, Event~`|`POST /me/recovery/request`。承認済みの端末は KEY-002。Holders が 2 人に満たなければ KEY-005（params.kind share）。本人の open の求めがあればそれを返す（冪等）。無ければ recovery_requests に open で置き（24 時間）、`recovery.request` を Holders の全端末へ（宛先の端末は持たない）、知らせ recovery_requested（params に request_id、user_id、name、device_name（Devices.NameOf）、expires_at）を 1 回の Hooks.Notify で Holders の全員へ（宛先は Holders の人ごとの self の列。srv-push が人ごとに解いて 1 回ずつ届ける。1 人ずつ分けて Notify すると同じ鍵の 2 回目が重複の抑えで落ちる。第7章 9）|
 |Shares|`+Approve(tx, holderDevice, requestId, ciphertext, sig) Result~Event~`|`POST /recovery/{request_id}/approve`。求めの行の錠。無いか open でないか期限切れなら AUTH-007。規則 share_holder（holderDevice の構成員が Holders にある）は本操作が判定し、違えば AUTH-007（他人の求めの有無を漏らさない）。求めた端末が未承認でないか、鍵の登録が無ければ AUTH-007（片を包めない）。holderDevice の持ち主が既に recovery_approvals にあれば何もしない（同じ構成員の別の端末を含む。冪等）。無ければ Inbox.Put（kind share、from = holderDevice、to = 求めた端末、署名は要求の sig。件数の上限は掛けない）と recovery_approvals に 1 行。行の数が 2 で approved にし、Recovery.NotifyUsed(method: share、success)|
 |Shares|`+ShareFor(ctx, q, requestId, holderDevice) Result~Fkb, Event~`|`GET /recovery/{request_id}/share`。求めの行を読む。無いか open でないか期限切れなら AUTH-007。holderDevice の持ち主が Holders(求めた本人) に無ければ AUTH-007（規則 share_holder。Approve と同じ判定）。keybundles の (求めた本人, share, holderDevice) の行の fkb/1 を返す。無ければ KEY-005（params.kind share）。承認する端末はこのコピーを開いて片を得る（第12章 5.4 (c)。web-crypto Recovery.approveShare）|
 |Shares|`+Expire(ctx) int`|open で期限を過ぎた求めを expired に（srv-worker PruneHandler）。知らせは出さない（新しい端末の画面で分かる）|
@@ -424,7 +426,8 @@ classDiagram
 |Groups|`+EpochsOf(ctx, q, roomIds) map`|トークごとの現在の epoch（srv-rooms `Rooms.List` の `epoch`。1 つの SQL 文。グループが無いトークは地図に入らない）。q は ctx のトランザクションか Pool|
 |Groups|`+DormantLeafs(ctx, olderThan) [RoomDevice]`|Devices.IdleSeenBefore(olderThan) の端末（承認済みと、停止で未承認に戻った承認されたことのある端末。第12章 5.2 の休眠の対象）が持つ leaf（srv-worker DormantLeafHandler）|
 |Groups|`+RetireDormant(tx, deviceId, olderThan)`|休眠（第12章 5.2）：srv-worker から端末ごとに 1 トランザクション。1. Devices.MarkDormant(deviceId, olderThan)（devices の行の錠。last_seen_at が olderThan より古く、承認済みなら休眠にして真。承認されたことのある未承認の端末（停止）なら状態を変えずに真。他は偽）。偽なら何もしない（休眠の判定の後に使われた端末や、再開の後に承認し直した端末を休眠にしない）。2. その端末のコピー (a)（kind device、target はその端末）だけを消す。その端末へ包んだ他人の片は残す（端末が戻れば片を持つ人の承認に使える）。3. RemoveLeafsOfDevice|
-|Groups|`+RemoveLeafsOfDevice(tx, deviceId)`|取り消し・削除・休眠：その端末が leaf を持つ各グループに pending_remove（mls_pending の kind=remove。readd の行も remove に替える：取り消された端末は入り直さない）を置き、room.member{user_id, device_id, pending_remove} を構成員へ流す（行を入れたか替えた時だけ）。leaf の無いトークのその端末の mls_pending の add と readd は消す。leaf の記録は Remove の Commit で消える。トークの錠は、leaf か待ちのあるトークを識別子の順に取る|
+|Groups|`+RemoveLeafsOfDevice(tx, deviceId)`|取り消し・削除・休眠：その端末が leaf を持つ各グループに pending_remove（mls_pending の kind=remove。readd の行も remove に替える：取り消された端末は入り直さない）を置き、room.member{user_id, device_id, pending_remove} を構成員へ流す（行を入れたか替えた時だけ）。leaf の無いトークのその端末の mls_pending の add と readd は消す。leaf の記録は Remove の Commit で消える。トークの錠は、leaf か待ちのあるトークを識別子の順に取る（取り消し・削除では srv-rooms が `OnBeforeDeviceRevoke`・`OnBeforeUserChange` で和として取り済みで、2 度目は待たない。休眠では本操作が最初に取る）|
+|Groups|`+RoomsOfDevices(ctx, q, deviceIds) [RoomId]`|端末の列のどれかが leaf（mls_leaves）か待ち（mls_pending の add・remove・readd）を持つトークの識別子（重複を除き識別子の順。錠は取らない）。srv-rooms が hook `OnBeforeUserChange`・`OnBeforeDeviceRevoke` で触れ得るトークの和を組むために読む（本ブロックの hook が後で `RoomLock` を取る集合と同じ。全体実装設計書 2.4、I-18）。q は呼ぶ側のトランザクション（devices の行の錠の後に読むので、Add・RequestAdd・Reinit による増加と直列）|
 |Groups|`+RequestRemoveUser(tx, roomId, userId) int`|退出・外し（srv-rooms Members.Remove）と削除・抹消（srv-rooms の hook。OnUserDeleted の本ブロックの hook と重なるが冪等）：第12章 5.2「構成員の追加と退出」。次の順。1. Devices.OfUser で本人の端末を読む（錠は取らない）。2. RoomLock。3. その端末のうち mls_leaves にある物ごとに mls_pending の remove を置く（置き方は RemoveLeafsOfDevice と同じ。readd も remove に替える。add は leaf があれば存在しない）。行を入れたか替えた時だけ room.member{user_id, device_id, pending_remove} を RoomReader.MembersOf へ流す。4. そのトークのその人の端末の mls_pending の add と readd のうち leaf の無い物を消す（Add されない）。5. 戻りは leaf を持つ端末の数（0 なら呼ぶ側は Commit を待たずに外す）。グループが無ければ 0。錠の順は Commit と同じ（rooms、mls_pending）|
 |Groups|`+Drop(tx, roomId)`|トークの削除（srv-rooms Rooms.Delete）と、Commit を作れる端末が残らない退出（srv-rooms Members.Remove）：RoomLock の中で、そのトークの mls_leaves、mls_pending、mls_commits、mls_rejections、mls_reinits、mls_groups の行を全部消す（第12章 9）。Remove の Commit は待たない。グループが無ければ何もしない。以後そのトークに Groups.Create は呼ばれない（トークは削除済みか空で、構成員が無い）|
 |Groups|`+RequestAdd(tx, deviceId) int`|端末の追加待ち（第12章 5.5 の 4）：その端末の devices の行を Devices.LockShared で押さえてから（同時の取り消しと直列にする）、その端末の本人が active な構成員（RoomReader.RoomsOf）で、その端末の leaf も mls_pending の行（種類を問わない）も無いグループの全部に mls_pending（kind=add）を置き、room.member{user_id, device_id, pending_add} を構成員へ流す。既にあれば置かない。呼ぶ側は DeviceKeys.Approve（同じ tx）と `POST /me/mls/rejoin`（本人の承認済みか休眠の端末。応答は置いた数）|
@@ -457,13 +460,13 @@ classDiagram
 |ParsedWelcome|`+NewMembers [[]byte]`|KeyPackageRef の並び|
 |ParsedWelcome|`+KemOutputs [[]byte]`|secrets[] と同じ並びの kem_output（HPKE の KEM の出力。スイート 2 では P-256 の公開鍵。確かめ 9 で形を見る）|
 |Recovery|`+Order() [string]`|1 既存の端末、(e) PRF、2 家族、3 回復コード、4 家族回復鍵（画面の順。第12章 5.4）|
-|Recovery|`+NotifyUsed(tx, userId, deviceId, method, result)`|`recovery.used` を feed に書く（本ブロックだけが書く）。method と、書く操作は share（Shares.Approve）、recovery-code（RecoveryCode.Verify）、family（FamilyRecoveryKey.Use）、prf（`getMyKeyBundle` が未承認の端末へコピー (e) を返した時）、reset（hook OnPasskeyReset）。既存の端末による承認（DeviceKeys.Approve の byDevice が他の端末）は端末の追加であって回復ではなく、書かない（第3章 4.4、第12章 5.4）。宛先は本人の全端末 + 管理者（family は全員）。同じトランザクションで srv-identity `Hooks.Notify` に知らせを渡す（family は family_key_used を全員へ、他は recovery_used を本人と管理者へ。params に user_id、name、method、result。第7章 9）|
-|Hooks|`+OnDeviceRevoked(tx, deviceId)`|DeviceKeys.Revoke、KeyPackages.DeleteAll、KeyBundles.DeleteOfDevice、その端末の open の回復の求めを expired に、Groups.RemoveLeafsOfDevice、Inbox.DeleteAllOfDevice の順（錠の順）。端末の取り消しのほか、未承認の 7 日の期限切れ、抹消（端末を 1 台ずつ取り消す）、保護者が子の端末の鍵の承認を断った時（第3章 4.4）でも呼ばれる。鍵や leaf の無い端末では何もしない|
-|Hooks|`+OnUserSuspended(tx, userId, reason)`|reason（停止か削除）を見ずに、本人の端末の端末の追加待ち（mls_pending の add）を消す。停止で端末は未承認に戻り Add できないため。leaf と削除待ちは触らない（leaf は休眠の規則で 90 日で外れる。その間 `commit_possible` はこの端末を数えない）。再開の後は自己承認が RequestAdd で立て直す|
+|Recovery|`+NotifyUsed(tx, userId, deviceId, method, result)`|`recovery.used` を feed に書く（本ブロックだけが書く）。method と、書く操作は share（Shares.Approve）、recovery-code（RecoveryCode.Verify）、family（FamilyRecoveryKey.Use）、prf（`getMyKeyBundle` が未承認の端末へコピー (e) を返した時）、reset（hook OnPasskeyReset）。既存の端末による承認（DeviceKeys.Approve の byDevice が他の端末）は端末の追加であって回復ではなく、書かない（第3章 4.4、第12章 5.4）。宛先は本人の全端末 + 管理者（family は全員）。同じトランザクションで srv-identity `Hooks.Notify` に知らせを渡す（family は family_key_used を全員（宛先 all）へ、他は recovery_used を 1 回の Notify で本人と管理者へ（宛先は self と admins の 2 つ）。params に user_id、name、method、result。第7章 9）|
+|Hooks|`+OnDeviceRevoked(tx, deviceId)`|DeviceKeys.Revoke、KeyPackages.DeleteAll、KeyBundles.DeleteOfDevice、その端末の open の回復の求めを expired に、Groups.RemoveLeafsOfDevice、Inbox.DeleteAllOfDevice の順（錠の順）。端末の取り消しのほか、未承認の 7 日の期限切れ、抹消（端末を 1 台ずつ取り消す）、保護者が子の端末の鍵の承認を断った時（第3章 4.4）でも呼ばれる。鍵や leaf の無い端末では何もしない。RemoveLeafsOfDevice の RoomLock は、srv-identity が先に呼ぶ `OnBeforeDeviceRevoke` で srv-rooms が取り済み（期限切れでは呼ばれないが、承認されたことのない端末は leaf も待ちも持たず RoomLock を取らない）|
+|Hooks|`+OnUserSuspended(tx, userId, reason)`|reason（停止か削除）を見ずに、本人の端末の端末の追加待ち（mls_pending の add）を消す（dropPendingAdds。待ちのあるトークの錠を識別子の順に取る。srv-identity が先に呼ぶ `OnBeforeUserChange` で srv-rooms が取り済みなので待たない）。停止で端末は未承認に戻り Add できないため。leaf と削除待ちは触らない（leaf は休眠の規則で 90 日で外れる。その間 `commit_possible` はこの端末を数えない）。再開の後は自己承認が RequestAdd で立て直す|
 |Hooks|`+OnUserErased(tx, userId)`|KeyBundles.DeleteAllOfUser（(a)〜(e) と本人が置いた片）、recovery_codes の行、open の回復の求めを expired に、KeyBackup.DeleteAllOfUser、UserSigningKeys の失効（revoked_at）。srv-identity は先に本人の全端末を取り消す（OnDeviceRevoked が端末ごとに走り、その端末へ包まれた他人の片も消える）|
 |Hooks|`+OnPasskeyReset(tx, userId, deviceId)`|Recovery.NotifyUsed(userId, deviceId, reset, success)。管理者の再設定のリンクの使用（第3章 4.6）|
 |Hooks|`+OnPasskeyDeleted(tx, userId, credId)`|KeyBundles の kind prf、target credId（base64url）のコピーを消す（Delete と同じ消し方で、無くても誤りにしない）。パスキーを消した時にそのコピー (e) も消す（第12章 5.4 (e)）|
-|Hooks|`+OnUserDeleted(tx, userId, eraseContent)`|全端末の leaf を pending_remove（Groups.RemoveLeafsOfDevice を端末ごと）。本人の端末へ包まれた他人の片を消す（KeyBundles.DeleteOfDevice を端末ごと。削除された人は承認できない）。本人のコピーとバックアップは残す（第3章 8.2）。eraseContent は本ブロックでは使わない（srv-rooms の削除済みの印）。複数の端末のトークの錠は、全部の端末の分をまとめてトークの識別子の順に取る（同じ表の行は識別子の順。端末ごとに取ると順が崩れる）|
+|Hooks|`+OnUserDeleted(tx, userId, eraseContent)`|全端末の leaf を pending_remove（Groups.RemoveLeafsOfDevice を端末ごと）。本人の端末へ包まれた他人の片を消す（KeyBundles.DeleteOfDevice を端末ごと。削除された人は承認できない）。本人のコピーとバックアップは残す（第3章 8.2）。eraseContent は本ブロックでは使わない（srv-rooms の削除済みの印）。複数の端末のトークの錠は、全部の端末の分をまとめてトークの識別子の順に取る（同じ表の行は識別子の順。端末ごとに取ると順が崩れる）。この錠も srv-identity が先に呼ぶ `OnBeforeUserChange` で srv-rooms が取り済みで待たない（全体実装設計書 2.4、I-18）|
 
 ## 公開操作（このブロックが所有する操作。番号は B-080〜）
 
@@ -475,7 +478,7 @@ classDiagram
 |B-083|`KeyBundles`、`RecoveryCode`、`Shares`（`ShareFor` を含む）、`FamilyRecoveryKey`、`Recovery`|operation（`/me/keybundle/*`、`/me/recovery/*`、`/recovery/*`（`share` の GET と `approve`）、`/family/recovery-key/*`）、srv-admin（`/admin/family/recovery-key/rotate`）、srv-identity（hook `OnPasskeyReset` から `NotifyUsed(reset)`）|[第12章 5.4 鍵バンドルと回復（DD-12-4、DD-12-5）](../../../../docs/jp/design/12_基本設計書_データと暗号化.md#54-鍵バンドルと回復dd-12-4dd-12-5)|
 |B-084|`KeyBackup`（`Replace` を含む）|operation（`/me/keybackup*`）|[第12章 5.6 鍵のバックアップ（履歴）（DD-12-6）](../../../../docs/jp/design/12_基本設計書_データと暗号化.md#56-鍵のバックアップ履歴dd-12-6)|
 |B-085|`Inbox`（`Put`、`PutWelcome`、`ListSince`、`Delete`、`Prune`）|operation（`/devices/{did}/inbox`、`/me/inbox*`）、srv-push（`/up/{token}` のメールボックスは別。`UpBox`）、srv-worker（`Prune`）|[第12章 5.2 群の暗号（MLS）](../../../../docs/jp/design/12_基本設計書_データと暗号化.md#52-群の暗号mls)、[第2章 5.4 端末と鍵の運搬（第3章、第12章）](../../../../docs/jp/design/02_基本設計書_境界.md#54-端末と鍵の運搬第3章第12章)|
-|B-086|`Groups`（`Create`、`Epoch`、`EpochsOf`、`CommitsSince`、`Commit`、`Reject`、`Reinit`、`CheckSender`、`Leaves`、`DormantLeafs`、`RetireDormant`、`RemoveLeafsOfDevice`、`RequestRemoveUser`、`Drop`、`RequestAdd`、`PendingDevices`）と `CommitReader`|srv-rooms（作成、送信の時の `CheckSender`、一覧の `EpochsOf`、`/rooms/{id}/mls/*` の 5 操作の受け、退出・外し・削除・抹消の `RequestRemoveUser`、トークの削除と最後の退出の `Drop`）、operation（`/me/mls/rejoin`）、srv-worker（休眠の leaf、7 日の追加待ち）|[第12章 5.2 群の暗号（MLS）](../../../../docs/jp/design/12_基本設計書_データと暗号化.md#52-群の暗号mls)、[第2章 5.5 トーク（第4章）](../../../../docs/jp/design/02_基本設計書_境界.md#55-トーク第4章)、[第4章 4.1 種類と状態](../../../../docs/jp/design/04_基本設計書_トークとメッセージ.md#41-種類と状態)|
+|B-086|`Groups`（`Create`、`Epoch`、`EpochsOf`、`CommitsSince`、`Commit`、`Reject`、`Reinit`、`CheckSender`、`Leaves`、`DormantLeafs`、`RetireDormant`、`RemoveLeafsOfDevice`、`RoomsOfDevices`、`RequestRemoveUser`、`Drop`、`RequestAdd`、`PendingDevices`）と `CommitReader`|srv-rooms（作成、送信の時の `CheckSender`、一覧の `EpochsOf`、`/rooms/{id}/mls/*` の 5 操作の受け、退出・外し・削除・抹消の `RequestRemoveUser`、トークの削除と最後の退出の `Drop`、hook `OnBeforeUserChange`・`OnBeforeDeviceRevoke` の和の読み `RoomsOfDevices`）、operation（`/me/mls/rejoin`）、srv-worker（休眠の leaf、7 日の追加待ち）|[第12章 5.2 群の暗号（MLS）](../../../../docs/jp/design/12_基本設計書_データと暗号化.md#52-群の暗号mls)、[第2章 5.5 トーク（第4章）](../../../../docs/jp/design/02_基本設計書_境界.md#55-トーク第4章)、[第4章 4.1 種類と状態](../../../../docs/jp/design/04_基本設計書_トークとメッセージ.md#41-種類と状態)|
 |B-087|`Hooks` の実装（srv-identity への登録）|srv-identity|[第12章 9 消すこと（DD-12-13、R-12-6-1）](../../../../docs/jp/design/12_基本設計書_データと暗号化.md#9-消すことdd-12-13r-12-6-1)、I-8|
 |B-088|`Keys`（`New`、`SetRooms`、`Register`、`Ready`、`Apis`、`Reader`）と `RoomReader` の定義|組み立て（cmd/ft の serve）、srv-rooms（`RoomReader` の実装）|[第12章 5.2 群の暗号（MLS）](../../../../docs/jp/design/12_基本設計書_データと暗号化.md#52-群の暗号mls)、[第12章 5.5 新しい端末の参加（第3章と往復）](../../../../docs/jp/design/12_基本設計書_データと暗号化.md#55-新しい端末の参加第3章と往復)|
 
@@ -532,7 +535,8 @@ classDiagram
   - 承認：devices、device_keys、recovery_requests、rooms、mls_pending。保護者への求めは錠を取る前に別のトランザクションで確定する
   - 署名鍵の交代：device_keys（本人の全端末を識別子の順に。端末の状態はその後に読む）、keybundles、user_signing_keys
   - 取り消しの hook：devices、sessions の後に device_keys、keypackages、keybundles、recovery_requests
-  - 取り消しの hook の続き：rooms、mls_pending、device_inbox
+  - 取り消しの hook の続き：rooms、mls_pending、device_inbox。rooms は srv-identity が先に呼ぶ hook `OnBeforeDeviceRevoke` で srv-rooms が取り済み（その端末のトークと家族全員のトークの和を識別子の順に）。本ブロックの 2 度目は待たない
+  - 停止・削除の hook（`dropPendingAdds`、`removeLeafsOfDevices`）：rooms、mls_pending。rooms は srv-identity が先に呼ぶ hook `OnBeforeUserChange` で srv-rooms が取り済み（全体実装設計書 2.4、I-18）
   - 退出・外し（srv-rooms Members.Remove が呼ぶ RequestRemoveUser）：devices は読むだけ、rooms、mls_pending。続けて srv-rooms が room_members（Commit の続きと同じ順）
   - トークの削除と最後の退出（Drop）：rooms、mls_groups、他の mls_ の表の順
   - Commit：Add の端末の devices（LockShared と休眠の MarkActive。RoomLock の前）、rooms、mls_groups、mls_leaves
@@ -543,6 +547,7 @@ classDiagram
   - 回復の求めの承認：recovery_requests、recovery_approvals、device_inbox
   - 家族回復鍵の公開部：families、keybundles
   - 休眠：devices（MarkDormant）の後に keybundles、rooms、mls_pending
-  - 抹消：users、devices、sessions、各端末の取り消しの後に keybundles、recovery_codes、recovery_requests
+  - 抹消：users、devices、sessions。次に srv-rooms が `OnBeforeUserChange` で rooms の和。各端末の取り消しの後に keybundles、recovery_codes、recovery_requests
   - 抹消の続き：key_backup、user_signing_keys
 - srv-rooms は `RoomLock` の後に srv-identity の行（users、devices）の錠を取らない。取り消しの hook が devices の後に rooms を取るので、逆向きは待ちの輪になる。
+- 停止・削除・抹消・端末の取り消しでは、本ブロックと他のブロックが同じトランザクションで rooms の錠を取る。入口の srv-identity が最初に hook を呼び、srv-rooms が和を識別子の順に取る。本ブロックの処理が自分の集合を順に取るだけでは、処理をまたいだ和が順にならない（全体実装設計書 2.4、I-18）。

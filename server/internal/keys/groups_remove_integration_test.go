@@ -265,3 +265,41 @@ func TestDropGroup(t *testing.T) {
 		t.Fatalf("他のトークの記録が消えた: %v", err)
 	}
 }
+
+// R: R-1-6-2
+// Groups.RoomsOfDevices（全体実装設計書 2.4、I-18。T-L1-09）：端末の列のどれかが leaf か待ち（add、remove、readd）を持つトークを、
+// 重なりを除き識別子の順に返す。leaf だけ、待ちだけ、両方（同じトークに 1 台の leaf と別の 1 台の待ち）のトークは入り、どちらも無い
+// トークと列に無い端末の leaf のトークは入らない。leaf も待ちも無い端末だけの列は空。
+func TestRoomsOfDevices(t *testing.T) {
+	e := newEnv(t)
+	a := e.member("花子", boundary.RoleAdmin)
+	b := e.member("太郎", boundary.RoleMember)
+	c := e.member("次郎", boundary.RoleMember)
+	b2 := e.addDevice(b, "太郎のタブレット", true)
+	idle := e.addDevice(b, "太郎のパソコン", false)
+	both := e.room(b.dev(), a, b)
+	none := e.room(a.dev(), a, b)
+	pend := e.room(a.dev(), a, b)
+	leaf := e.room(b.dev(), a, b)
+	other := e.room(c.dev(), a, c)
+	pendRemove := e.room(a.dev(), a, b)
+	for _, p := range []struct {
+		room uuid.UUID
+		dev  uuid.UUID
+		kind string
+	}{{both, b2.deviceId, "readd"}, {pend, b2.deviceId, "add"}, {pendRemove, b.dev().deviceId, "remove"}} {
+		_, err := e.pool.Exec(e.ctx, `INSERT INTO mls_pending (room_id, device_id, kind, since) VALUES ($1, $2, $3, now())`, p.room, p.dev, p.kind)
+		e.must(err)
+	}
+	got, err := e.k.Groups.RoomsOfDevices(e.ctx, e.pool, []uuid.UUID{b2.deviceId, b.dev().deviceId, idle.deviceId})
+	e.must(err)
+	want := sortedIds([]uuid.UUID{both, pend, leaf, pendRemove})
+	if !slices.Equal(got, want) {
+		t.Fatalf("leaf か待ちのあるトークの識別子の順でない: %v（期待 %v。none %v、other %v）", got, want, none, other)
+	}
+	got, err = e.k.Groups.RoomsOfDevices(e.ctx, e.pool, []uuid.UUID{idle.deviceId})
+	e.must(err)
+	if len(got) != 0 {
+		t.Fatalf("leaf も待ちも無い端末のトークが返った: %v", got)
+	}
+}
