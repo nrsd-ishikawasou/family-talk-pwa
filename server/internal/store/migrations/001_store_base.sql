@@ -24,6 +24,8 @@ CREATE TABLE feed (
     CONSTRAINT feed_payload CHECK ((kind = 'room.event') = (payload IS NULL))
 );
 CREATE INDEX feed_ts ON feed (ts);
+-- トークごとの最新の room.event の pos（srv-rooms の /rooms の last_pos。Feed.LastRoomEventPos）。
+CREATE INDEX feed_room_event ON feed (user_id, room_id, pos) WHERE kind = 'room.event';
 
 -- 利用者ごとの次の pos。FOR UPDATE で採る。
 CREATE TABLE feed_cursor (

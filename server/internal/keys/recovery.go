@@ -83,14 +83,21 @@ func (r *Recovery) NotifyUsed(ctx context.Context, tx *store.Tx, userId, deviceI
 	if err != nil {
 		return err
 	}
+	// 事象の鍵（第7章 9 の表の欄）。端末の無い回復（deviceId が Nil）は端末の欄を空にし、欄の数は変えない。
+	devKey := ""
+	if dev != nil {
+		devKey = dev.String()
+	}
 	if method == MethodFamily {
-		return r.d.Identity.Hooks.Notify(ctx, tx, identity.Notice{Kind: noticeFamilyKeyUsed, Audience: identity.Audience{Kind: identity.AudienceAll},
-			Params: map[string]any{"user_id": userId.String(), "name": usr.DisplayName, "result": string(result)}})
+		return r.d.Identity.Hooks.Notify(ctx, tx, identity.Notice{Kind: noticeFamilyKeyUsed, Key: userId.String() + ":" + devKey,
+			Audience: identity.Audience{Kind: identity.AudienceAll},
+			Params:   map[string]any{"user_id": userId.String(), "name": usr.DisplayName, "result": string(result)}})
 	}
 	params := map[string]any{"user_id": userId.String(), "name": usr.DisplayName, "method": string(method), "result": string(result)}
+	key := userId.String() + ":" + devKey + ":" + string(method) + ":" + string(result)
 	self := userId
 	for _, a := range []identity.Audience{{Kind: identity.AudienceSelf, UserId: &self}, {Kind: identity.AudienceAdmins}} {
-		if err := r.d.Identity.Hooks.Notify(ctx, tx, identity.Notice{Kind: noticeRecoveryUsed, Audience: a, Params: params}); err != nil {
+		if err := r.d.Identity.Hooks.Notify(ctx, tx, identity.Notice{Kind: noticeRecoveryUsed, Key: key, Audience: a, Params: params}); err != nil {
 			return err
 		}
 	}

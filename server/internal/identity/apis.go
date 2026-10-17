@@ -881,7 +881,7 @@ var _ gen.UsersApi = (*UsersApi)(nil)
 
 // ListUsers は GET /api/v1/users。Users.List。
 func (a *UsersApi) ListUsers(ctx context.Context, request gen.ListUsersRequestObject) (gen.ListUsersResponseObject, error) {
-	items, more, err := a.id.Users.List(ctx, boundary.PrincipalFrom(ctx), page(request.Params.Limit, request.Params.Before, request.Params.After))
+	items, more, err := a.id.Users.List(ctx, a.id.d.Pool, boundary.PrincipalFrom(ctx), page(request.Params.Limit, request.Params.Before, request.Params.After))
 	if err != nil {
 		return nil, err
 	}
@@ -914,7 +914,7 @@ func (a *DevicesApi) ListMyDevices(ctx context.Context, request gen.ListMyDevice
 	if err != nil {
 		return nil, err
 	}
-	items, more, err := a.id.Devices.List(ctx, me, dev, page(request.Params.Limit, request.Params.Before, request.Params.After))
+	items, more, err := a.id.Devices.List(ctx, a.id.d.Pool, me, dev, page(request.Params.Limit, request.Params.Before, request.Params.After))
 	if err != nil {
 		return nil, err
 	}

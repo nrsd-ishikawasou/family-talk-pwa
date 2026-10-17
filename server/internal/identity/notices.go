@@ -5,6 +5,7 @@ package identity
 
 import (
 	"context"
+	"strings"
 
 	"github.com/gofrs/uuid/v5"
 
@@ -43,32 +44,37 @@ const (
 	noticeNewDevice = "new_device"
 )
 
-// notifySelf は本人への知らせ。
-func (h *Hooks) notifySelf(ctx context.Context, tx *store.Tx, userId uuid.UUID, kind string, params map[string]any) error {
+// noticeKey は知らせの事象の鍵（第7章 9 の表の「事象の鍵」の欄の値を `:` で連ねる。srv-push は (kind, key, 日) で重複を抑える）。
+func noticeKey(parts ...string) string {
+	return strings.Join(parts, ":")
+}
+
+// notifySelf は本人への知らせ。key は事象の鍵（noticeKey）。
+func (h *Hooks) notifySelf(ctx context.Context, tx *store.Tx, userId uuid.UUID, kind, key string, params map[string]any) error {
 	u := userId
-	return h.onNotice(ctx, tx, Notice{Kind: kind, Params: params, Audience: Audience{Kind: AudienceSelf, UserId: &u}})
+	return h.onNotice(ctx, tx, Notice{Kind: kind, Key: key, Params: params, Audience: Audience{Kind: AudienceSelf, UserId: &u}})
 }
 
 // notifyAdmins は管理者への知らせ。
-func (h *Hooks) notifyAdmins(ctx context.Context, tx *store.Tx, kind string, params map[string]any) error {
-	return h.onNotice(ctx, tx, Notice{Kind: kind, Params: params, Audience: Audience{Kind: AudienceAdmins}})
+func (h *Hooks) notifyAdmins(ctx context.Context, tx *store.Tx, kind, key string, params map[string]any) error {
+	return h.onNotice(ctx, tx, Notice{Kind: kind, Key: key, Params: params, Audience: Audience{Kind: AudienceAdmins}})
 }
 
 // notifyGuardians は子の保護者への知らせ。
-func (h *Hooks) notifyGuardians(ctx context.Context, tx *store.Tx, childId uuid.UUID, kind string, params map[string]any) error {
+func (h *Hooks) notifyGuardians(ctx context.Context, tx *store.Tx, childId uuid.UUID, kind, key string, params map[string]any) error {
 	c := childId
-	return h.onNotice(ctx, tx, Notice{Kind: kind, Params: params, Audience: Audience{Kind: AudienceGuardians, UserId: &c}})
+	return h.onNotice(ctx, tx, Notice{Kind: kind, Key: key, Params: params, Audience: Audience{Kind: AudienceGuardians, UserId: &c}})
 }
 
 // notifyEach は構成員ごとに本人宛ての知らせを出す（宛先が保護者の一部や外れた保護者を含む時。同じ人には 1 回）。
-func (h *Hooks) notifyEach(ctx context.Context, tx *store.Tx, to []uuid.UUID, kind string, params map[string]any) error {
+func (h *Hooks) notifyEach(ctx context.Context, tx *store.Tx, to []uuid.UUID, kind, key string, params map[string]any) error {
 	seen := map[uuid.UUID]bool{}
 	for _, u := range to {
 		if seen[u] {
 			continue
 		}
 		seen[u] = true
-		if err := h.notifySelf(ctx, tx, u, kind, params); err != nil {
+		if err := h.notifySelf(ctx, tx, u, kind, key, params); err != nil {
 			return err
 		}
 	}

@@ -52,7 +52,9 @@ func (fakeKeyReader) KeysOf(context.Context, store.Querier, uuid.UUID) (map[uuid
 // fakePush は srv-push の代わり（購読は無い）。
 type fakePush struct{}
 
-func (fakePush) SubscribedDevices(context.Context, uuid.UUID) ([]uuid.UUID, error) { return nil, nil }
+func (fakePush) SubscribedDevices(context.Context, store.Querier, uuid.UUID) ([]uuid.UUID, error) {
+	return nil, nil
+}
 
 // auditRow は監査の 1 件。
 type auditRow struct {

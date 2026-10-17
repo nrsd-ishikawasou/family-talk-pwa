@@ -170,7 +170,7 @@ classDiagram
 |WsClient|`+state`|connecting、open、closed、fallback_longpoll のいずれか|
 |WsClient|`+reconnect()`|1,2,4,…,60 秒（乱数のゆらぎ）。1 時間ごとに WebSocket を試す（ロングポールの間）|
 |LongPoll|`+run(since)`|`GET /sync?since=&timeout=30`（WebSocket が使えない時）|
-|Db|`+version = n`|Dexie。表：events、rooms、users、devices、receipts、queue、mls_state、keys、settings、sync、media_index、notices|
+|Db|`+version = n`|Dexie。表：events、rooms、users、devices、receipts、queue、mls_state、keys、settings、sync、media_index、notices、sticker_requests|
 |Db|`+tx(mode, tables, fn) Promise`|Web Locks "db" で書き込みを直列化（第8章 3.4）|
 |Db|`+wipe(keep: [tables])`|取り消し・ロックの失敗の消去。queue と keys の扱いは持ち主が決める|
 |Db|`+persist() Promise~bool~`|navigator.storage.persist()。結果を settings に|

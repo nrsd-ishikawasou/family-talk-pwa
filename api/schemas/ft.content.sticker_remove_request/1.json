@@ -2,7 +2,7 @@
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "https://family-talk.invalid/schemas/ft.content.sticker_remove_request/1",
   "title": "ft.content.sticker_remove_request/1",
-  "description": "第4章 3.1。端末宛メールボックスで送る（第12章 5.2）",
+  "description": "第4章 3.1、5.9。端末宛メールボックスで送る（種類 sticker_remove_request と sticker_remove_withdrawal。第12章 5.2）。requested_at は最初に求めた時刻で送り直しでも変えない",
   "type": "object",
   "properties": {
     "pack_id": {
@@ -13,12 +13,16 @@
     },
     "requester_id": {
       "$ref": "../common/uuidv7/1.json"
+    },
+    "requested_at": {
+      "$ref": "../common/rfc3339/1.json"
     }
   },
   "required": [
     "pack_id",
     "sticker_id",
-    "requester_id"
+    "requester_id",
+    "requested_at"
   ],
   "additionalProperties": false
 }

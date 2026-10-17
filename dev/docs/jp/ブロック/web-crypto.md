@@ -303,7 +303,7 @@ classDiagram
 |B-223|`KeyBackup`（`onEpochAdvanced`、`fetchAll`、`decryptAll`、`transferTo`、`missing`、`rewrapAll`）|web-sync（epoch が進んだ時、新しい端末の履歴の同期）|[第12章 5.6 鍵のバックアップ（履歴）（DD-12-6）](../../../../docs/jp/design/12_基本設計書_データと暗号化.md#56-鍵のバックアップ履歴dd-12-6)、全体実装設計書 4.6|
 |B-224|`GroupStore::withGroup`、`load`、`historic`|web-sync、web-push（SW の復号）|全体実装設計書 2.5|
 |B-225|`Sender`（`encryptContent`、`decryptEvent`、`verifySender`）|web-sync、web-push（SW）、web-ui（安全番号の警告の表示）|[第12章 5.7 メッセージと添付（第4章・第5章と往復）](../../../../docs/jp/design/12_基本設計書_データと暗号化.md#57-メッセージと添付第4章第5章と往復)、[第12章 5.2 群の暗号（MLS）](../../../../docs/jp/design/12_基本設計書_データと暗号化.md#52-群の暗号mls)|
-|B-226|`ToDevice`（`seal`、`open`）|web-sync（inbox の処理）、web-crypto（回復）、web-calls（鍵の補助）、web-ui（スタンプの削除の求め）|[第12章 5.2 群の暗号（MLS）](../../../../docs/jp/design/12_基本設計書_データと暗号化.md#52-群の暗号mls)|
+|B-226|`ToDevice`（`seal`、`open`）|web-sync（inbox の処理、スタンプの削除の求め）、web-crypto（回復）、web-calls（鍵の補助）|[第12章 5.2 群の暗号（MLS）](../../../../docs/jp/design/12_基本設計書_データと暗号化.md#52-群の暗号mls)|
 |B-227|`Attachments`（鍵、ストリームの暗号化と復号、Range）|web-media|[第12章 5.7 メッセージと添付（第4章・第5章と往復）](../../../../docs/jp/design/12_基本設計書_データと暗号化.md#57-メッセージと添付第4章第5章と往復)|
 |B-228|`CallKeys`|web-calls|[第12章 5.11 通話（DD-12-11。第6章と往復）](../../../../docs/jp/design/12_基本設計書_データと暗号化.md#511-通話dd-12-11第6章と往復)|
 |B-229|`SafetyNumber`|web-ui（設定 > プライバシー）|[第12章 5.2 群の暗号（MLS）](../../../../docs/jp/design/12_基本設計書_データと暗号化.md#52-群の暗号mls)|

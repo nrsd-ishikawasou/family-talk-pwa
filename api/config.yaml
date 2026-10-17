@@ -268,6 +268,14 @@ items:
     layers: [db]
     chapter: "第4章 7"
     locked_when_env_or_file: false
+  - key: room.scheduled_late_threshold
+    type: duration
+    default: 60
+    range: {"min": 1}
+    layers: []
+    chapter: "第4章 7、5.8"
+    locked_when_env_or_file: false
+    note: "固定。予約送信の ts と scheduled_at の差がこれを超えれば端末が「遅れて送られました」"
   - key: room.typing_timeout
     type: duration
     default: 10
@@ -443,6 +451,14 @@ items:
     chapter: "第5章 7"
     locked_when_env_or_file: false
     note: "ファイルも含める"
+  - key: media.unbound_grace
+    type: duration
+    default: 691200
+    range: {"min": 1}
+    layers: []
+    chapter: "第5章 9、5.1"
+    locked_when_env_or_file: false
+    note: "固定。完了して結び付かない添付を消すまで（送信のキューの 7 日と再送の 1 日）。未完了のスロットは 24 時間"
   - key: retention.sync_index
     type: duration
     default: 7776000
@@ -457,14 +473,14 @@ items:
     layers: [db]
     chapter: "第3章 5.3、第12章 11"
     locked_when_env_or_file: false
-  - key: retention.redaction_grace
+  - key: retention.deleted_room_grace
     type: duration
     default: 604800
     range: {"min": 1}
     layers: [db]
     chapter: "第12章 9"
     locked_when_env_or_file: false
-    note: "暗号文の物理削除までの猶予"
+    note: "トークの削除から、そのトークの行の物理削除までの猶予"
   - key: retention.unapproved_device
     type: duration
     default: 604800

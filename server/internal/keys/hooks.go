@@ -8,6 +8,7 @@ import (
 
 	"github.com/gofrs/uuid/v5"
 
+	"github.com/nrsd-ishikawasou/family-talk-pwa/server/internal/identity"
 	"github.com/nrsd-ishikawasou/family-talk-pwa/server/internal/store"
 )
 
@@ -50,7 +51,8 @@ func (h *Hooks) OnDeviceRevoked(ctx context.Context, tx *store.Tx, deviceId uuid
 }
 
 // OnUserSuspended は停止で本人の端末の追加待ちを消す（端末は未承認に戻り Add できないため。再開の後は自己承認が RequestAdd で立て直す）。
-func (h *Hooks) OnUserSuspended(ctx context.Context, tx *store.Tx, userId uuid.UUID) error {
+// reason（停止か削除）は見ない。
+func (h *Hooks) OnUserSuspended(ctx context.Context, tx *store.Tx, userId uuid.UUID, _ identity.RevokeReason) error {
 	return h.groups.dropPendingAdds(ctx, tx, userId)
 }
 

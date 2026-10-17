@@ -53,9 +53,9 @@ func (h *SyncHandler) GetSync(ctx context.Context, request gen.GetSyncRequestObj
 	}
 	prm := request.Params
 	if prm.Since == nil {
-		snap, pos, ev := h.links.Snapshot.Snapshot(ctx, *p.UserId)
-		if ev != nil {
-			return nil, ev
+		snap, pos, err := h.links.Snapshot.Snapshot(ctx, p)
+		if err != nil {
+			return nil, err
 		}
 		return gen.GetSync200JSONResponse{Pos: int(pos), Snapshot: &snap, HasMore: false}, nil
 	}
@@ -96,7 +96,7 @@ func (h *SyncHandler) GetSync(ctx context.Context, request gen.GetSyncRequestObj
 // last は、続きがあれば返した最後の pos、無ければ利用者の最新の pos（他の端末宛ての行を含む）。
 // 最新の pos は行を読む前に取る：後に取ると、読みと取得の間に確定したこの端末宛ての行を端末が飛ばす。
 func (h *SyncHandler) read(ctx context.Context, p Principal, since int64, limit int) ([]map[string]any, bool, int64, error) {
-	latest, err := h.base.Feed.LastPos(ctx, *p.UserId)
+	latest, err := h.base.Feed.LastPos(ctx, h.base.Pool, *p.UserId)
 	if err != nil {
 		return nil, false, since, err
 	}

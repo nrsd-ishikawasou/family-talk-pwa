@@ -166,14 +166,14 @@ type viewer struct {
 	wards map[uuid.UUID]bool
 }
 
-// viewerOf は主体から作る。
-func (u *Users) viewerOf(ctx context.Context, p boundary.Principal) (viewer, error) {
+// viewerOf は主体から作る。q は ctx のトランザクションか Pool。
+func (u *Users) viewerOf(ctx context.Context, q querier, p boundary.Principal) (viewer, error) {
 	me, _, err := self(p)
 	if err != nil {
 		return viewer{}, err
 	}
 	v := viewer{id: me, admin: p.Role == boundary.RoleAdmin, wards: map[uuid.UUID]bool{}}
-	kids, err := uuids(ctx, u.d.Pool, `SELECT child_id FROM guardians WHERE guardian_id = $1`, me)
+	kids, err := uuids(ctx, q, `SELECT child_id FROM guardians WHERE guardian_id = $1`, me)
 	for _, k := range kids {
 		v.wards[k] = true
 	}
@@ -191,8 +191,9 @@ func (v viewer) toGen(usr User, sig *gen.Fusr1) gen.User {
 }
 
 // List は /users（識別子、表示名、役割、状態、子ども区分、本人の署名鍵の公開部）。写真はサーバーに無い（第3章 6）。
-func (u *Users) List(ctx context.Context, p boundary.Principal, page Page) ([]gen.User, bool, error) {
-	v, err := u.viewerOf(ctx, p)
+// q は ctx のトランザクションか Pool（/sync の初回の一覧は srv-store Pool.BeginSnapshot の中で読む）。
+func (u *Users) List(ctx context.Context, q store.Querier, p boundary.Principal, page Page) ([]gen.User, bool, error) {
+	v, err := u.viewerOf(ctx, q, p)
 	if err != nil {
 		return nil, false, err
 	}
@@ -203,7 +204,7 @@ func (u *Users) List(ctx context.Context, p boundary.Principal, page Page) ([]ge
 	sql := `SELECT ` + userCols + ` FROM users WHERE state IN ('normal', 'suspended', 'erase_pending')`
 	args := []any{}
 	sql, args = whereUUID(c, sql, "id", args)
-	rows, err := u.d.Pool.Query(ctx, sql, args...)
+	rows, err := q.Query(ctx, sql, args...)
 	if err != nil {
 		return nil, false, wrap(err)
 	}
@@ -224,7 +225,7 @@ func (u *Users) List(ctx context.Context, p boundary.Principal, page Page) ([]ge
 	for i, usr := range list {
 		ids[i] = usr.Id
 	}
-	sigs, err := u.d.Keys.SigningKeys(ctx, u.d.Pool, ids)
+	sigs, err := u.d.Keys.SigningKeys(ctx, q, ids)
 	if err != nil {
 		return nil, false, wrap(err)
 	}
@@ -241,7 +242,7 @@ func (u *Users) List(ctx context.Context, p boundary.Principal, page Page) ([]ge
 
 // Detail は /users/{id}（構成員と承認済みの端末の公開鍵）。削除と抹消は MEM-001（家族の構成員でない）。
 func (u *Users) Detail(ctx context.Context, p boundary.Principal, id uuid.UUID) (gen.UserDetail, error) {
-	v, err := u.viewerOf(ctx, p)
+	v, err := u.viewerOf(ctx, u.d.Pool, p)
 	if err != nil {
 		return gen.UserDetail{}, err
 	}
@@ -437,7 +438,7 @@ func (u *Users) UpdateProfile(ctx context.Context, tx *store.Tx, id uuid.UUID, p
 			return err
 		}
 		if age := b.ageOn(u.d.now()); age >= 0 && age < childAge {
-			return u.hooks.notifyAdmins(ctx, tx, noticeChildFlagSuggested, map[string]any{"user_id": id.String(), "name": usr.DisplayName})
+			return u.hooks.notifyAdmins(ctx, tx, noticeChildFlagSuggested, noticeKey(id.String()), map[string]any{"user_id": id.String(), "name": usr.DisplayName})
 		}
 	}
 	return nil
@@ -638,7 +639,7 @@ func (u *Users) suspend(ctx context.Context, tx *store.Tx, usr User, reason Revo
 	if _, err := tx.Exec(ctx, `UPDATE invites SET revoked_at = $2 WHERE issuer = $1 AND used_at IS NULL AND revoked_at IS NULL`, usr.Id, u.d.now()); err != nil {
 		return wrap(err)
 	}
-	if err := u.hooks.onUserSuspended(ctx, tx, usr.Id); err != nil {
+	if err := u.hooks.onUserSuspended(ctx, tx, usr.Id, reason); err != nil {
 		return err
 	}
 	if err := u.cardNotice(ctx, tx, usr); err != nil {
@@ -654,10 +655,10 @@ func (u *Users) cardNotice(ctx context.Context, tx *store.Tx, usr User) error {
 	if err != nil || len(cards) == 0 {
 		return err
 	}
-	return u.hooks.notifyAdmins(ctx, tx, noticeCardHolderChanged, map[string]any{"user_id": usr.Id.String(), "name": usr.DisplayName, "cards": cards})
+	return u.hooks.notifyAdmins(ctx, tx, noticeCardHolderChanged, noticeKey(usr.Id.String()), map[string]any{"user_id": usr.Id.String(), "name": usr.DisplayName, "cards": cards})
 }
 
-// Unsuspend は状態を normal にする。端末は未承認のまま（本人がコピー (a) で承認し直す。第12章 5.4）。
+// Unsuspend は状態を normal にし、hook OnUserUnsuspended を呼ぶ。端末は未承認のまま（本人がコピー (a) で承認し直す。第12章 5.4）。
 func (u *Users) Unsuspend(ctx context.Context, tx *store.Tx, id, by uuid.UUID) error {
 	usr, err := u.get(ctx, tx, id, true)
 	if err != nil {
@@ -668,6 +669,9 @@ func (u *Users) Unsuspend(ctx context.Context, tx *store.Tx, id, by uuid.UUID) e
 	}
 	if _, err := tx.Exec(ctx, `UPDATE users SET state = 'normal' WHERE id = $1`, id); err != nil {
 		return wrap(err)
+	}
+	if err := u.hooks.onUserUnsuspended(ctx, tx, id); err != nil {
+		return err
 	}
 	return u.d.emitUserChanged(ctx, tx, id, fieldState)
 }
@@ -748,7 +752,8 @@ func (u *Users) startErase(ctx context.Context, tx *store.Tx, id uuid.UUID) (tim
 	if err := u.d.emitUserChanged(ctx, tx, id, fieldState); err != nil {
 		return time.Time{}, err
 	}
-	return at, u.hooks.notifySelf(ctx, tx, id, noticeEraseRequested, map[string]any{"erase_at": at.UTC().Format(time.RFC3339)})
+	eraseAt := at.UTC().Format(time.RFC3339)
+	return at, u.hooks.notifySelf(ctx, tx, id, noticeEraseRequested, noticeKey(id.String(), eraseAt), map[string]any{"erase_at": eraseAt})
 }
 
 // CancelErase は DELETE /me/erase。猶予の間なら erase_pending を外し、erasure の仕事を取り消す。全端末に知らせる。
@@ -770,7 +775,7 @@ func (u *Users) CancelErase(ctx context.Context, tx *store.Tx, id uuid.UUID) err
 	if err := u.d.emitUserChanged(ctx, tx, id, fieldState); err != nil {
 		return err
 	}
-	return u.hooks.notifySelf(ctx, tx, id, noticeEraseCancelled, map[string]any{})
+	return u.hooks.notifySelf(ctx, tx, id, noticeEraseCancelled, noticeKey(id.String()), map[string]any{})
 }
 
 // Erase は srv-worker の erasure から。猶予の間で期限を過ぎた時だけ行う（2 回目と取り消しの後は何もしない。I-10）。
@@ -881,7 +886,7 @@ func (u *Users) Transfer(ctx context.Context, tx *store.Tx, from, to uuid.UUID) 
 		id, from, to, now, exp); err != nil {
 		return uuid.Nil, wrap(err)
 	}
-	return id, u.hooks.notifySelf(ctx, tx, to, noticeTransferRequested, map[string]any{"transfer_id": id.String(),
+	return id, u.hooks.notifySelf(ctx, tx, to, noticeTransferRequested, noticeKey(id.String()), map[string]any{"transfer_id": id.String(),
 		"from_user_id": from.String(), "from_name": sender.DisplayName, "expires_at": exp.UTC().Format(time.RFC3339)})
 }
 
@@ -1019,7 +1024,7 @@ func (u *Users) SetChild(ctx context.Context, tx *store.Tx, id uuid.UUID, child 
 		if err != nil {
 			return err
 		}
-		return u.hooks.notifyEach(ctx, tx, append([]uuid.UUID{id}, former...), noticeChildFlagCleared, params)
+		return u.hooks.notifyEach(ctx, tx, append([]uuid.UUID{id}, former...), noticeChildFlagCleared, noticeKey(id.String()), params)
 	}
 	b, err := u.readBirthday(ctx, tx, id)
 	if err != nil {
@@ -1034,10 +1039,10 @@ func (u *Users) SetChild(ctx context.Context, tx *store.Tx, id uuid.UUID, child 
 	if err := u.d.emitUserChanged(ctx, tx, id, fieldChild); err != nil {
 		return err
 	}
-	if err := u.hooks.notifySelf(ctx, tx, id, noticeChildFlagSet, params); err != nil {
+	if err := u.hooks.notifySelf(ctx, tx, id, noticeChildFlagSet, noticeKey(id.String()), params); err != nil {
 		return err
 	}
-	return u.hooks.notifyGuardians(ctx, tx, id, noticeChildFlagSet, params)
+	return u.hooks.notifyGuardians(ctx, tx, id, noticeChildFlagSet, noticeKey(id.String()), params)
 }
 
 // clearChild は子ども区分を外し、消す前の保護者を返す（18 歳の解除と管理者の解除。第3章 9.1）。保護者の関係と
@@ -1087,7 +1092,7 @@ func (u *Users) applyAge(ctx context.Context, tx *store.Tx, id uuid.UUID, b birt
 		if err != nil {
 			return 0, err
 		}
-		return childAge, u.hooks.notifyEach(ctx, tx, append([]uuid.UUID{id}, former...), noticeChildReleased18, params)
+		return childAge, u.hooks.notifyEach(ctx, tx, append([]uuid.UUID{id}, former...), noticeChildReleased18, noticeKey(id.String()), params)
 	}
 	var by *uuid.UUID
 	var updatedAt *time.Time
@@ -1107,10 +1112,10 @@ func (u *Users) applyAge(ctx context.Context, tx *store.Tx, id uuid.UUID, b birt
 	if err := u.guardians.relax(ctx, tx, id); err != nil {
 		return 0, err
 	}
-	if err := u.hooks.notifySelf(ctx, tx, id, noticeChildRelaxed16, params); err != nil {
+	if err := u.hooks.notifySelf(ctx, tx, id, noticeChildRelaxed16, noticeKey(id.String()), params); err != nil {
 		return 0, err
 	}
-	return relaxAge, u.hooks.notifyGuardians(ctx, tx, id, noticeChildRelaxed16, params)
+	return relaxAge, u.hooks.notifyGuardians(ctx, tx, id, noticeChildRelaxed16, noticeKey(id.String()), params)
 }
 
 // ChildTransitions は誕生日のある子ども区分で、今日 16 歳か 18 歳になる人（第3章 9.1）。人ごとに自分のトランザクションで

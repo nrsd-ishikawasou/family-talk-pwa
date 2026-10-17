@@ -253,11 +253,11 @@
       "default": 2419200,
       "description": "第3章 5.3、第12章 11"
     },
-    "retention.redaction_grace": {
+    "retention.deleted_room_grace": {
       "type": "integer",
       "minimum": 1,
       "default": 604800,
-      "description": "第12章 9。暗号文の物理削除までの猶予"
+      "description": "第12章 9。トークの削除から、そのトークの行の物理削除までの猶予"
     },
     "retention.unapproved_device": {
       "type": "integer",

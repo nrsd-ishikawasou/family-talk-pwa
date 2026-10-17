@@ -107,6 +107,17 @@ func (p *Pool) Begin(ctx context.Context) (*Tx, error) {
 	return &Tx{tx: tx}, nil
 }
 
+// BeginSnapshot は読み専用の 1 つの見え方のトランザクション（REPEATABLE READ READ ONLY。PostgreSQL 18 の 13.2.2：最初の文の時点の
+// 見え方を全部の文が見る）を始める。複数の表を読んで 1 つの時点の一覧を返す操作が使う（srv-rooms Timeline.Snapshot、srv-keys
+// Groups.Epoch）。書けば DB が拒む（プログラムの誤り）。呼んだ側は Rollback で閉じる。
+func (p *Pool) BeginSnapshot(ctx context.Context) (*Tx, error) {
+	tx, err := p.pool.BeginTx(ctx, pgx.TxOptions{IsoLevel: pgx.RepeatableRead, AccessMode: pgx.ReadOnly})
+	if err != nil {
+		return nil, unavailable(err)
+	}
+	return &Tx{tx: tx}, nil
+}
+
 // Query はトランザクションの外の読み出し。
 func (p *Pool) Query(ctx context.Context, sql string, args ...any) (pgx.Rows, error) {
 	return p.pool.Query(ctx, sql, args...)

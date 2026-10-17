@@ -38,10 +38,10 @@
   - [srv-store](srv-store.md)（`Tx`、`Feed`、`Jobs`、`Retention`）
 - 部品：go-webauthn（WebAuthn L3、PRF の拡張）。回復コードのハッシュは srv-keys が持つ。
 - 依存の逆転：次の hook を本ブロックが定義し、他のブロックが登録する。同じトランザクションで走る（I-8）。
-  - `OnDeviceRevoked(tx, deviceId)`、`OnUserSuspended(tx, userId)`
+  - `OnDeviceRevoked(tx, deviceId)`、`OnUserSuspended(tx, userId, reason)`、`OnUserUnsuspended(tx, userId)`。reason は suspended か deleted（削除は停止の処理を通る）
   - `OnUserDeleted(tx, userId, eraseContent)`、`OnUserErased(tx, userId)`
   - `OnUserCreated(tx, userId, firstDeviceId)`（最初の端末の登録の後。srv-rooms が家族全員のトークを作るか、追加待ちに置く）
-  - `OnNotice(tx, notice)`（知らせ。notice は kind、params、audience。第7章 9）。level と text_key は srv-push が kind から決める
+  - `OnNotice(tx, notice)`（知らせ。notice は kind、key（事象の鍵）、params、audience。第7章 9）。audience の種類は 5 つ（self、all、admins、guardians、room）。level と text_key は srv-push が kind から決める
   - `Hooks.Notify(tx, notice)` は OnNotice を呼ぶ公開の口。srv-push より下のブロック（srv-keys）はこの口から知らせを出す
   - `OnPasskeyReset(tx, userId, deviceId)`（管理者の再設定のリンクの使用。第3章 4.6）。srv-keys が `recovery.used`（method `reset`）を本人の全端末と管理者へ書く
   - `OnPasskeyDeleted(tx, userId, credId)`（パスキーの削除。srv-keys がコピー (e) を消す。第12章 5.4 (e)）
@@ -116,7 +116,7 @@ classDiagram
   class Users {
     +Create(tx, name, role, child) User
     +Get(ctx, q, id) User
-    +List(ctx, principal, page) Page~User~
+    +List(ctx, q, principal, page) Page~User~
     +Detail(ctx, principal, id) UserDetail
     +Me(ctx, id) MeView
     +UpdateProfile(tx, id, patch)
@@ -214,7 +214,7 @@ classDiagram
   }
   class PushReader {
     <<interface>>
-    +SubscribedDevices(ctx, userId) Result~[Uuid]~
+    +SubscribedDevices(ctx, q, userId) Result~[Uuid]~
   }
   class Credential {
     +Id []byte
@@ -250,11 +250,12 @@ classDiagram
     +LastSeenAt Time
     +LastIp Option~Fenv~
     +CreatedAt Time
+    +FirstApprovedAt Option~Time~
   }
   class Devices {
     +Register(tx, userId, kind, name) Device
     +Get(ctx, q, deviceId) Result~Device, Event~
-    +List(ctx, userId, thisDevice, page) Page~DeviceView~
+    +List(ctx, q, userId, thisDevice, page) Page~DeviceView~
     +Rename(tx, userId, deviceId, name)
     +Approve(tx, deviceId, by) Result~Event~
     +UnapproveAllOfUser(tx, userId)
@@ -268,7 +269,8 @@ classDiagram
     +MarkGuardianCleared(tx, deviceId)
     +OfUser(ctx, q, userId) [Device]
     +NameOf(ctx, q, deviceId) string
-    +ApprovedSeenBefore(ctx, olderThan) [Device]
+    +IdleSeenBefore(ctx, olderThan) [Device]
+    +ApprovedAmong(ctx, q, deviceIds) [Uuid]
   }
   class QrFlow {
     +Start(tx, start QrStart) QrStartResult
@@ -295,6 +297,7 @@ classDiagram
   class Hooks {
     +OnDeviceRevoked [fn]
     +OnUserSuspended [fn]
+    +OnUserUnsuspended [fn]
     +OnUserDeleted [fn]
     +OnUserErased [fn]
     +OnUserCreated [fn]
@@ -373,15 +376,15 @@ classDiagram
 |UserPrivate|`+Settings Fenv`|ft.settings.user/1 のうちエンベロープに置く項目（プライバシー）|
 |Users|`+Create(tx, name, role, child) User`|DEK を生成し KEK で包む（Envelope）。child は子ども区分と保護者（招待の child）。hook OnUserCreated|
 |Users|`+Get(ctx, q, id) User`|1 行（無ければ MEM-001）。srv-keys の承認、回復の求め、使用の知らせの名前。q は ctx のトランザクションか Pool（全体実装設計書 2.4 のトランザクションの中の読み。トランザクションの中ではそれを渡す）|
-|Users|`+List(ctx, principal, page) Page~User~`|/users（識別子、表示名、役割、状態、子ども区分。本人の署名鍵の公開部は DeviceKeyReader.SigningKeys から）。家族の構成員（削除と抹消を除く）を識別子の順に、第2章 3 の cursor で返す。子ども区分は見る人が本人、その子の保護者、管理者の時だけ出す（第3章 6 の公開の範囲）。写真はサーバーに無い（第3章 6）|
+|Users|`+List(ctx, q, principal, page) Page~User~`|/users と srv-rooms `Timeline.Snapshot`（`/sync` の初回。q は srv-store `Pool.BeginSnapshot` のトランザクション。全体実装設計書 2.4）（識別子、表示名、役割、状態、子ども区分。本人の署名鍵の公開部は DeviceKeyReader.SigningKeys から）。家族の構成員（削除と抹消を除く）を識別子の順に、第2章 3 の cursor で返す。子ども区分は見る人が本人、その子の保護者、管理者の時だけ出す（第3章 6 の公開の範囲）。写真はサーバーに無い（第3章 6）|
 |Users|`+Detail(ctx, principal, id) UserDetail`|`GET /users/{id}`。構成員と承認済みの端末の公開鍵（DeviceKeyReader.DevicesOf）。削除と抹消は MEM-001。子ども区分の見せ方は List と同じ|
 |Users|`+Me(ctx, id) MeView`|`GET /me`。誕生日をエンベロープから開いて返す|
 |Users|`+UpdateProfile(tx, id, patch)`|/me PATCH。欄は表示名（平文。user.changed）と誕生日（エンベロープ。YYYY-MM-DD か MM-DD。年のある未来の日付は MEM-005）だけ。子ども区分の構成員の誕生日の書き込みは MEM-007（第3章 9.1。保護者が Guardians.SetBirthday で書く）。誕生日で区分は変えない。区分の無い構成員の誕生日で今日 18 歳未満になる時は管理者へ OnNotice（child_flag_suggested）。写真、背景、ひとことは端末が家族全員のトークへ（web-sync Users.publishProfile）|
 |Users|`+SetChild(tx, id, child, by)`|`PUT /admin/users/{id}/child`（srv-admin の operation から。監査は srv-admin）。付ける時（child が真）：誕生日があり今日 18 歳以上なら MEM-012。users.is_child と child_declared を真に。外す時：is_child と child_declared を偽にし、guardians と child_controls を消し、その子の open の承認の求めを知らせなしで expired にする（端末の追加の求めは device_codes も expired。保護者がいなくなれば承認できないため。denied ではない：誰も断っておらず、区分が外れた本人が承認し直せる。第3章 4.4）。どちらも user.changed(fields: child) と、本人と保護者（外す時は消す前の保護者）へ OnNotice（child_flag_set／child_flag_cleared）。同じ値なら何もしない|
 |Users|`+Settings(ctx, userId) UserSettings`|/me/settings。エンベロープを開く（srv-push の規則の判定もこれを呼ぶ）|
 |Users|`+Suspend(tx, id, by, reason)`|状態を suspended にする。最後の管理者は MEM-003。Sessions.RevokeAllOfUser(suspended)、Devices.UnapproveAllOfUser（第3章 8.1）、本人の未使用の招待の取り消し、hook OnUserSuspended（家族全員のトークの知らせは srv-rooms が登録した hook。管理者の操作の知らせは srv-admin の Audit）。Families.HoldsCard なら管理者へ OnNotice（card_holder_changed。params に user_id、name、cards）|
-|Users|`+Unsuspend(tx, id, by)`|状態を normal にする。端末は未承認のまま（本人がコピー (a) で承認し直す。第12章 5.4）|
-|Users|`+Delete(tx, id, by, eraseContent)`|停止 + hook OnUserDeleted + 状態 deleted。最後の管理者は MEM-003。Families.HoldsCard なら管理者へ OnNotice（card_holder_changed。停止を経るので 1 回だけ）|
+|Users|`+Unsuspend(tx, id, by)`|状態を normal にする。端末は未承認のまま（本人がコピー (a) で承認し直す。第12章 5.4）。hook OnUserUnsuspended|
+|Users|`+Delete(tx, id, by, eraseContent)`|停止（状態が通常なら。hook OnUserSuspended の reason は deleted）+ hook OnUserDeleted + 状態 deleted。最後の管理者は MEM-003。Families.HoldsCard なら管理者へ OnNotice（card_holder_changed。停止を経るので 1 回だけ）|
 |Users|`+RequestErase(tx, id) Time`|erase_pending。24 時間の仕事（Jobs.Enqueue erasure）。猶予の終わりを返す（既に猶予の間なら今の値）。本人の全端末へ OnNotice（erase_requested。params.erase_at）。最後の管理者は MEM-003。子どもは保護者の承認（求めを別のトランザクションで確定してから MEM-006。保護者への知らせは Guardians.RequestApproval）|
 |Users|`+CancelErase(tx, id)`|`DELETE /me/erase`：猶予の間なら erase_pending を外し、erasure の仕事を取り消す。本人の全端末へ OnNotice（erase_cancelled）。求めが無ければ何もしない|
 |Users|`+Erase(tx, id)`|srv-worker から。hook OnUserErased。DEK の破棄。erasures に記録。Families.HoldsCard なら管理者へ OnNotice（card_holder_changed）。持ち主の記録は残す（第12章 5.4）|
@@ -428,7 +431,7 @@ classDiagram
 |DeviceKeyReader|`+KeysOf(ctx, q, userId) Result~Map~`|登録のある全端末の fdev/1（未承認と休眠を含む。`GET /me/devices` の keys。srv-keys DeviceKeys.ListOfUser の偽）|
 |Credential|`+Record JSON`|passkeys.record。資格情報の記録の全体（公開鍵、sign_count、flags（同期の有無）、AAGUID、transports、attestation、拡張）。PRF の結果は含まない|
 |Credential|`+Prf bool`|PRF の拡張が使えるか（srv-keys がコピー (e) の可否に使う）|
-|PushReader|`+SubscribedDevices(ctx, userId) Result~[Uuid]~`|srv-push が実装（Subscriptions.OfUser）。`GET /me/devices` の push。srv-push は本ブロックの上なので、本ブロックは逆転の interface で読む|
+|PushReader|`+SubscribedDevices(ctx, q, userId) Result~[Uuid]~`|srv-push が実装（Subscriptions.OfUser）。q は Devices.List の q。`GET /me/devices` の push。srv-push は本ブロックの上なので、本ブロックは逆転の interface で読む|
 |Passkeys|`+List(ctx, userId) [Credential]`|`GET /me/passkeys`（第2章 5.2）|
 |Passkeys|`+Delete(tx, userId, credId)`|`DELETE /me/passkeys/{id}`。最後の 1 つは AUTH-008。消した後に同じトランザクションで hook OnPasskeyDeleted（コピー (e) の削除）|
 |Passkeys|`+OwnerOf(ctx, q, credId) Result~CredOwner, Event~`|q は ctx のトランザクションか Pool（全体実装設計書 2.4 のトランザクションの中の読み。トランザクションの中ではそれを渡す）。資格情報の持ち主の構成員と PRF の有無（`{userId, prf}`）。無ければ KEY-009（srv-keys がコピー (e) の対象を確かめる。`PUT /me/keybundle/prf/{cred_id}`）|
@@ -449,21 +452,22 @@ classDiagram
 |Device|`+State string`|unapproved、approved、dormant、revoked、expired のいずれか。承認の正（device_keys.approved_at は署名の時刻の記録だけ）|
 |Device|`+LastIp Option~Fenv~`|エンベロープ。ip_log は別の表|
 |Devices|`+Register(tx, userId, kind, name) Device`|ログイン・参加・QR の成功・再設定のリンクで。未承認。名前は 40 文字まで（第3章 5.2）。登録の後に本人の全端末へ OnNotice（new_device。params に user_id、name、device_id、device_name、platform）。子ども区分なら保護者にも（第3章 5.2、第7章 9）|
-|Devices|`+List(ctx, userId, thisDevice) [DeviceView]`|名前、種類、最終の利用、IP の国と市（端末の中の地理のデータで求めるため、サーバーは国と市を知らない：生の IP をエンベロープから開いて返す）、承認、購読（PushReader.SubscribedDevices）、この端末（thisDevice は主体の端末）、鍵の登録 keys（DeviceKeyReader.KeysOf の fdev/1。登録の前は無い。指紋は端末が第12章 5.3 の定義で求め、本ブロックは求めない）|
+|Devices|`+List(ctx, q, userId, thisDevice, page) Page~DeviceView~`|`GET /me/devices` と srv-rooms `Timeline.Snapshot`（q は Users.List と同じ）。名前、種類、最終の利用、IP の国と市（端末の中の地理のデータで求めるため、サーバーは国と市を知らない：生の IP をエンベロープから開いて返す）、承認、購読（PushReader.SubscribedDevices）、この端末（thisDevice は主体の端末）、鍵の登録 keys（DeviceKeyReader.KeysOf の fdev/1。登録の前は無い。指紋は端末が第12章 5.3 の定義で求め、本ブロックは求めない）|
 |Devices|`+Get(ctx, q, deviceId) Result~Device, Event~`|無ければ KEY-001。q は ctx のトランザクションか Pool（全体実装設計書 2.4 のトランザクションの中の読み。トランザクションの中ではそれを渡す）|
-|Devices|`+Approve(tx, deviceId, by) Result~Event~`|未承認を承認済みにする（状態機械の「未承認から承認済みへ」だけ）。srv-keys が fdev/1 の user_sig を置いた同じトランザクションで呼ぶ。承認済みと休眠は KEY-002（休眠は承認が要らず rejoin の経路。第3章 5.1）、取り消し済み・期限切れ・無しは KEY-001。device.changed|
+|Devices|`+Approve(tx, deviceId, by) Result~Event~`|未承認を承認済みにする（状態機械の「未承認から承認済みへ」だけ）。srv-keys が fdev/1 の user_sig を置いた同じトランザクションで呼ぶ。承認済みと休眠は KEY-002（休眠は承認が要らず rejoin の経路。第3章 5.1）、取り消し済み・期限切れ・無しは KEY-001。`first_approved_at` が無ければ今を置く（最初の承認の記録。停止で未承認に戻しても消さない：期限切れと休眠の対象の判定に使う）。device.changed|
 |Devices|`+UnapproveAllOfUser(tx, userId)`|停止で、承認済みと休眠の端末を未承認に戻す（取り消しではない。hook は呼ばない）。device.changed は出さない（change に当たる値が無い。家族は user.changed で知る）|
 |Devices|`+Revoke(tx, deviceId, by, self bool)`|状態 revoked。Sessions.RevokeAllOfDevice（device_revoked）。hook OnDeviceRevoked。device.changed（本人の全端末、家族の全員）。session.revoked は Sessions.Revoke がその端末宛てに書く。self は自分の端末（再認証なし、応答で Cookie を消す。第3章 4.5）|
 |Devices|`+Touch(tx, deviceId, ip, now)`|最終の利用と ip_log|
-|Devices|`+ExpireUnapproved(ctx, olderThan) int`|7 日。期限切れにした端末のセッションを失効（expired）させ、hook OnDeviceRevoked で他のブロックの記録を消す。自分のトランザクションで 1,000 台ずつ。戻りは数|
-|Devices|`+MarkDormant(tx, deviceId, olderThan) bool`|srv-keys Groups.RetireDormant から。承認済みで last_seen_at が olderThan より古い時だけ休眠にし、変えたかを返す（1 つの UPDATE。休眠の判定の後に使われた端末を休眠にしない）|
+|Devices|`+ExpireUnapproved(ctx, olderThan) int`|7 日。対象は承認されたことのない未承認の端末（`first_approved_at` が無く `created_at` が olderThan より古い）。停止で未承認に戻った端末（`first_approved_at` あり）は対象にしない（第3章 5.1、8.1。再開の後の自己承認を待つ）。期限切れにした端末のセッションを失効（expired）させ、hook OnDeviceRevoked で他のブロックの記録を消す。自分のトランザクションで 1,000 台ずつ。戻りは数|
+|Devices|`+MarkDormant(tx, deviceId, olderThan) bool`|srv-keys Groups.RetireDormant から。devices の行の錠を取り、last_seen_at が olderThan より古い時だけ真。承認済みなら休眠にする。承認されたことのある未承認の端末（停止で戻った端末）なら状態を変えずに真（leaf とコピー (a) だけが外れる。休眠にすると再開の後に鍵の承認を経ずに承認済みと同じ扱いになる。第12章 5.2）。他の状態と、last_seen_at が新しい時（休眠の判定の後に使われた端末）は偽|
 |Devices|`+LockShared(tx, deviceId) Result~Device, Event~`|端末の行を共有の錠（FOR SHARE）で読む。無ければ KEY-001。srv-keys が端末を MLS のグループに加える前（Groups.Commit の Add の端末、RequestAdd、Reinit の入るべき端末）に、トークの錠より先に取る。取り消しの行の錠と直列になり、取り消しの hook が新しい leaf と追加待ちを見落とさない（全体実装設計書 I-8）|
 |Devices|`+MarkActive(tx, deviceId)`|srv-keys Groups.Commit から。休眠の端末が Add で leaf を得た時に承認済みへ戻す（第3章 5.1。休眠の時だけで、他の状態は変えない）。device.changed は出さない（change に当たる値が無く、家族は room.member の added で知る）|
 |Devices|`+GuardianCleared(ctx, q, deviceId) bool`|`devices.guardian_approved_at` があるか（保護者が承認した端末。第3章 4.4）。srv-keys DeviceKeys.Approve が子の端末で確かめる|
 |Devices|`+MarkGuardianCleared(tx, deviceId)`|`devices.guardian_approved_at` を置く。QrFlow.Poll（保護者が承認した device_codes から登録した時）と Guardians.Approve（対象が端末の識別子の時）から|
 |Devices|`+OfUser(ctx, q, userId) [Device]`|構成員の全端末（全状態。識別子の順）。srv-keys の承認と鍵の一覧（DevicesOf、KeysOf）、削除の hook の leaf の削除待ち|
 |Devices|`+NameOf(ctx, q, deviceId) string`|q は ctx のトランザクションか Pool（全体実装設計書 2.4 のトランザクションの中の読み。トランザクションの中ではそれを渡す）。端末の名前（本人の DEK で開く）。srv-keys の `recovery.request` の `device_name`|
-|Devices|`+ApprovedSeenBefore(ctx, olderThan) [Device]`|承認済みで `last_seen_at` が olderThan より古い端末（休眠の判定。srv-keys `Groups.DormantLeafs`）|
+|Devices|`+IdleSeenBefore(ctx, olderThan) [Device]`|`last_seen_at` が olderThan より古い端末のうち、承認済みの物と、承認されたことのある未承認の物（`first_approved_at` あり。停止で戻った端末）。識別子の順（休眠の判定。srv-keys `Groups.DormantLeafs`。第12章 5.2）|
+|Devices|`+ApprovedAmong(ctx, q, deviceIds) [Uuid]`|deviceIds のうち状態が承認済みの端末（識別子の順）。srv-keys `Groups.Epoch` と `Reinit` の「Commit を作れる端末」の判定（第12章 5.2 の (d)）。q は ctx のトランザクションか Pool|
 |QrFlow|`+Start(tx, start QrStart) QrStartResult`|QrStart は要求の名前、種類、端末の鍵の公開部 2 つ（sig_pub、kem_pub。第3章 4.4 の 1）と送り元の IP。device_code（256 ビットのハッシュ）、user_code（8 文字）、/d/&lt;code&gt;、10 分、interval 5|
 |QrFlow|`+Poll(tx, deviceCode) Result~Issued, Event~`|AUTH-005（params.state は authorization_pending、slow_down、expired、access_denied のいずれか。access_denied は保護者の不承認で denied になった行。第3章 4.4、RFC 8628 3.5）。本人が断る操作は無い（承認の前の求めには持ち主が無い。第3章 4.4）。承認の後の最初の poll が、端末の登録（未承認）とセッションを同じトランザクションで作り、approved_session_id に記録する（Cookie の値はハッシュしか残らないので、承認の時には作らない）。device_codes.guardian_approved が真なら登録した端末に MarkGuardianCleared。2 回目からは expired|
 |QrFlow|`+Approve(tx, principal, userCode) Result~Event~`|本人の既存の端末。再認証（AUTH-006。principal の ReauthAt で判定）。device_codes を approved にし approved_user_id を書くだけ。子どもは保護者（MEM-006。Guardians.RequestApproval の求めは別のトランザクションで確定してから返す）|
@@ -474,9 +478,11 @@ classDiagram
 |ResetLink|`+Consume(tx, token, challengeId, passkeyResponse, device) Result~Issued, Event~`|challenge は kind reset。パスキーを作り直し、未承認の端末として登録し（Devices.Register が new_device を出す）、セッションを出す。最後に同じトランザクションで hook OnPasskeyReset（srv-keys が `recovery.used`（method reset）を本人の全端末と管理者へ書く。第3章 4.6）。本ブロックは `recovery.used` を書かない|
 |IpLog|`+Record(tx, deviceId, ip, at)`|生の IP。28 日で消す|
 |Audit|`+Record(tx, actor, action, target, params)`|実装は srv-admin|
+|Hooks|`+OnUserSuspended [fn]`|引数は (tx, userId, reason)。reason は RevokeReason の suspended（Users.Suspend）か deleted（Users.Delete が停止の処理を通る時）。srv-keys は reason を見ずに端末の追加待ちを消し、srv-rooms は suspended の時だけ家族全員のトークに member_suspended を流す（削除では member_deleted だけ）|
+|Hooks|`+OnUserUnsuspended [fn]`|引数は (tx, userId)。Users.Unsuspend が状態を normal にした後に呼ぶ。srv-rooms が家族全員のトークに member_unsuspended を流す|
 |Hooks|`+OnUserCreated [fn]`|引数は (tx, userId, firstDeviceId)。最初の端末の登録の後に呼ぶ。srv-rooms が家族全員のトークを作る（設置）か追加待ちに置く（参加）|
-|Hooks|`+OnNotice [fn]`|知らせの発行（srv-push が登録し、kind から level と text_key を引いて Notices.Emit を呼ぶ）。引数は (tx, notice)。notice は kind、params、audience（self か guardians は構成員の識別子を伴う、admins、all）。本ブロックが出す kind（第7章 9）：new_device、transfer_requested、erase_approval_requested、device_approval_requested、erase_approval_expired、guardian_settings_changed、guardians_changed、erase_requested、erase_cancelled、child_relaxed_16、child_released_18、child_flag_set、child_flag_cleared、child_flag_suggested、card_holder_changed、update_failed|
-|Hooks|`+Notify(tx, notice)`|OnNotice の登録を呼ぶ公開の口。srv-push より下のブロック（srv-keys の recovery_used、family_key_used）が使う。登録が無ければ Fault（Ready で確かめる）|
+|Hooks|`+OnNotice [fn]`|知らせの発行（srv-push が登録し、kind から level と text_key を引いて Notices.Emit を呼ぶ）。引数は (tx, notice)。notice は kind、key（事象の鍵。第7章 9 の表の「事象の鍵」の欄のとおりに本ブロックが組む。srv-push が (kind, key, 日) で同じ事象の重複を抑える）、params、audience（self か guardians は構成員の識別子を伴う、room はトークの識別子を伴う、admins、all。第7章 9）。本ブロックが出す kind（第7章 9）：new_device、transfer_requested、erase_approval_requested、device_approval_requested、erase_approval_expired、guardian_settings_changed、guardians_changed、erase_requested、erase_cancelled、child_relaxed_16、child_released_18、child_flag_set、child_flag_cleared、child_flag_suggested、card_holder_changed、update_failed|
+|Hooks|`+Notify(tx, notice)`|OnNotice の登録を呼ぶ公開の口。srv-push より下のブロック（srv-keys の recovery_used、family_key_used、recovery_requested、mls_reinit、mls_reinit_limit、sticker_remove_requested）が使う。登録が無ければ Fault（Ready で確かめる）|
 |Hooks|`+OnPasskeyReset [fn]`|引数は (tx, userId, deviceId)。ResetLink.Consume の最後に呼ぶ。srv-keys が Recovery.NotifyUsed(method reset) で `recovery.used` を書く（第3章 4.6）|
 |Hooks|`+OnPasskeyDeleted [fn]`|引数は (tx, userId, credId)。Passkeys.Delete が消した後に呼ぶ。srv-keys がその資格情報のコピー (e) を消す（第12章 5.4 (e)）|
 
@@ -491,10 +497,10 @@ classDiagram
 |B-064|`SetupLink`|srv-admin `HostTools`（`ft setup` の最後、`ft admin create-link`）、operation（`/setup/*`）|[第3章 3.1 初回の管理者（DD-3-1）](../../../../docs/jp/design/03_基本設計書_認証_構成員_端末.md#31-初回の管理者dd-3-1)、[第11章 4 設置の流れ（DD-11-2、DD-11-3）](../../../../docs/jp/design/11_基本設計書_運用.md#4-設置の流れdd-11-2dd-11-3)|
 |B-065|`Passkeys`|operation（本ブロック）、srv-keys（`OwnerOf`：コピー (e) の対象の資格情報の持ち主と PRF の有無）|[第3章 4.1 パスキーの登録（DD-3-4）](../../../../docs/jp/design/03_基本設計書_認証_構成員_端末.md#41-パスキーの登録dd-3-4)、[第3章 4.2 ログイン（DD-3-4）](../../../../docs/jp/design/03_基本設計書_認証_構成員_端末.md#42-ログインdd-3-4)|
 |B-066|`Sessions`（発行、検証、作り直し、失効、期限切れの掃除 `ExpireDue`、ws/shell のトークン）。srv-boundary の `SessionVerifier`、`WsTokenVerifier`、`ShellTokenVerifier` の実装|srv-boundary、srv-keys（鍵の交代で `RevokeAllOfUser`）、srv-admin（セッションの署名鍵の交代で全失効）、srv-worker（`ExpireDue`。1 時間）|[第2章 4.1 セッション](../../../../docs/jp/design/02_基本設計書_境界.md#41-セッション)、[第2章 4.4 WebSocket と通知と SFU](../../../../docs/jp/design/02_基本設計書_境界.md#44-websocket-と通知と-sfu)、[第3章 4.3 セッション（DD-3-5）](../../../../docs/jp/design/03_基本設計書_認証_構成員_端末.md#43-セッションdd-3-5)|
-|B-067|`Devices`（登録、一覧、名前、`Approve`、`UnapproveAllOfUser`、取り消し、`Touch`、`ExpireUnapproved`、`MarkDormant`、`MarkActive`、`LockShared`、`GuardianCleared`、`MarkGuardianCleared`、読みの `OfUser`、`NameOf`、`ApprovedSeenBefore`）。`DeviceKeyReader` の定義|operation、srv-admin（`/admin/users/{id}/devices/{did}`）、srv-keys（承認で状態を進める `Devices.Approve` は srv-keys が `fdev/1` の `user_sig` を置いた同じトランザクションで呼ぶ。`DeviceKeyReader` を実装する）、srv-worker（期限切れ）|[第3章 5 端末とセッション（DD-3-6）](../../../../docs/jp/design/03_基本設計書_認証_構成員_端末.md#5-端末とセッションdd-3-6)|
+|B-067|`Devices`（登録、一覧、名前、`Approve`、`UnapproveAllOfUser`、取り消し、`Touch`、`ExpireUnapproved`、`MarkDormant`、`MarkActive`、`LockShared`、`GuardianCleared`、`MarkGuardianCleared`、読みの `OfUser`、`NameOf`、`IdleSeenBefore`、`ApprovedAmong`）。`DeviceKeyReader` の定義|operation、srv-admin（`/admin/users/{id}/devices/{did}`）、srv-keys（承認で状態を進める `Devices.Approve` は srv-keys が `fdev/1` の `user_sig` を置いた同じトランザクションで呼ぶ。`DeviceKeyReader` を実装する）、srv-worker（期限切れ）|[第3章 5 端末とセッション（DD-3-6）](../../../../docs/jp/design/03_基本設計書_認証_構成員_端末.md#5-端末とセッションdd-3-6)|
 |B-068|`QrFlow`（`Start`、`Poll`、`Approve`、`Info`。本人が断る操作は無い：第3章 4.4）|operation|[第3章 4.4 新しい端末の追加（DD-3-7）](../../../../docs/jp/design/03_基本設計書_認証_構成員_端末.md#44-新しい端末の追加dd-3-7)|
 |B-069|`ResetLink`|srv-admin（発行）、operation（消費）|[第3章 4.6 回復（パスキーを失った）](../../../../docs/jp/design/03_基本設計書_認証_構成員_端末.md#46-回復パスキーを失った)|
-|B-070|`Hooks`（`OnDeviceRevoked`、`OnUserSuspended`、`OnUserDeleted`、`OnUserErased`、`OnUserCreated`、`OnNotice`、`OnPasskeyDeleted`、`OnPasskeyReset` の定義と、`Notify` の公開。登録は srv-keys、srv-push、srv-rooms、srv-admin）|同左。`Notify` は srv-keys（回復の使用の知らせ）|[第12章 9 消すこと（DD-12-13、R-12-6-1）](../../../../docs/jp/design/12_基本設計書_データと暗号化.md#9-消すことdd-12-13r-12-6-1)、I-8|
+|B-070|`Hooks`（`OnDeviceRevoked`、`OnUserSuspended`、`OnUserUnsuspended`、`OnUserDeleted`、`OnUserErased`、`OnUserCreated`、`OnNotice`、`OnPasskeyDeleted`、`OnPasskeyReset` の定義と、`Notify` の公開。登録は srv-keys、srv-push、srv-rooms、srv-admin）|同左。`Notify` は srv-keys（回復の使用の知らせ）|[第12章 9 消すこと（DD-12-13、R-12-6-1）](../../../../docs/jp/design/12_基本設計書_データと暗号化.md#9-消すことdd-12-13r-12-6-1)、I-8|
 |B-071|`IpLog`|本ブロック（`Touch`）、srv-worker（`Prune`）|[第12章 11 ログの秘匿（第1章 10.4 の具体）](../../../../docs/jp/design/12_基本設計書_データと暗号化.md#11-ログの秘匿第1章-104-の具体)、[第3章 5.3 IP と場所](../../../../docs/jp/design/03_基本設計書_認証_構成員_端末.md#53-ip-と場所)|
 |B-072|`Reports::Create`|operation（`/me/report`）|[第2章 5.3 構成員とプロフィール（第3章）](../../../../docs/jp/design/02_基本設計書_境界.md#53-構成員とプロフィール第3章)、[第7章 9 システムの知らせ（DD-7-9）](../../../../docs/jp/design/07_基本設計書_通知.md#9-システムの知らせdd-7-9)|
 
@@ -524,7 +530,7 @@ classDiagram
 |`setup_links`|表|`token_sha256`、`expires_at`、`used_at?`|[第3章 3.1 初回の管理者（DD-3-1）](../../../../docs/jp/design/03_基本設計書_認証_構成員_端末.md#31-初回の管理者dd-3-1)|
 |`passkeys`|表|`cred_id bytea PK`、`user_id`、`name?`、`record jsonb`（資格情報の記録の全体：公開鍵、sign_count、flags（同期の有無）、AAGUID、transports、attestation、拡張。PRF の結果は含まない）、`prf`、`created_at`、`last_used_at?`|[第3章 4.1 パスキーの登録（DD-3-4）](../../../../docs/jp/design/03_基本設計書_認証_構成員_端末.md#41-パスキーの登録dd-3-4)|
 |`login_challenges`|表|`id uuid PK`（UUIDv7。要求の challenge_id）、`challenge bytea UNIQUE`（32 バイト）、`kind`（register、login、setup、invite、reset）、`user_id?`、`token_sha256?`（setup、invite、reset の時）、`session jsonb`（WebAuthn の session の記録。user handle を含む）、`expires_at`（5 分）。検証で消す（1 回）|[第3章 4 ログインと認証](../../../../docs/jp/design/03_基本設計書_認証_構成員_端末.md#4-ログインと認証)|
-|`devices`|表|`id`、`user_id`、`name bytea`（エンベロープ）、`kind`、`state`、`last_seen_at`、`last_ip bytea`（エンベロープ）、`created_at`、`revoked_at?`、`revoked_by?`、`guardian_approved_at?`（保護者が承認した端末。第3章 4.4）|[第3章 5.1 端末の状態](../../../../docs/jp/design/03_基本設計書_認証_構成員_端末.md#51-端末の状態)|
+|`devices`|表|`id`、`user_id`、`name bytea`（エンベロープ）、`kind`、`state`、`last_seen_at`、`last_ip bytea`（エンベロープ）、`created_at`、`first_approved_at?`（最初の承認の時刻。停止で未承認に戻しても消さない。無ければ承認されたことのない端末で 7 日の期限切れの対象。第3章 5.1）、`revoked_at?`、`revoked_by?`、`guardian_approved_at?`（保護者が承認した端末。第3章 4.4）。索引 `devices_last_seen` は承認済みと未承認の行（休眠の判定）|[第3章 5.1 端末の状態](../../../../docs/jp/design/03_基本設計書_認証_構成員_端末.md#51-端末の状態)|
 |`sessions`|表|`id`、`token_sha256`、`user_id`、`device_id`、`created_at`、`absolute_expires_at`、`idle_expires_at`、`revoked_at?`、`revoked_reason?`（AUTH-002 の 7 つ）、`reauth_at?`|[第2章 4.1 セッション](../../../../docs/jp/design/02_基本設計書_境界.md#41-セッション)|
 |`short_tokens`|表|`token_sha256`、`kind`（ws、shell）、`session_id`、`expires_at`、`used_at?`|[第2章 4.4 WebSocket と通知と SFU](../../../../docs/jp/design/02_基本設計書_境界.md#44-websocket-と通知と-sfu)|
 |`device_codes`|表|`device_code_sha256`、`user_code`（pending の間は一意）、`kind`、`name`、`sig_pub jsonb`、`kem_pub jsonb`（新しい端末の署名鍵と鍵合意鍵の公開部。承認の画面の指紋の元）、`ip inet?`（承認の画面に示す生の値。構成員が決まる前で DEK が無いので平文。10 分で行ごと消える）、`expires_at`、`state`、`approved_user_id?`（承認した構成員）、`guardian_approved bool`（保護者の承認を経た求め）、`approved_session_id?`、`last_poll_at?`、`created_at`|[第3章 4.4 新しい端末の追加（DD-3-7）](../../../../docs/jp/design/03_基本設計書_認証_構成員_端末.md#44-新しい端末の追加dd-3-7)|

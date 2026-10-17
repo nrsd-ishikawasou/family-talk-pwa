@@ -115,7 +115,7 @@ CREATE TABLE device_inbox (
     to_device uuid NOT NULL,
     from_device uuid NOT NULL,
     kind text NOT NULL CHECK (kind IN ('welcome', 'keybundle', 'key_backup', 'key_request', 'share',
-        'call_key_request', 'call_key', 'sticker_remove_request')),
+        'call_key_request', 'call_key', 'sticker_remove_request', 'sticker_remove_withdrawal')),
     ciphertext bytea NOT NULL,
     sig bytea CHECK (length(sig) = 64),
     pos bigserial NOT NULL UNIQUE,
@@ -143,7 +143,7 @@ CREATE TABLE mls_leaves (
     room_id uuid NOT NULL REFERENCES mls_groups (room_id),
     leaf_index integer NOT NULL CHECK (leaf_index >= 0),
     device_id uuid NOT NULL,
-    encryption_key bytea,
+    encryption_key bytea CHECK (octet_length(encryption_key) = 65),
     since_epoch bigint NOT NULL CHECK (since_epoch >= 0),
     PRIMARY KEY (room_id, leaf_index),
     UNIQUE (room_id, device_id)

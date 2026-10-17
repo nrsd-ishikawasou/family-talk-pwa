@@ -374,7 +374,7 @@ func TestNotifyEachOnceAndHookOrder(t *testing.T) {
 	h.RegisterOnNotice(func(context.Context, *store.Tx, Notice) error { order = append(order, "b"); return stop })
 	h.RegisterOnNotice(func(context.Context, *store.Tx, Notice) error { order = append(order, "c"); return nil })
 	a, b := uuid.Must(uuid.NewV7()), uuid.Must(uuid.NewV7())
-	if err := h.notifyEach(context.Background(), nil, []uuid.UUID{a, b, a}, noticeGuardiansChanged, nil); !errors.Is(err, stop) {
+	if err := h.notifyEach(context.Background(), nil, []uuid.UUID{a, b, a}, noticeGuardiansChanged, "k", nil); !errors.Is(err, stop) {
 		t.Fatalf("最初の誤りで止まらない: %v", err)
 	}
 	if strings.Join(order, "") != "ab" || len(to) != 1 || to[0] != a {
@@ -383,7 +383,7 @@ func TestNotifyEachOnceAndHookOrder(t *testing.T) {
 	h2 := &Hooks{}
 	to = nil
 	h2.RegisterOnNotice(func(_ context.Context, _ *store.Tx, n Notice) error { to = append(to, *n.Audience.UserId); return nil })
-	if err := h2.notifyEach(context.Background(), nil, []uuid.UUID{a, b, a, b}, noticeGuardiansChanged, nil); err != nil || len(to) != 2 {
+	if err := h2.notifyEach(context.Background(), nil, []uuid.UUID{a, b, a, b}, noticeGuardiansChanged, "k", nil); err != nil || len(to) != 2 {
 		t.Fatalf("同じ人に 2 回出した: %v %v", to, err)
 	}
 }

@@ -51,9 +51,17 @@
     "what": "家族のサーバーの住所の更新に失敗しています。",
     "next": "回線と設定を確かめてください。"
   },
+  "notice.device_add_stalled": {
+    "what": "{name}さんの端末をトークの暗号に加える処理が 7 日間止まっています。",
+    "next": "トークの誰かがアプリを開くと、その端末が自動で進めます。"
+  },
   "notice.device_approval_requested": {
     "what": "{child_name}さんが{device_name}を追加しようとしています。",
     "next": "10 分以内に承認するか断ってください。"
+  },
+  "notice.device_remove_stalled": {
+    "what": "{name}さんの端末をトークの暗号から外す処理が 7 日間止まっています。",
+    "next": "トークの誰かがアプリを開くと、その端末が自動で進めます。外れるまで、その端末は暗号の上でトークに残ります。"
   },
   "notice.disk_smart": {
     "what": "記録を置くディスクに警告が出ています。",
@@ -99,6 +107,10 @@
     "what": "地図を更新する時期です。",
     "next": "管理者の画面の地図から更新してください。"
   },
+  "notice.member_add_stalled": {
+    "what": "{name}さんをトークに加える処理が 7 日間止まっています。",
+    "next": "トークの誰かがアプリを開くと、その端末が自動で進めます。"
+  },
   "notice.mls_reinit": {
     "what": "{name}さんの端末（{device_name}）が、トークの暗号の準備を作り直しました。",
     "next": "続くときは、その端末のアプリの更新を案内してください。"
@@ -126,6 +138,10 @@
   "notice.recovery_used": {
     "what": "{name}さんが回復の手順で記録を開きました。",
     "next": "心当たりがなければ、端末の一覧を確かめてください。"
+  },
+  "notice.sticker_remove_requested": {
+    "what": "{name}さんがスタンプの 1 つを消してほしいと求めています。",
+    "next": "スタンプの画面の「削除の求め」を開いて確かめてください。"
   },
   "notice.transfer_requested": {
     "what": "{from_name}さんがあなたに管理者を引き継ごうとしています。",

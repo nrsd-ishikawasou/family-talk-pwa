@@ -9,6 +9,7 @@ import (
 	"crypto/sha256"
 	"encoding/binary"
 	"slices"
+	"strconv"
 	"time"
 
 	"github.com/gofrs/uuid/v5"
@@ -53,6 +54,8 @@ type EpochInfo struct {
 	PendingAddDevices []uuid.UUID
 	PendingRemove     []uuid.UUID
 	PendingReadd      []uuid.UUID
+	// CommitPossible は Commit を作れる端末が残っているか（第12章 5.2 の (d)。偽なら構成員の端末が再初期化で立て直す）。
+	CommitPossible bool
 }
 
 // CommitItem は GET /rooms/{id}/mls/commits の 1 件（epoch は Commit で進んだ後の epoch）。
@@ -135,6 +138,19 @@ func idStrings(ids []uuid.UUID) []string {
 	return out
 }
 
+// parseIds は SQL の配列（`ARRAY(SELECT id::text …)`）で読んだ識別子の文字列を識別子に戻す。
+func parseIds(ss []string) ([]uuid.UUID, error) {
+	out := make([]uuid.UUID, len(ss))
+	for i, s := range ss {
+		id, err := uuid.FromString(s)
+		if err != nil {
+			return nil, wrap(err)
+		}
+		out[i] = id
+	}
+	return out, nil
+}
+
 // Create は世代 0、epoch 0 のグループを作り、leaf 0 に creatorDevice を置く（encryption_key は最初の path 付きの Commit で埋まる。
 // トークの作成と同じトランザクション。srv-rooms から）。
 func (g *Groups) Create(ctx context.Context, tx *store.Tx, roomId, creatorDevice uuid.UUID) error {
@@ -162,35 +178,64 @@ func (g *Groups) readGroup(ctx context.Context, q store.Querier, roomId uuid.UUI
 	return gen, epoch, wrap(err)
 }
 
-// Epoch は世代、グループの識別子、epoch と端末の待ち。グループが無ければ ROOM-001。
-func (g *Groups) Epoch(ctx context.Context, roomId uuid.UUID) (EpochInfo, error) {
-	gen, epoch, err := g.readGroup(ctx, g.d.Pool, roomId, false)
+// committerCandidatesSql は「leaf を持ち、削除待ちと再参加待ちのどちらにも無い端末」の一覧の式（識別子の順）。$1 はトーク。
+// Commit を作れる端末（第12章 5.2 の (d)）は、この一覧を srv-identity Devices.ApprovedAmong で承認済みに絞った物。Epoch と
+// reinitCheck が同じ式を使う。
+const committerCandidatesSql = `ARRAY(SELECT l.device_id::text FROM mls_leaves l WHERE l.room_id = $1 AND NOT EXISTS (SELECT 1 FROM mls_pending p
+    WHERE p.room_id = l.room_id AND p.device_id = l.device_id AND p.kind IN ('remove', 'readd')) ORDER BY l.device_id)`
+
+// commitPossible は候補（committerCandidatesSql の一覧）のうち承認済みの端末が 1 つ以上あるか。停止で未承認に戻った端末の leaf は
+// 数えない（第12章 5.2 の (d)、第3章 8.1）。q は候補を読んだのと同じ見え方。
+func (g *Groups) commitPossible(ctx context.Context, q store.Querier, candidates []string) (bool, error) {
+	ids, err := parseIds(candidates)
 	if err != nil {
-		return EpochInfo{}, err
+		return false, err
 	}
-	out := EpochInfo{Generation: gen, GroupId: groupIdOf(roomId, gen), Epoch: epoch, PendingAddDevices: []uuid.UUID{}, PendingRemove: []uuid.UUID{},
-		PendingReadd: []uuid.UUID{}}
-	rows, err := g.d.Pool.Query(ctx, `SELECT device_id, kind FROM mls_pending WHERE room_id = $1 ORDER BY device_id`, roomId)
+	approved, err := g.d.Identity.Devices.ApprovedAmong(ctx, q, ids)
+	if err != nil {
+		return false, err
+	}
+	return len(approved) > 0, nil
+}
+
+// Epoch は世代、グループの識別子、epoch、端末の待ちと Commit を作れる端末が残っているか。srv-store Pool.BeginSnapshot の 1 つの
+// 見え方の中で、世代・待ち・候補を 1 つの SQL 文で読み、続けて srv-identity Devices.ApprovedAmong を読む（再初期化や Commit、
+// 端末の承認・停止と混ざらない）。グループが無ければ ROOM-001。
+func (g *Groups) Epoch(ctx context.Context, roomId uuid.UUID) (EpochInfo, error) {
+	snap, err := g.d.Pool.BeginSnapshot(ctx)
 	if err != nil {
 		return EpochInfo{}, wrap(err)
 	}
-	defer rows.Close()
-	for rows.Next() {
-		var dev uuid.UUID
-		var kind string
-		if err := rows.Scan(&dev, &kind); err != nil {
-			return EpochInfo{}, wrap(err)
-		}
-		switch PendingKind(kind) {
-		case PendingAdd:
-			out.PendingAddDevices = append(out.PendingAddDevices, dev)
-		case PendingRemove:
-			out.PendingRemove = append(out.PendingRemove, dev)
-		case PendingReadd:
-			out.PendingReadd = append(out.PendingReadd, dev)
+	defer snap.Rollback(ctx)
+	var gen int
+	var epoch int64
+	var adds, removes, readds, candidates []string
+	err = snap.QueryRow(ctx, `SELECT g.generation, g.epoch,
+  ARRAY(SELECT device_id::text FROM mls_pending WHERE room_id = $1 AND kind = 'add' ORDER BY device_id),
+  ARRAY(SELECT device_id::text FROM mls_pending WHERE room_id = $1 AND kind = 'remove' ORDER BY device_id),
+  ARRAY(SELECT device_id::text FROM mls_pending WHERE room_id = $1 AND kind = 'readd' ORDER BY device_id),
+  `+committerCandidatesSql+`
+FROM mls_groups g WHERE g.room_id = $1`, roomId).Scan(&gen, &epoch, &adds, &removes, &readds, &candidates)
+	if noRows(err) {
+		return EpochInfo{}, ev(cgen.ROOM001)
+	}
+	if err != nil {
+		return EpochInfo{}, wrap(err)
+	}
+	possible, err := g.commitPossible(ctx, snap, candidates)
+	if err != nil {
+		return EpochInfo{}, err
+	}
+	out := EpochInfo{Generation: gen, GroupId: groupIdOf(roomId, gen), Epoch: epoch, CommitPossible: possible}
+	for _, l := range []struct {
+		from []string
+		to   *[]uuid.UUID
+	}{{adds, &out.PendingAddDevices}, {removes, &out.PendingRemove}, {readds, &out.PendingReadd}} {
+		if *l.to, err = parseIds(l.from); err != nil {
+			return EpochInfo{}, err
 		}
 	}
-	return out, wrap(rows.Err())
+	return out, nil
 }
 
 // CommitsSince は現在の世代の、sinceEpoch より後の Commit を epoch の順に最大 limit 件（上限 100）と has_more と世代。世代と項目は
@@ -405,11 +450,12 @@ func (g *Groups) Commit(ctx context.Context, tx *store.Tx, roomId, byDevice uuid
 			return CommitResult{}, err
 		}
 		if !ok || !bytes.Equal(p.Credential, reg.credential) || !bytes.Equal(p.SigPub, reg.sigSec1) || p.Source != leafSourceCommit ||
-			!capabilitiesOk(*p) || !p.VerifySignature(reg.sigPub, pc.GroupId, pc.SenderLeaf) || usedKeys[string(p.EncryptionKey)] {
+			!capabilitiesOk(*p) || !p.VerifySignature(reg.sigPub, pc.GroupId, pc.SenderLeaf) || !hpkePubOk(p.EncryptionKey) ||
+			usedKeys[string(p.EncryptionKey)] {
 			return CommitResult{}, bad
 		}
 	}
-	// 9. Welcome の宛先が Add の KeyPackageRef の集合と同じ。Add が無ければ Welcome が無い。
+	// 9. Welcome の宛先が Add の KeyPackageRef の集合と同じで、kem_output が P-256 の公開鍵の形。Add が無ければ Welcome が無い。
 	if !welcomeMatches(pc.Adds, pw) {
 		return CommitResult{}, bad
 	}
@@ -417,7 +463,8 @@ func (g *Groups) Commit(ctx context.Context, tx *store.Tx, roomId, byDevice uuid
 	if err != nil {
 		return CommitResult{}, err
 	}
-	if err := g.resolvePending(ctx, tx, roomId, added, removed); err != nil {
+	readded, err := g.resolvePending(ctx, tx, roomId, added, removed, now)
+	if err != nil {
 		return CommitResult{}, err
 	}
 	for _, did := range added {
@@ -427,6 +474,11 @@ func (g *Groups) Commit(ctx context.Context, tx *store.Tx, roomId, byDevice uuid
 	}
 	if err := g.emitCommit(ctx, tx, roomId, gen, expectedEpoch+1, ref, byDevice, owners, added, removed); err != nil {
 		return CommitResult{}, err
+	}
+	for _, did := range readded {
+		if err := g.emitPending(ctx, tx, roomId, did, memberPendingAdd); err != nil {
+			return CommitResult{}, err
+		}
 	}
 	return CommitResult{Epoch: expectedEpoch + 1, CommitRef: ref, Added: sortedIds(added), Removed: sortedIds(removed)}, nil
 }
@@ -471,7 +523,7 @@ func (g *Groups) lockDevices(ctx context.Context, tx *store.Tx, ids []uuid.UUID)
 }
 
 // welcomeMatches は確かめ 9：Add があれば Welcome があり、スイートが 0x0002 で、new_member の集合が Add の KeyPackageRef の集合と
-// 同じ（数も同じで重なりが無い）。Add が無ければ Welcome が無い。
+// 同じ（数も同じで重なりが無い）で、各 kem_output が P-256 の公開鍵の形。Add が無ければ Welcome が無い。
 func welcomeMatches(adds []ParsedKeyPackage, w *ParsedWelcome) bool {
 	if len(adds) == 0 {
 		return w == nil
@@ -482,6 +534,11 @@ func welcomeMatches(adds []ParsedKeyPackage, w *ParsedWelcome) bool {
 	want := map[string]bool{}
 	for _, a := range adds {
 		want[string(a.Ref)] = true
+	}
+	for _, k := range w.KemOutputs {
+		if !hpkePubOk(k) {
+			return false
+		}
 	}
 	seen := map[string]bool{}
 	for _, m := range w.NewMembers {
@@ -533,18 +590,45 @@ func (g *Groups) apply(ctx context.Context, tx *store.Tx, roomId uuid.UUID, gen 
 	return ref, nil
 }
 
-// resolvePending は Commit で解けた待ちの行を消す（add は足した端末、remove は外した端末、readd は外して足した端末）。
-func (g *Groups) resolvePending(ctx context.Context, tx *store.Tx, roomId uuid.UUID, added, removed []uuid.UUID) error {
-	var both []uuid.UUID
-	for _, d := range added {
-		if slices.Contains(removed, d) {
+// resolvePending は Commit で解けた待ちの行を消す（add は足した端末、remove は外した端末、readd は外して足した端末）。外して足さない
+// 再参加待ちの端末は、行を追加待ち（add、since は Commit の時刻）に替える（第12章 5.2 の復旧の 1。替えなければその端末は leaf を
+// 失ったまま戻れない）。戻りは追加待ちに替えた端末（識別子の順）。
+func (g *Groups) resolvePending(ctx context.Context, tx *store.Tx, roomId uuid.UUID, added, removed []uuid.UUID, now time.Time) ([]uuid.UUID, error) {
+	var both, only []uuid.UUID
+	for _, d := range removed {
+		if slices.Contains(added, d) {
 			both = append(both, d)
+		} else {
+			only = append(only, d)
 		}
 	}
-	_, err := tx.Exec(ctx, `DELETE FROM mls_pending WHERE room_id = $1 AND ((kind = 'add' AND device_id = ANY($2::uuid[]))
+	if _, err := tx.Exec(ctx, `DELETE FROM mls_pending WHERE room_id = $1 AND ((kind = 'add' AND device_id = ANY($2::uuid[]))
   OR (kind = 'remove' AND device_id = ANY($3::uuid[])) OR (kind = 'readd' AND device_id = ANY($4::uuid[])))`,
-		roomId, idStrings(added), idStrings(removed), idStrings(both))
-	return wrap(err)
+		roomId, idStrings(added), idStrings(removed), idStrings(both)); err != nil {
+		return nil, wrap(err)
+	}
+	if len(only) == 0 {
+		return nil, nil
+	}
+	rows, err := tx.Query(ctx, `UPDATE mls_pending SET kind = 'add', since = $3 WHERE room_id = $1 AND kind = 'readd'
+  AND device_id = ANY($2::uuid[]) RETURNING device_id`, roomId, idStrings(only), now)
+	if err != nil {
+		return nil, wrap(err)
+	}
+	var readded []uuid.UUID
+	for rows.Next() {
+		var d uuid.UUID
+		if err := rows.Scan(&d); err != nil {
+			rows.Close()
+			return nil, wrap(err)
+		}
+		readded = append(readded, d)
+	}
+	rows.Close()
+	if err := rows.Err(); err != nil {
+		return nil, wrap(err)
+	}
+	return sortedIds(readded), nil
 }
 
 // emitCommit は room.mls（Welcome を置いた端末の持ち主は has_welcome_for_me が真。payload ごとに id を分ける）と、足した端末と外した
@@ -721,7 +805,7 @@ func reinitDenied(reason string, at *time.Time) error {
 	return e
 }
 
-// reinitCheck は再初期化を許す 3 つの判定（再参加待ちか、許す条件、24 時間の上限）。上限に当たれば、管理者への知らせ mls_reinit_limit を
+// reinitCheck は再初期化を許す 3 つの判定（再参加待ちか Commit を作れる端末が残っていないか、許す条件、24 時間の上限）。上限に当たれば、管理者への知らせ mls_reinit_limit を
 // 別のトランザクションで確定してから KEY-013（limit）。戻りは今の世代。
 func (g *Groups) reinitCheck(ctx context.Context, tx *store.Tx, roomId, byDevice uuid.UUID, lock bool, now time.Time) (int, error) {
 	gen, cur, err := g.readGroup(ctx, tx, roomId, lock)
@@ -733,15 +817,27 @@ func (g *Groups) reinitCheck(ctx context.Context, tx *store.Tx, roomId, byDevice
 	if err != nil && !noRows(err) {
 		return 0, wrap(err)
 	}
-	if kind != string(PendingReadd) {
-		return 0, reinitDenied("not_pending", nil)
+	var candidates []string
+	if err := tx.QueryRow(ctx, `SELECT `+committerCandidatesSql, roomId).Scan(&candidates); err != nil {
+		return 0, wrap(err)
 	}
-	ok, at, err := g.reinitVerdict(ctx, tx, roomId, gen, cur, byDevice, now)
+	possible, err := g.commitPossible(ctx, tx, candidates)
 	if err != nil {
 		return 0, err
 	}
-	if !ok {
-		return 0, reinitDenied("too_early", &at)
+	// (d)：Commit を作れる端末が残っていなければ、再参加待ちでなくても直ちに許す（呼んだ端末が active な構成員の承認済みの端末で
+	// あることは x-authz の room_member で済んでいる）。残っていれば (a)〜(c) は再参加待ちの端末だけ。
+	if possible {
+		if kind != string(PendingReadd) {
+			return 0, reinitDenied("not_pending", nil)
+		}
+		ok, at, err := g.reinitVerdict(ctx, tx, roomId, gen, cur, byDevice, now)
+		if err != nil {
+			return 0, err
+		}
+		if !ok {
+			return 0, reinitDenied("too_early", &at)
+		}
 	}
 	var n int
 	if err := tx.QueryRow(ctx, `SELECT count(*) FROM mls_reinits WHERE room_id = $1 AND by_device = $2 AND created_at > $3`,
@@ -775,10 +871,13 @@ func (g *Groups) notifyReinit(ctx context.Context, tx *store.Tx, roomId, byDevic
 		return err
 	}
 	params := map[string]any{"user_id": dv.UserId.String(), "name": usr.DisplayName, "device_name": name, "room_id": roomId.String()}
+	// 事象の鍵（第7章 9 の表の欄）：mls_reinit はトークと新しい世代、mls_reinit_limit はトークと端末。
+	key := roomId.String() + ":" + byDevice.String()
 	if generation != nil {
 		params["generation"] = *generation
+		key = roomId.String() + ":" + strconv.Itoa(*generation)
 	}
-	return g.d.Identity.Hooks.Notify(ctx, tx, identity.Notice{Kind: kind, Params: params, Audience: identity.Audience{Kind: identity.AudienceAdmins}})
+	return g.d.Identity.Hooks.Notify(ctx, tx, identity.Notice{Kind: kind, Key: key, Params: params, Audience: identity.Audience{Kind: identity.AudienceAdmins}})
 }
 
 // reinitTarget は再初期化で追加待ちにする端末とその持ち主。
@@ -923,6 +1022,29 @@ func (g *Groups) CheckSender(ctx context.Context, q store.Querier, roomId, devic
 	return wrap(err)
 }
 
+// EpochsOf はトークごとの現在の epoch（srv-rooms Rooms.List の epoch。1 つの SQL 文）。グループが無いトークは地図に入らない。
+// q は ctx のトランザクションか Pool。
+func (g *Groups) EpochsOf(ctx context.Context, q store.Querier, roomIds []uuid.UUID) (map[uuid.UUID]int64, error) {
+	out := make(map[uuid.UUID]int64, len(roomIds))
+	if len(roomIds) == 0 {
+		return out, nil
+	}
+	rows, err := q.Query(ctx, `SELECT room_id, epoch FROM mls_groups WHERE room_id = ANY($1)`, roomIds)
+	if err != nil {
+		return nil, wrap(err)
+	}
+	defer rows.Close()
+	for rows.Next() {
+		var id uuid.UUID
+		var epoch int64
+		if err := rows.Scan(&id, &epoch); err != nil {
+			return nil, wrap(err)
+		}
+		out[id] = epoch
+	}
+	return out, wrap(rows.Err())
+}
+
 // Leaves は leaf の番号と端末と encryption_key（番号の順）。q は ctx のトランザクションか Pool。
 func (g *Groups) Leaves(ctx context.Context, q store.Querier, roomId uuid.UUID) ([]Leaf, error) {
 	rows, err := q.Query(ctx, `SELECT leaf_index, device_id, encryption_key FROM mls_leaves WHERE room_id = $1 ORDER BY leaf_index`, roomId)
@@ -941,9 +1063,10 @@ func (g *Groups) Leaves(ctx context.Context, q store.Querier, roomId uuid.UUID) 
 	return out, wrap(rows.Err())
 }
 
-// DormantLeafs は srv-identity Devices.ApprovedSeenBefore(olderThan) の端末が持つ leaf（srv-worker DormantLeafHandler。端末とトークの順）。
+// DormantLeafs は srv-identity Devices.IdleSeenBefore(olderThan) の端末（承認済みと、停止で未承認に戻った承認されたことのある端末。
+// 第12章 5.2 の休眠の対象）が持つ leaf（srv-worker DormantLeafHandler。端末とトークの順）。
 func (g *Groups) DormantLeafs(ctx context.Context, olderThan time.Time) ([]RoomDevice, error) {
-	devs, err := g.d.Identity.Devices.ApprovedSeenBefore(ctx, olderThan)
+	devs, err := g.d.Identity.Devices.IdleSeenBefore(ctx, olderThan)
 	if err != nil {
 		return nil, err
 	}
@@ -968,11 +1091,11 @@ func (g *Groups) DormantLeafs(ctx context.Context, olderThan time.Time) ([]RoomD
 }
 
 // RetireDormant は休眠（第12章 5.2）：srv-worker から端末ごとに 1 トランザクション。srv-identity Devices.MarkDormant(olderThan) が
-// 変えなければ何もしない（判定の後に使われた端末を休眠にしない）。変えればその端末のコピー (a) だけを消し（その端末へ包んだ他人の片は
-// 残す）、各グループに削除待ちを置く。
+// 偽なら何もしない（判定の後に使われた端末や、再開の後に承認し直した端末を休眠にしない）。真ならその端末のコピー (a) だけを消し
+// （その端末へ包んだ他人の片は残す）、各グループに削除待ちを置く。停止で未承認に戻った端末は状態を変えずに同じ扱い（MarkDormant）。
 func (g *Groups) RetireDormant(ctx context.Context, tx *store.Tx, deviceId uuid.UUID, olderThan time.Time) error {
-	changed, err := g.d.Identity.Devices.MarkDormant(ctx, tx, deviceId, olderThan)
-	if err != nil || !changed {
+	retire, err := g.d.Identity.Devices.MarkDormant(ctx, tx, deviceId, olderThan)
+	if err != nil || !retire {
 		return err
 	}
 	if err := g.bundles.deleteDeviceCopy(ctx, tx, deviceId); err != nil {
@@ -1018,20 +1141,82 @@ func (g *Groups) removeLeafsOfDevices(ctx context.Context, tx *store.Tx, devices
 	}
 	now := g.d.now()
 	for _, rd := range leaves {
-		tag, err := tx.Exec(ctx, `INSERT INTO mls_pending (room_id, device_id, kind, since) VALUES ($1, $2, 'remove', $3)
-ON CONFLICT (room_id, device_id) DO UPDATE SET kind = 'remove', since = EXCLUDED.since WHERE mls_pending.kind <> 'remove'`, rd.RoomId, rd.DeviceId, now)
-		if err != nil {
-			return wrap(err)
-		}
-		if tag.RowsAffected() == 1 {
-			if err := g.emitPending(ctx, tx, rd.RoomId, rd.DeviceId, memberPendingRemove); err != nil {
-				return err
-			}
+		if err := g.putRemove(ctx, tx, rd, now); err != nil {
+			return err
 		}
 	}
 	_, err = tx.Exec(ctx, `DELETE FROM mls_pending p WHERE p.device_id = ANY($1::uuid[]) AND p.kind IN ('add', 'readd')
   AND NOT EXISTS (SELECT 1 FROM mls_leaves l WHERE l.room_id = p.room_id AND l.device_id = p.device_id)`, ids)
 	return wrap(err)
+}
+
+// putRemove は leaf を持つ端末の削除待ちを置く（readd も remove に替える：外れる端末は入り直さない。add は leaf があれば無い）。
+// 行を入れたか替えた時だけ room.member（pending_remove）を構成員へ流す。
+func (g *Groups) putRemove(ctx context.Context, tx *store.Tx, rd RoomDevice, now time.Time) error {
+	tag, err := tx.Exec(ctx, `INSERT INTO mls_pending (room_id, device_id, kind, since) VALUES ($1, $2, 'remove', $3)
+ON CONFLICT (room_id, device_id) DO UPDATE SET kind = 'remove', since = EXCLUDED.since WHERE mls_pending.kind <> 'remove'`, rd.RoomId, rd.DeviceId, now)
+	if err != nil {
+		return wrap(err)
+	}
+	if tag.RowsAffected() == 1 {
+		return g.emitPending(ctx, tx, rd.RoomId, rd.DeviceId, memberPendingRemove)
+	}
+	return nil
+}
+
+// RequestRemoveUser は退出・外し・削除・抹消（srv-rooms Members.Remove と削除・抹消の hook。第12章 5.2「構成員の追加と退出」）：
+// その人の端末のうちこのトークに leaf を持つ物ごとに削除待ちを置き（置き方は RemoveLeafsOfDevice と同じ）、leaf の無い端末の
+// 追加待ちと再参加待ちを消す。戻りは leaf を持つ端末の数（0 なら呼ぶ側は Commit を待たずに外す）。グループが無ければ 0。
+// 端末の一覧は錠を取らずに読み、トークの錠を取る（錠の順は Commit と同じ：rooms、mls_pending。呼ぶ側が先に取っていてもよい）。
+func (g *Groups) RequestRemoveUser(ctx context.Context, tx *store.Tx, roomId, userId uuid.UUID) (int, error) {
+	devs, err := g.d.Identity.Devices.OfUser(ctx, tx, userId)
+	if err != nil {
+		return 0, err
+	}
+	if err := g.d.RoomLock.Lock(ctx, tx, roomId); err != nil {
+		return 0, err
+	}
+	ids := make([]uuid.UUID, len(devs))
+	for i, dv := range devs {
+		ids[i] = dv.Id
+	}
+	leaves, err := scanIds(ctx, tx, `SELECT device_id FROM mls_leaves WHERE room_id = $1 AND device_id = ANY($2::uuid[]) ORDER BY device_id`,
+		roomId, idStrings(ids))
+	if err != nil {
+		return 0, err
+	}
+	now := g.d.now()
+	for _, d := range leaves {
+		if err := g.putRemove(ctx, tx, RoomDevice{RoomId: roomId, DeviceId: d}, now); err != nil {
+			return 0, err
+		}
+	}
+	if _, err := tx.Exec(ctx, `DELETE FROM mls_pending p WHERE p.room_id = $1 AND p.device_id = ANY($2::uuid[]) AND p.kind IN ('add', 'readd')
+  AND NOT EXISTS (SELECT 1 FROM mls_leaves l WHERE l.room_id = p.room_id AND l.device_id = p.device_id)`, roomId, idStrings(ids)); err != nil {
+		return 0, wrap(err)
+	}
+	return len(leaves), nil
+}
+
+// Drop はトークの削除（srv-rooms Rooms.Delete）と、Commit を作れる端末が残らない退出（srv-rooms Members.Remove）で、そのトークの
+// グループの記録（leaf、待ち、Commit、拒みの報告、再初期化の記録、グループの行）を全部消す（第12章 9。Remove の Commit は待たない）。
+// グループが無ければ何もしない。錠の順は rooms、mls_groups、他の mls_ の表。以後そのトークに Create は呼ばれない。
+func (g *Groups) Drop(ctx context.Context, tx *store.Tx, roomId uuid.UUID) error {
+	if err := g.d.RoomLock.Lock(ctx, tx, roomId); err != nil {
+		return err
+	}
+	if _, _, err := g.readGroup(ctx, tx, roomId, true); err != nil {
+		if isEvent(err, cgen.ROOM001) {
+			return nil
+		}
+		return err
+	}
+	for _, t := range []string{"mls_leaves", "mls_pending", "mls_commits", "mls_rejections", "mls_reinits", "mls_groups"} {
+		if _, err := tx.Exec(ctx, `DELETE FROM `+t+` WHERE room_id = $1`, roomId); err != nil {
+			return wrap(err)
+		}
+	}
+	return nil
 }
 
 // scanIds は識別子の 1 列を読む。

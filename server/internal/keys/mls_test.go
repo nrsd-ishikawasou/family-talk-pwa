@@ -427,9 +427,15 @@ func TestParseCommitShapes(t *testing.T) {
 		auth: framedContentAuthData{signature: []byte{1}}, membershipTag: []byte{1}}})
 	_, err = cr.ParseCommit(app)
 	wantEvent(t, err, cgen.KEY009, "application の PublicMessage")
-	w, err := cr.ParseWelcome(buildWelcome(mlsSuite, pc.Adds[0].Ref, []byte{1}))
-	if err != nil || w.Suite != mlsSuite || len(w.NewMembers) != 2 || !bytes.Equal(w.NewMembers[0], pc.Adds[0].Ref) {
+	kems := [][]byte{hpkeKey(t), {1, 2, 3}}
+	w, err := cr.ParseWelcome(buildWelcomeKems(mlsSuite, kems, pc.Adds[0].Ref, []byte{1}))
+	if err != nil || w.Suite != mlsSuite || len(w.NewMembers) != 2 || !bytes.Equal(w.NewMembers[0], pc.Adds[0].Ref) ||
+		len(w.KemOutputs) != 2 || !bytes.Equal(w.KemOutputs[0], kems[0]) || !bytes.Equal(w.KemOutputs[1], kems[1]) {
 		t.Fatalf("Welcome が違う: %+v %v", w, err)
+	}
+	w, err = cr.ParseWelcome(buildWelcome(mlsSuite, pc.Adds[0].Ref, []byte{1}))
+	if err != nil || len(w.KemOutputs) != 2 || !hpkePubOk(w.KemOutputs[0]) || !hpkePubOk(w.KemOutputs[1]) {
+		t.Fatalf("試験の Welcome の kem_output が P-256 の点でない: %+v %v", w, err)
 	}
 	h, err := cr.ParsePrivateHeader(buildPrivate(gid, 7, contentApplication))
 	if err != nil || !bytes.Equal(h.GroupId, gid) || h.Epoch != 7 || h.ContentType != contentApplication {
@@ -515,7 +521,7 @@ func TestPrimaryImplementationOutput(t *testing.T) {
 	}
 	p := pp.Path
 	if p.Source != leafSourceCommit || !bytes.Equal(p.Credential, regB.credential) || !bytes.Equal(p.SigPub, regB.sigSec1) || !capabilitiesOk(*p) ||
-		!p.VerifySignature(regB.sigPub, pp.GroupId, pp.SenderLeaf) {
+		!p.VerifySignature(regB.sigPub, pp.GroupId, pp.SenderLeaf) || !hpkePubOk(p.EncryptionKey) {
 		t.Fatal("path の leaf が確かめ 8 を通らない")
 	}
 }

@@ -77,4 +77,5 @@ const (
 	noticeRecoveryRequested = "recovery_requested"
 	noticeMlsReinit         = "mls_reinit"
 	noticeMlsReinitLimit    = "mls_reinit_limit"
+	noticeStickerRemove     = "sticker_remove_requested"
 )

@@ -22,6 +22,7 @@ import (
 	"time"
 
 	"github.com/gofrs/uuid/v5"
+	"github.com/jackc/pgx/v5/pgconn"
 	tcpg "github.com/testcontainers/testcontainers-go/modules/postgres"
 
 	"github.com/nrsd-ishikawasou/family-talk-pwa/server/internal/common/clock"
@@ -58,10 +59,6 @@ func TestMain(m *testing.M) {
 	rep, err := NewMigrator(testPool).Apply(ctx)
 	if err != nil || rep.To != len(files) {
 		fmt.Fprintln(os.Stderr, "移行できない:", err, rep)
-		os.Exit(1)
-	}
-	if _, err := testPool.Exec(ctx, `CREATE TABLE rooms (id uuid PRIMARY KEY)`); err != nil {
-		fmt.Fprintln(os.Stderr, err)
 		os.Exit(1)
 	}
 	code := m.Run()
@@ -149,10 +146,10 @@ func TestFlushHasNoGapsUnderConcurrency(t *testing.T) {
 			t.Fatalf("欠番がある: %d 番目が %d", i+1, r.Pos)
 		}
 	}
-	if last, err := f.LastPos(ctx, user); err != nil || last != 90 {
+	if last, err := f.LastPos(ctx, testPool, user); err != nil || last != 90 {
 		t.Fatalf("最新の pos が違う: %d %v", last, err)
 	}
-	if last, err := f.LastPos(ctx, uuid.Must(uuid.NewV7())); err != nil || last != 0 {
+	if last, err := f.LastPos(ctx, testPool, uuid.Must(uuid.NewV7())); err != nil || last != 0 {
 		t.Fatalf("行の無い利用者の最新の pos が 0 でない: %d %v", last, err)
 	}
 	if min, _ := f.MinPos(ctx, user); min != 1 {
@@ -396,7 +393,9 @@ WHERE query LIKE 'LISTEN%' AND pid <> pg_backend_pid()`); err != nil {
 func TestRoomLockSerializesAndMissingRoom(t *testing.T) {
 	ctx := context.Background()
 	room := uuid.Must(uuid.NewV7())
-	_, _ = testPool.Exec(ctx, `INSERT INTO rooms (id) VALUES ($1)`, room)
+	if _, err := testPool.Exec(ctx, `INSERT INTO rooms (id, kind, state, last_event_at, created_at) VALUES ($1, 'group', 'normal', now(), now())`, room); err != nil {
+		t.Fatal(err)
+	}
 	var lock RoomLock
 	tx1, _ := testPool.Begin(ctx)
 	if err := lock.Lock(ctx, tx1, room); err != nil {
@@ -646,7 +645,124 @@ func TestFlushOrdersRowsWithinUserAndRollbackDiscards(t *testing.T) {
 	}
 	q := f.Append(tx2, other, noticeRef(3004))
 	tx2.Rollback(ctx)
-	if last, err := f.LastPos(ctx, other); err != nil || last != 0 || q.Pos != 0 {
+	if last, err := f.LastPos(ctx, testPool, other); err != nil || last != 0 || q.Pos != 0 {
 		t.Fatalf("Rollback が溜めた行を捨てない: last=%d pos=%d %v", last, q.Pos, err)
+	}
+}
+
+// R: R-2-2-4
+// /sync の初回の一覧（srv-rooms Timeline.Snapshot）が使う 1 つの見え方の読み。見え方の後にコミットした行と pos は、同じ
+// トランザクションの後の文に見えない（READ COMMITTED なら見える）。書き込みは DB が拒む（25006）。
+func TestBeginSnapshotKeepsOneViewAndRejectsWrites(t *testing.T) {
+	ctx := context.Background()
+	f := NewFeed(testPool)
+	user := uuid.Must(uuid.NewV7())
+	put := func(id int) {
+		t.Helper()
+		tx, err := testPool.Begin(ctx)
+		if err != nil {
+			t.Fatal(err)
+		}
+		defer tx.Rollback(ctx)
+		f.Append(tx, user, noticeRef(id))
+		if err := tx.Commit(ctx); err != nil {
+			t.Fatal(err)
+		}
+	}
+	put(9001)
+	snap, err := testPool.BeginSnapshot(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer snap.Rollback(ctx)
+	count := func() int {
+		t.Helper()
+		var n int
+		if err := snap.QueryRow(ctx, `SELECT count(*) FROM feed WHERE user_id = $1`, user).Scan(&n); err != nil {
+			t.Fatal(err)
+		}
+		return n
+	}
+	if last, err := f.LastPos(ctx, snap, user); err != nil || last != 1 || count() != 1 {
+		t.Fatalf("見え方の始めの pos と行の数が違う: %d %v", last, err)
+	}
+	put(9002)
+	if last, err := f.LastPos(ctx, snap, user); err != nil || last != 1 || count() != 1 {
+		t.Fatalf("見え方の後にコミットした行が見える: %d %v", last, err)
+	}
+	if last, err := f.LastPos(ctx, testPool, user); err != nil || last != 2 {
+		t.Fatalf("Pool の読みが最新でない: %d %v", last, err)
+	}
+	_, err = snap.Exec(ctx, `UPDATE feed_cursor SET next_pos = next_pos WHERE user_id = $1`, user)
+	var pg *pgconn.PgError
+	if !errors.As(err, &pg) || pg.Code != "25006" {
+		t.Fatalf("読み専用の書き込みを拒まない: %v", err)
+	}
+}
+
+// LastRoomEventPos はトークごとの最新の room.event の pos を返し、他の種類（room.member など）と他の利用者の行を数えない。
+// 行の無いトークは地図に入らない。読みは部分索引 feed_room_event を使う。
+func TestFeedLastRoomEventPosPerRoom(t *testing.T) {
+	ctx := context.Background()
+	f := NewFeed(testPool)
+	user, other := uuid.Must(uuid.NewV7()), uuid.Must(uuid.NewV7())
+	r1, r2, r3 := uuid.Must(uuid.NewV7()), uuid.Must(uuid.NewV7()), uuid.Must(uuid.NewV7())
+	put := func(to uuid.UUID, kind string, room uuid.UUID) int64 {
+		t.Helper()
+		tx, err := testPool.Begin(ctx)
+		if err != nil {
+			t.Fatal(err)
+		}
+		defer tx.Rollback(ctx)
+		ref := FeedRef{Kind: kind, Id: uuid.Must(uuid.NewV7()), RoomId: room, Ts: time.Unix(1_800_000_000, 0)}
+		if kind != "room.event" {
+			ref.Payload = json.RawMessage(`{}`)
+		}
+		p := f.Append(tx, to, ref)
+		if err := tx.Commit(ctx); err != nil {
+			t.Fatal(err)
+		}
+		return p.Pos
+	}
+	put(user, "room.event", r1)
+	last1 := put(user, "room.event", r1)
+	put(user, "room.member", r1)
+	last2 := put(user, "room.event", r2)
+	put(user, "room.settings", r3)
+	put(other, "room.event", r3)
+	got, err := f.LastRoomEventPos(ctx, testPool, user, []uuid.UUID{r1, r2, r3})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(got) != 2 || got[r1] != last1 || got[r2] != last2 {
+		t.Fatalf("トークごとの最新の pos が違う: %v（期待 r1=%d r2=%d、r3 なし）", got, last1, last2)
+	}
+	if empty, err := f.LastRoomEventPos(ctx, testPool, user, nil); err != nil || len(empty) != 0 {
+		t.Fatalf("空のトークの一覧: %v %v", empty, err)
+	}
+	tx, err := testPool.Begin(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer tx.Rollback(ctx)
+	if _, err := tx.Exec(ctx, `SET LOCAL enable_seqscan = off`); err != nil {
+		t.Fatal(err)
+	}
+	var plan bytes.Buffer
+	rows, err := tx.Query(ctx, `EXPLAIN SELECT r.id, l.pos FROM unnest($2::uuid[]) AS r(id)
+CROSS JOIN LATERAL (SELECT pos FROM feed WHERE user_id = $1 AND room_id = r.id AND kind = 'room.event' ORDER BY pos DESC LIMIT 1) AS l`,
+		user, []uuid.UUID{r1, r2})
+	if err != nil {
+		t.Fatal(err)
+	}
+	for rows.Next() {
+		var line string
+		if err := rows.Scan(&line); err != nil {
+			t.Fatal(err)
+		}
+		plan.WriteString(line + "\n")
+	}
+	if !bytes.Contains(plan.Bytes(), []byte("feed_room_event")) {
+		t.Fatalf("部分索引 feed_room_event を使わない:\n%s", plan.String())
 	}
 }

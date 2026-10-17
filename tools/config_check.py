@@ -24,6 +24,7 @@ TABLES = {
         '取消の期限（送信者）': ['room.retract_window'], 'アナウンス': ['room.announcements_max'],
         '投票の選択肢': ['room.poll_options_max'], '投票の締切の上限': ['room.poll_close_max'],
         'ノートの添付': ['room.note_attachments_max'], '予約送信の上限': ['room.schedule_horizon'],
+        '予約送信の遅れの印': ['room.scheduled_late_threshold'],
         '入力中の timeout': ['room.typing_timeout'], '空のグループの削除': ['room.empty_group_delete_after'],
         'スタンプのパック': ['room.sticker_packs_max', 'room.stickers_per_pack'], 'グループの上限': ['room.group_members_max']},
     ('05_基本設計書_メディア.md', '## 9. '): {
@@ -33,7 +34,8 @@ TABLES = {
         '音声の長さ': ['media.audio_duration_max'],
         'アルバム': ['media.albums_per_room', 'media.album_items_max', 'media.album_items_per_add'],
         '端末のキャッシュ': ['media.device_cache'], '地図のタイルのキャッシュ': ['media.map_cache'],
-        '添付の上限（サーバー）': ['media.server_quota'], '消す規則': ['media.retention_video_years', 'media.retention_original_photo_years']},
+        '添付の上限（サーバー）': ['media.server_quota'], '消す規則': ['media.retention_video_years', 'media.retention_original_photo_years'],
+        '完了して結び付かない添付の寿命': ['media.unbound_grace']},
     ('06_基本設計書_通話.md', '## 8. '): {
         '呼び出し': ['calls.ring_timeout'], '映像の上限': ['calls.video_max'], '音声のみの上限': ['calls.audio_max'],
         '空の通話の終了': ['calls.empty_timeout'], '再接続': ['calls.reconnect_timeout'], 'SFU のトークン': ['calls.sfu_token_ttl'],

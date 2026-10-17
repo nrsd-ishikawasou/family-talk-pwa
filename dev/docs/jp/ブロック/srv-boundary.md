@@ -86,7 +86,7 @@ classDiagram
   }
   class Snapshotter {
     <<interface>>
-    +Snapshot(ctx, userId) Result~SyncSnapshot, pos, Event~
+    +Snapshot(ctx, principal) Result~SyncSnapshot, pos, Event~
   }
   class EventSource {
     <<interface>>
@@ -303,7 +303,7 @@ classDiagram
 |Base|`+ValidateResponses bool`|応答を spec で検証する（試験と開発だけ真。運用の設定ではない）|
 |Base|`+WwwDir string`|SpaIndex が読む index.html の置き場（イメージの中の /srv/www）。version.json（AppVersion、VersionHandler）も同じ置き場の dl/ から読む|
 |Links|（作り方）|上のブロックの実装を cmd/ft が入れる。WP-1 の試験は偽物を入れる|
-|Snapshotter|`+Snapshot(ctx, userId) Result~SyncSnapshot, pos, Event~`|srv-rooms `Timeline.Snapshot`。`SyncSnapshot` は生成の型。snapshot と pos は 1 つの読みで取る（srv-rooms の SyncInitial）|
+|Snapshotter|`+Snapshot(ctx, principal) Result~SyncSnapshot, pos, Event~`|srv-rooms `Timeline.Snapshot`。`SyncSnapshot` は生成の型。snapshot と pos は 1 つの読みで取る。主体は構成員の一覧の見え方（子ども区分）と端末の一覧の `this_device` に要る。予期しない失敗は Fault を返す（EventSource と同じ）（srv-rooms の SyncInitial）|
 |EventSource|`+ForFeed(ctx, userId, deviceId, eventIds) Result~map~`|srv-rooms `Timeline.ForFeed`。feed の room.event の行の payload（ft.room_event/1）を、その利用者と端末に見える形で返す（取り消しの反映、transaction_id は送った端末にだけ）。見えない物（退出、削除）は返さず、本ブロックはその行のフレームを送らない|
 |TypingSink|`+Set(userId, roomId, typing, timeout)`|srv-rooms `Typing.Set`。WebSocket の `typing` は timeout を持たないので 0（既定の 10 秒）。構成員の確かめは本ブロックが RoomMembership で先に行う|
 |UpMailbox|`+Pending(ctx, deviceId) [UpMessage]`|srv-push `UpBox.Pending`。接続の時に未配信を古い順に|
@@ -394,7 +394,7 @@ classDiagram
 |---|---|---|---|
 |B-040|`Server::Build`／`ListenAndServe`／`Shutdown`|cmd/ft `serve`|全体実装設計書 2.1|
 |B-041|`Principal`（要求の文脈。`ctx` から取る `PrincipalFrom(ctx)`）と、端末の IP の `ClientIpFrom(ctx) netip.Addr`（RequestId の middleware が置く。X-Forwarded-For の最後の値、無ければ RemoteAddr。レート制限と同じ値）|業務のブロックの全 operation|[第2章 4 認証と認可](../../../../docs/jp/design/02_基本設計書_境界.md#4-認証と認可)|
-|B-042|`Verifiers` と `Links` の各 interface と値の型（定義。`ServerState`、`UpMessage`、`HealthFacts`）|実装：srv-identity（`SessionVerifier`、`ShellTokenVerifier`、`WsTokenVerifier`）、srv-rooms（`RoomMembership`、`Snapshotter`、`TypingSink`）、srv-admin（`ServerStateReader`、`HealthProbe`）、srv-push（`UpMailbox`）|[第2章 4.1 セッション](../../../../docs/jp/design/02_基本設計書_境界.md#41-セッション)、[第2章 4.3 認可の 3 つの基本](../../../../docs/jp/design/02_基本設計書_境界.md#43-認可の-3-つの基本)、[第2章 4.4 WebSocket と通知と SFU](../../../../docs/jp/design/02_基本設計書_境界.md#44-websocket-と通知と-sfu)|
+|B-042|`Verifiers` と `Links` の各 interface と値の型（定義。`ServerState`、`UpMessage`、`HealthFacts`）|実装：srv-identity（`SessionVerifier`、`ShellTokenVerifier`、`WsTokenVerifier`）、srv-rooms（`RoomMembership`、`Snapshotter`、`EventSource`、`TypingSink`）、srv-admin（`ServerStateReader`、`HealthProbe`）、srv-push（`UpMailbox`）|[第2章 4.1 セッション](../../../../docs/jp/design/02_基本設計書_境界.md#41-セッション)、[第2章 4.3 認可の 3 つの基本](../../../../docs/jp/design/02_基本設計書_境界.md#43-認可の-3-つの基本)、[第2章 4.4 WebSocket と通知と SFU](../../../../docs/jp/design/02_基本設計書_境界.md#44-websocket-と通知と-sfu)|
 |B-043|`Hub::Connected`、`Hub::Broadcast`（`room.typing`、`bye`）。失効で切る口は無い：hub が feed の `session.revoked` をその端末に書いた後に 4001 で閉じる（全体実装設計書 2.4。失効を書く側は本ブロックを呼ばない）|srv-push（開いている端末の判定）、srv-rooms（入力中）、srv-admin（再起動の前の `bye`）|[第2章 6.2 イベントの一覧（asyncapi.yaml の `channels`）](../../../../docs/jp/design/02_基本設計書_境界.md#62-イベントの一覧asyncapiyaml-の-channels)、[第2章 6.3 接続の規則](../../../../docs/jp/design/02_基本設計書_境界.md#63-接続の規則)、[第7章 3.2 送信（api）](../../../../docs/jp/design/07_基本設計書_通知.md#32-送信api)|
 |B-044|`SyncHandler`（`/sync`。Feed.ReadSince に要求の端末を渡し、他の端末宛ての行を返さない。応答の `pos` は `has_more` が真なら最後の行、偽なら Feed.LastPos。第2章 5.9）|生成した operation（本ブロック）|[第2章 5.9 同期（第4章、第7章）](../../../../docs/jp/design/02_基本設計書_境界.md#59-同期第4章第7章)|
 |B-045|`UpWsHandler`（`/up/ws` の接続の器と `Deliver`。メールボックスの読みと ack は srv-push `UpBox` を `UpMailbox` として呼ぶ）|srv-push|[第7章 3.1 家族のサーバーの受け口（(i)）](../../../../docs/jp/design/07_基本設計書_通知.md#31-家族のサーバーの受け口i)|

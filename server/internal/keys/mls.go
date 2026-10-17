@@ -132,6 +132,8 @@ type ParsedWelcome struct {
 	Suite int
 	// NewMembers は secrets[].new_member（KeyPackageRef）の並び。
 	NewMembers [][]byte
+	// KemOutputs は secrets[] と同じ並びの encrypted_group_secrets.kem_output（HPKE の KEM の出力。確かめ 9 で形を見る）。
+	KemOutputs [][]byte
 }
 
 // PrivateHeader は本文（PrivateMessage）の外側（RFC 9420 6.3）。
@@ -204,15 +206,16 @@ func parseCommit(b []byte) (ParsedCommit, error) {
 	return out, nil
 }
 
-// ParseWelcome は MLSMessage（wire format mls_welcome）の cipher_suite と secrets[].new_member を読む。
+// ParseWelcome は MLSMessage（wire format mls_welcome）の cipher_suite と secrets[] の new_member と kem_output を読む。
 func (CommitReader) ParseWelcome(b []byte) (ParsedWelcome, error) {
 	m, err := decodeMessage(b)
 	if err != nil || m.welcome == nil {
 		return ParsedWelcome{}, errMalformedEvent()
 	}
-	out := ParsedWelcome{Suite: int(m.welcome.suite), NewMembers: [][]byte{}}
+	out := ParsedWelcome{Suite: int(m.welcome.suite), NewMembers: [][]byte{}, KemOutputs: [][]byte{}}
 	for _, s := range m.welcome.secrets {
 		out.NewMembers = append(out.NewMembers, s.newMember)
+		out.KemOutputs = append(out.KemOutputs, s.secrets.kemOutput)
 	}
 	return out, nil
 }

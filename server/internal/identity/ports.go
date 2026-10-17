@@ -33,8 +33,8 @@ type DeviceKeyReader interface {
 
 // PushReader は端末の通知の購読の有無を読む（srv-push が Subscriptions.OfUser で実装する。GET /me/devices の push）。
 type PushReader interface {
-	// SubscribedDevices は構成員の端末のうち購読を持つ物の識別子。
-	SubscribedDevices(ctx context.Context, userId uuid.UUID) ([]uuid.UUID, error)
+	// SubscribedDevices は構成員の端末のうち購読を持つ物の識別子。q は ctx のトランザクションか Pool。
+	SubscribedDevices(ctx context.Context, q store.Querier, userId uuid.UUID) ([]uuid.UUID, error)
 }
 
 // Audit は管理者の操作の記録（srv-admin が実装する）。
@@ -45,23 +45,28 @@ type Audit interface {
 // AudienceKind は知らせの宛先の種類（srv-push Notices.Emit の audience）。
 type AudienceKind string
 
-// 宛先の 4 つ。
+// 宛先の 5 つ（第7章 9）。
 const (
 	AudienceSelf      AudienceKind = "self"
 	AudienceAll       AudienceKind = "all"
 	AudienceAdmins    AudienceKind = "admins"
 	AudienceGuardians AudienceKind = "guardians"
+	AudienceRoom      AudienceKind = "room"
 )
 
-// Audience は知らせの宛先。self は UserId の本人、guardians は UserId の子の保護者。all と admins は UserId を使わない。
+// Audience は知らせの宛先。self は UserId の本人、guardians は UserId の子の保護者、room は RoomId のトークの構成員（active。
+// srv-push が srv-rooms Members.Of で解く）。all と admins はどちらも使わない。
 type Audience struct {
 	Kind   AudienceKind
 	UserId *uuid.UUID
+	RoomId *uuid.UUID
 }
 
-// Notice は OnNotice に渡す 1 件の知らせ（第7章 9 の表の kind と埋め込みの値）。
+// Notice は OnNotice に渡す 1 件の知らせ（第7章 9 の表の kind と埋め込みの値）。Key は事象の鍵（第7章 9。srv-push が (kind, key, 日)
+// で同じ事象の重複を抑える）。
 type Notice struct {
 	Kind     string
+	Key      string
 	Params   map[string]any
 	Audience Audience
 }
@@ -70,15 +75,16 @@ type Notice struct {
 // 登録の順に走る。最初の誤りで止まり、その誤りでトランザクションを rollback させる（I-8）。
 // 登録は起動の時だけ（上のブロックの組み立ての中）。Identity.Ready の後の登録はプログラムの誤り。
 type Hooks struct {
-	deviceRevoked  []func(ctx context.Context, tx *store.Tx, deviceId uuid.UUID) error
-	userSuspended  []func(ctx context.Context, tx *store.Tx, userId uuid.UUID) error
-	userDeleted    []func(ctx context.Context, tx *store.Tx, userId uuid.UUID, eraseContent bool) error
-	userErased     []func(ctx context.Context, tx *store.Tx, userId uuid.UUID) error
-	userCreated    []func(ctx context.Context, tx *store.Tx, userId, firstDeviceId uuid.UUID) error
-	notice         []func(ctx context.Context, tx *store.Tx, n Notice) error
-	passkeyDeleted []func(ctx context.Context, tx *store.Tx, userId uuid.UUID, credId []byte) error
-	passkeyReset   []func(ctx context.Context, tx *store.Tx, userId, deviceId uuid.UUID) error
-	sealed         bool
+	deviceRevoked   []func(ctx context.Context, tx *store.Tx, deviceId uuid.UUID) error
+	userSuspended   []func(ctx context.Context, tx *store.Tx, userId uuid.UUID, reason RevokeReason) error
+	userUnsuspended []func(ctx context.Context, tx *store.Tx, userId uuid.UUID) error
+	userDeleted     []func(ctx context.Context, tx *store.Tx, userId uuid.UUID, eraseContent bool) error
+	userErased      []func(ctx context.Context, tx *store.Tx, userId uuid.UUID) error
+	userCreated     []func(ctx context.Context, tx *store.Tx, userId, firstDeviceId uuid.UUID) error
+	notice          []func(ctx context.Context, tx *store.Tx, n Notice) error
+	passkeyDeleted  []func(ctx context.Context, tx *store.Tx, userId uuid.UUID, credId []byte) error
+	passkeyReset    []func(ctx context.Context, tx *store.Tx, userId, deviceId uuid.UUID) error
+	sealed          bool
 }
 
 // open は登録できるかを確かめる。
@@ -94,10 +100,18 @@ func (h *Hooks) RegisterOnDeviceRevoked(fn func(ctx context.Context, tx *store.T
 	h.deviceRevoked = append(h.deviceRevoked, fn)
 }
 
-// RegisterOnUserSuspended は構成員の停止の hook を足す。
-func (h *Hooks) RegisterOnUserSuspended(fn func(ctx context.Context, tx *store.Tx, userId uuid.UUID) error) {
+// RegisterOnUserSuspended は構成員の停止の hook を足す。reason は RevokeSuspended（Users.Suspend）か RevokeDeleted（Users.Delete が
+// 停止の処理を通る時）。srv-rooms は suspended の時だけ家族全員のトークに知らせを流す。
+func (h *Hooks) RegisterOnUserSuspended(fn func(ctx context.Context, tx *store.Tx, userId uuid.UUID, reason RevokeReason) error) {
 	h.open()
 	h.userSuspended = append(h.userSuspended, fn)
+}
+
+// RegisterOnUserUnsuspended は構成員の再開の hook を足す（Users.Unsuspend が状態を normal にした後。srv-rooms が家族全員のトークに
+// 再開の知らせを流す）。
+func (h *Hooks) RegisterOnUserUnsuspended(fn func(ctx context.Context, tx *store.Tx, userId uuid.UUID) error) {
+	h.open()
+	h.userUnsuspended = append(h.userUnsuspended, fn)
 }
 
 // RegisterOnUserDeleted は構成員の削除の hook を足す（srv-rooms の削除済みの印と leaf の削除待ち）。
@@ -138,7 +152,7 @@ func (h *Hooks) RegisterOnPasskeyReset(fn func(ctx context.Context, tx *store.Tx
 }
 
 // Notify は知らせを OnNotice の登録へ渡す公開の口（srv-push より下のブロックが使う。srv-keys の recovery_used、
-// family_key_used）。登録が無ければ Fault（知らせを黙って捨てない。Identity.Ready が起動の時に確かめる）。
+// family_key_used、recovery_requested、mls_reinit、mls_reinit_limit、sticker_remove_requested）。登録が無ければ Fault（知らせを黙って捨てない。Identity.Ready が起動の時に確かめる）。
 func (h *Hooks) Notify(ctx context.Context, tx *store.Tx, n Notice) error {
 	if len(h.notice) == 0 {
 		return fault.Wrap(errNoNoticeHook)
@@ -163,8 +177,14 @@ func (h *Hooks) onDeviceRevoked(ctx context.Context, tx *store.Tx, deviceId uuid
 	return fire(h.deviceRevoked, func(fn func(context.Context, *store.Tx, uuid.UUID) error) error { return fn(ctx, tx, deviceId) })
 }
 
-func (h *Hooks) onUserSuspended(ctx context.Context, tx *store.Tx, userId uuid.UUID) error {
-	return fire(h.userSuspended, func(fn func(context.Context, *store.Tx, uuid.UUID) error) error { return fn(ctx, tx, userId) })
+func (h *Hooks) onUserSuspended(ctx context.Context, tx *store.Tx, userId uuid.UUID, reason RevokeReason) error {
+	return fire(h.userSuspended, func(fn func(context.Context, *store.Tx, uuid.UUID, RevokeReason) error) error {
+		return fn(ctx, tx, userId, reason)
+	})
+}
+
+func (h *Hooks) onUserUnsuspended(ctx context.Context, tx *store.Tx, userId uuid.UUID) error {
+	return fire(h.userUnsuspended, func(fn func(context.Context, *store.Tx, uuid.UUID) error) error { return fn(ctx, tx, userId) })
 }
 
 func (h *Hooks) onUserDeleted(ctx context.Context, tx *store.Tx, userId uuid.UUID, eraseContent bool) error {

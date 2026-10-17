@@ -115,9 +115,44 @@ func freshPool(t *testing.T) *store.Pool {
 // noticeRec はコミットされた知らせの 1 件。
 type noticeRec struct {
 	kind     string
+	key      string
 	audience AudienceKind
 	user     uuid.UUID
 	params   map[string]any
+}
+
+// wantNoticeKey は第7章 9 の表の「事象の鍵」の欄から、知らせの params と宛先で期待する鍵を組む（本ブロックの 16 の kind）。
+// 表に無い kind は偽。
+func wantNoticeKey(n Notice) (string, bool) {
+	p := func(k string) string {
+		v, _ := n.Params[k].(string)
+		return v
+	}
+	self := ""
+	if n.Audience.UserId != nil {
+		self = n.Audience.UserId.String()
+	}
+	switch n.Kind {
+	case noticeCardHolderChanged, noticeChildRelaxed16, noticeChildReleased18, noticeChildFlagSet, noticeChildFlagCleared, noticeChildFlagSuggested:
+		return p("user_id"), true
+	case noticeUpdateFailed:
+		return p("user_id") + ":" + p("code"), true
+	case noticeTransferRequested:
+		return p("transfer_id"), true
+	case noticeEraseApprovalRequested, noticeDeviceApprovalRequested, noticeEraseApprovalExpired:
+		return p("approval_id"), true
+	case noticeGuardianSettings:
+		return p("child_id") + ":" + p("by_user_id"), true
+	case noticeGuardiansChanged:
+		return p("child_id"), true
+	case noticeEraseRequested:
+		return self + ":" + p("erase_at"), true
+	case noticeEraseCancelled:
+		return self, true
+	case noticeNewDevice:
+		return p("device_id"), true
+	}
+	return "", false
 }
 
 // noticeLog は hook OnNotice に渡った知らせのうち、コミットされた物だけを覚える（rollback の知らせは数えない）。
@@ -127,7 +162,10 @@ type noticeLog struct {
 }
 
 func (l *noticeLog) hook(_ context.Context, tx *store.Tx, n Notice) error {
-	r := noticeRec{kind: n.Kind, audience: n.Audience.Kind, params: n.Params}
+	if want, ok := wantNoticeKey(n); !ok || want == "" || n.Key != want {
+		return fmt.Errorf("知らせ %s の事象の鍵 %q が表の欄と違う（期待 %q）", n.Kind, n.Key, want)
+	}
+	r := noticeRec{kind: n.Kind, key: n.Key, audience: n.Audience.Kind, params: n.Params}
 	if n.Audience.UserId != nil {
 		r.user = *n.Audience.UserId
 	}
@@ -148,6 +186,15 @@ func (l *noticeLog) of(kind string) []noticeRec {
 		if r.kind == kind {
 			out = append(out, r)
 		}
+	}
+	return out
+}
+
+// keys は kind の知らせの事象の鍵（出た順）。
+func (l *noticeLog) keys(kind string) []string {
+	var out []string
+	for _, r := range l.of(kind) {
+		out = append(out, r.key)
 	}
 	return out
 }
@@ -238,8 +285,12 @@ func newEnv(t *testing.T, extra ...func(h *Hooks)) *env {
 		e.hooks.add(tx, "device_revoked:"+d.String())
 		return nil
 	})
-	h.RegisterOnUserSuspended(func(_ context.Context, tx *store.Tx, u uuid.UUID) error {
-		e.hooks.add(tx, "suspended:"+u.String())
+	h.RegisterOnUserSuspended(func(_ context.Context, tx *store.Tx, u uuid.UUID, reason RevokeReason) error {
+		e.hooks.add(tx, "suspended:"+u.String()+":"+string(reason))
+		return nil
+	})
+	h.RegisterOnUserUnsuspended(func(_ context.Context, tx *store.Tx, u uuid.UUID) error {
+		e.hooks.add(tx, "unsuspended:"+u.String())
 		return nil
 	})
 	h.RegisterOnUserDeleted(func(_ context.Context, tx *store.Tx, u uuid.UUID, erase bool) error {
@@ -704,7 +755,7 @@ func (noRooms) RoomRole(context.Context, uuid.UUID, uuid.UUID) (boundary.RoomRol
 
 type noLinks struct{}
 
-func (noLinks) Snapshot(context.Context, uuid.UUID) (gen.SyncSnapshot, int64, *fault.Event) {
+func (noLinks) Snapshot(context.Context, boundary.Principal) (gen.SyncSnapshot, int64, error) {
 	return gen.SyncSnapshot{Rooms: []gen.RoomSummary{}, Users: []gen.User{}, Devices: []gen.Device{}}, 0, nil
 }
 func (noLinks) ForFeed(context.Context, uuid.UUID, uuid.UUID, []uuid.UUID) (map[uuid.UUID]json.RawMessage, error) {

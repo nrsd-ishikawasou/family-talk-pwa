@@ -144,7 +144,7 @@ func TestFromSpecReadsEveryOperationOnce(t *testing.T) {
 		t.Fatal(err)
 	}
 	routes := authz.Routes()
-	if len(routes) != 163 { // 171 の operation から caddy が配る 8 を除く
+	if len(routes) != 164 { // 172 の operation から caddy が配る 8 を除く
 		t.Fatalf("経路の数が違う: %d", len(routes))
 	}
 	ws, ok := authz.Route("connectWs")

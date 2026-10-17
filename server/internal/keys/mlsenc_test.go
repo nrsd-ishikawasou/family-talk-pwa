@@ -300,6 +300,22 @@ func hpkeKey(t testing.TB) []byte {
 	return k.PublicKey().Bytes()
 }
 
+// badHpkeKeys は P-256 の公開鍵の形でない 4 通り（第12章 5.2「KeyPackage の保管」の 7。RFC 9180 7.1.1、7.1.4）：曲線の外（生成元の
+// y の最下位のビットを替えた点）、無限遠点（0x04 と 64 バイトの 0）、64 バイト（非圧縮の頭の無い x と y）、圧縮の 33 バイト。
+func badHpkeKeys() map[string][]byte {
+	p := elliptic.P256().Params()
+	g := make([]byte, 65)
+	g[0] = 4
+	p.Gx.FillBytes(g[1:33])
+	p.Gy.FillBytes(g[33:])
+	off := append([]byte(nil), g...)
+	off[64] ^= 1
+	inf := make([]byte, 65)
+	inf[0] = 4
+	comp := append([]byte{2 | g[64]&1}, g[1:33]...)
+	return map[string][]byte{"曲線の外": off, "無限遠点": inf, "64 バイト": append([]byte(nil), g[1:]...), "圧縮の 33 バイト": comp}
+}
+
 // signLabel は SignWithLabel（RFC 9420 5.1.2。DER）。
 func signLabel(t testing.TB, k *ecdsa.PrivateKey, label string, content []byte) []byte {
 	t.Helper()
@@ -451,11 +467,27 @@ func buildCommit(t testing.TB, c commitSpec) []byte {
 	return encMessage(&mlsMessage{version: mlsVersion10, wireFormat: wireFormatPublicMessage, public: p})
 }
 
-// buildWelcome は Welcome（MLSMessage）。secrets の new_member に refs を並べる。暗号文は任意の値。
+// buildWelcome は Welcome（MLSMessage）。secrets の new_member に refs を並べ、kem_output は P-256 の点（確かめ 9 の形。秘密の値を
+// 並びの番号 + 1 とした鍵の公開鍵）。暗号文は任意の値。
 func buildWelcome(suite uint16, refs ...[]byte) []byte {
+	kems := make([][]byte, len(refs))
+	for i := range refs {
+		scalar := make([]byte, 32)
+		scalar[31] = byte(i + 1)
+		k, err := ecdh.P256().NewPrivateKey(scalar)
+		if err != nil {
+			panic(err)
+		}
+		kems[i] = k.PublicKey().Bytes()
+	}
+	return buildWelcomeKems(suite, kems, refs...)
+}
+
+// buildWelcomeKems は kem_output を secrets の並びごとに与える Welcome（形の誤りの試験）。
+func buildWelcomeKems(suite uint16, kems [][]byte, refs ...[]byte) []byte {
 	w := &welcomeMsg{suite: suite, encryptedGroupInfo: []byte{9, 9}}
-	for _, r := range refs {
-		w.secrets = append(w.secrets, encryptedGroupSecrets{newMember: r, secrets: hpkeCiphertext{kemOutput: []byte{1}, ciphertext: []byte{2}}})
+	for i, r := range refs {
+		w.secrets = append(w.secrets, encryptedGroupSecrets{newMember: r, secrets: hpkeCiphertext{kemOutput: kems[i], ciphertext: []byte{2}}})
 	}
 	return encMessage(&mlsMessage{version: mlsVersion10, wireFormat: wireFormatWelcome, welcome: w})
 }

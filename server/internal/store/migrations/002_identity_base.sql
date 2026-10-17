@@ -177,11 +177,14 @@ CREATE TABLE devices (
     revoked_by uuid REFERENCES users (id),
     -- 保護者が承認した端末（QR の承認か鍵の承認で。子の端末の鍵の承認に 2 度は求めない。第3章 4.4）。
     guardian_approved_at timestamptz,
+    -- 最初の承認の時刻。停止で未承認に戻しても消さない。無ければ承認されたことのない端末で 7 日の期限切れの対象、
+    -- あれば休眠の判定の対象（第3章 5.1、第12章 5.2）。
+    first_approved_at timestamptz,
     CHECK ((state = 'revoked') = (revoked_at IS NOT NULL))
 );
 CREATE INDEX devices_user ON devices (user_id, state);
 CREATE INDEX devices_unapproved ON devices (created_at) WHERE state = 'unapproved';
-CREATE INDEX devices_last_seen ON devices (last_seen_at) WHERE state = 'approved';
+CREATE INDEX devices_last_seen ON devices (last_seen_at) WHERE state IN ('approved', 'unapproved');
 
 ALTER TABLE guardian_approvals ADD CONSTRAINT guardian_approvals_target_device_fk FOREIGN KEY (target_device_id) REFERENCES devices (id);
 

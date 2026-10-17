@@ -30,7 +30,8 @@
   - [srv-common](srv-common.md)（`Secrets.Sfu`、`Clock`、`SfuAdmin`）
   - [srv-store](srv-store.md)（`Tx`、`Feed`、`Jobs`）
   - [srv-identity](srv-identity.md)（`Users.Settings` の「着信を受けない」、`Devices`）
-  - [srv-rooms](srv-rooms.md)（`Members.IsMember`、`Members.Of`、`Timeline.CallEvent`、`SystemEvent`）
+  - [srv-rooms](srv-rooms.md)（`Members.IsMember`、`Members.Of`、`Timeline.CallEvent`）。`Timeline.CallEvent` を呼ぶトランザクションは、calls の行を書く前にそのトークの RoomLock（srv-store）を取る。srv-rooms のトークの削除が rooms の後に calls を取るので、逆向きは待ちの輪になる（srv-rooms の依存の錠の順）
+- 依存の逆転：srv-rooms の `CallEnder`（`EndAll(tx, roomId)`。トークの削除で進行中の通話を終える）を `Calls.EndAllOfRoom` で実装する。組み立ての後に `Rooms.SetCallEnder` で渡す。
   - [srv-push](srv-push.md)（`CallRinger`、`NotifierImpl` 経由の通常の通知）
 - 部品：SFU の server SDK（Go。トークンの JWT と Webhook の検証。第14章 5.2）。
 
@@ -70,6 +71,7 @@ classDiagram
     +Decline(tx, principal, callId)
     +Leave(tx, principal, callId)
     +End(tx, principal, callId, reason)
+    +EndAllOfRoom(tx, roomId)
     +Get(ctx, principal, callId) CallView
     +ListMine(ctx, principal) [CallSummary]
     +InProgressOf(ctx, roomId) Option~Call~
@@ -110,11 +112,12 @@ classDiagram
 |Call|`+State string`|ringing、active、ended、missed、declined、cancelled のいずれか|
 |Call|`+MaxVideo int`|設定（8）|
 |Participant|`+Identity string`|SFU の identity = device_id|
-|Calls|`+Start(tx, principal, roomId, video) Result~StartResult, Event~`|構成員（ROOM-002）。進行中があれば CALL-002 で合流。dm で相手が通話中なら CALL-003（相手に不在の記録と知らせ）。相手が着信を受けないなら CALL-005（記録なし）。自分が通話中なら CALL-003。SFU が応答しなければ CALL-004。通れば calls を作り、トークンを出す。dm は call.ring と CallRinger.Ring、group は call.started と通常の通知と SystemEvent(started)。60 秒の timer（dm）|
+|Calls|`+Start(tx, principal, roomId, video) Result~StartResult, Event~`|構成員（ROOM-002）。進行中があれば CALL-002 で合流。dm で相手が通話中なら CALL-003（相手に不在の記録と知らせ）。相手が着信を受けないなら CALL-005（記録なし）。自分が通話中なら CALL-003。SFU が応答しなければ CALL-004。通れば calls を作り、トークンを出す。dm は call.ring と CallRinger.Ring、group は call.started と通常の通知と CallEvent(started)（通話の記録は `ft.event.call/1`。`ft.event.system/1` に started は無い）。60 秒の timer（dm）|
 |Calls|`+Join(tx, principal, callId) Result~JoinResult, Event~`|CALL-001。映像の上限 CALL-006（音声のみなら可）。dm の応答：state active、他の端末に call.state(active)、CallRinger.Stop(answered)（着信の push を送った相手の端末に kind call_end、reason answered。着信の通知を閉じるため。第7章 7）。トークン|
 |Calls|`+Decline(tx, principal, callId)`|dm の相手の端末。call.state(declined)、CallEvent(declined)、CallRinger.Stop(declined)（相手の他の端末に call_end、reason declined）|
 |Calls|`+Leave(tx, principal, callId)`|参加者。最後の 1 人なら End(empty)（group は 60 秒の猶予：Webhook room_finished が正）|
 |Calls|`+End(tx, principal, callId, reason)`|発信者・参加者。dm の取消（ringing のまま）は cancelled：call.state(cancelled)、CallEvent(cancelled)、CallRinger.Stop(cancelled)。dm の通話中の終了は SfuAdmin.DeleteRoom（B-009）でルームを閉じ、Webhook を待たずに CallEvent(ended)（S-07）|
+|Calls|`+EndAllOfRoom(tx, roomId)`|srv-rooms `CallEnder` の実装（トークの削除。Rooms.Delete と同じトランザクション）。そのトークの ringing と active の通話を ended（end_reason room_deleted）にし、call.state(ended) を流し、SfuAdmin.DeleteRoom でルームを閉じる。CallRinger.Stop。通話の記録のイベントは書かない（トークは削除済みで受け手が残らない）|
 |Calls|`+ListMine(ctx, principal) [CallSummary]`|/me/calls（発信・着信・不在。トークのイベントの骨から）|
 |Calls|`+IsBusy(ctx, userId) bool`|参加の状態（通話中の判定）|
 |Calls|`+CountActive(ctx) int`|/admin/health の通話の数（更新の延期）|
@@ -130,7 +133,7 @@ classDiagram
 
 |番号|操作（上の図）|使う側|由来|
 |---|---|---|---|
-|B-160|`Calls`（`Start`、`Join`、`Decline`、`Leave`、`End`、`Get`、`ListMine`、`InProgressOf`、`IsBusy`、`CountActive`）|operation（`/rooms/{id}/calls`、`/calls/{id}/*`、`/me/calls`）、srv-rooms（トークの削除で `End`）、srv-admin（`/admin/health` の通話の数。更新の延期）、srv-push（`IsBusy` は不要：`CALL-003` は本ブロックが判定）|[第6章 4 開始と着信（DD-6-3、DD-6-4）](../../../../docs/jp/design/06_基本設計書_通話.md#4-開始と着信dd-6-3dd-6-4)、[第2章 5.7 通話（第6章）](../../../../docs/jp/design/02_基本設計書_境界.md#57-通話第6章)|
+|B-160|`Calls`（`Start`、`Join`、`Decline`、`Leave`、`End`、`EndAllOfRoom`、`Get`、`ListMine`、`InProgressOf`、`IsBusy`、`CountActive`）。srv-rooms の `CallEnder` の実装（`EndAllOfRoom`）|operation（`/rooms/{id}/calls`、`/calls/{id}/*`、`/me/calls`）、srv-rooms（トークの削除で `CallEnder.EndAll`）、srv-admin（`/admin/health` の通話の数。更新の延期）、srv-push（`IsBusy` は不要：`CALL-003` は本ブロックが判定）|[第6章 4 開始と着信（DD-6-3、DD-6-4）](../../../../docs/jp/design/06_基本設計書_通話.md#4-開始と着信dd-6-3dd-6-4)、[第2章 5.7 通話（第6章）](../../../../docs/jp/design/02_基本設計書_境界.md#57-通話第6章)|
 |B-161|`RingTimer`（`RecoverAfterRestart` は srv-admin `Startup` の後始末から）|本ブロック、srv-admin|[第6章 4.1 1 対 1](../../../../docs/jp/design/06_基本設計書_通話.md#41-1-対-1)、全体実装設計書 3.1|
 |B-162|`Tokens::Issue`、`Keys`|本ブロック、srv-admin（鍵の交代）|[第2章 4.4 WebSocket と通知と SFU](../../../../docs/jp/design/02_基本設計書_境界.md#44-websocket-と通知と-sfu)、[第12章 10 秘密の鍵（DD-12-15、R-12-7-1）](../../../../docs/jp/design/12_基本設計書_データと暗号化.md#10-秘密の鍵dd-12-15r-12-7-1)|
 |B-163|`Webhook::Handle`（operation `/internal/sfu/webhook`）|srv-boundary（`Implementations.Calls`。openapi のタグは calls）|[第6章 3.1 SFU の設定（deploy/livekit.yaml。初期値）](../../../../docs/jp/design/06_基本設計書_通話.md#31-sfu-の設定deploylivekityaml初期値)、全体実装設計書 2.1|

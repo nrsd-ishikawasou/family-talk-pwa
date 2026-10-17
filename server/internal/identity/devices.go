@@ -27,6 +27,8 @@ type Device struct {
 	LastSeenAt time.Time
 	LastIp     *envelope.Fenv
 	CreatedAt  time.Time
+	// FirstApprovedAt は最初の承認の時刻（停止で未承認に戻しても消さない。無ければ承認されたことのない端末。第3章 5.1）。
+	FirstApprovedAt *time.Time
 }
 
 // Devices は端末を持つ（B-067。第3章 5）。
@@ -72,27 +74,31 @@ func (v *Devices) Register(ctx context.Context, tx *store.Tx, userId uuid.UUID, 
 		return Device{}, wrap(err)
 	}
 	params := map[string]any{"user_id": userId.String(), "name": userName, "device_id": dv.Id.String(), "device_name": name, "platform": string(kind)}
-	if err := v.hooks.notifySelf(ctx, tx, userId, noticeNewDevice, params); err != nil {
+	if err := v.hooks.notifySelf(ctx, tx, userId, noticeNewDevice, noticeKey(dv.Id.String()), params); err != nil {
 		return Device{}, err
 	}
 	if child {
-		if err := v.hooks.notifyGuardians(ctx, tx, userId, noticeNewDevice, params); err != nil {
+		if err := v.hooks.notifyGuardians(ctx, tx, userId, noticeNewDevice, noticeKey(dv.Id.String()), params); err != nil {
 			return Device{}, err
 		}
 	}
 	return dv, nil
 }
 
-const deviceCols = `id, user_id, name, kind, state, last_seen_at, last_ip, created_at`
+const deviceCols = `id, user_id, name, kind, state, last_seen_at, last_ip, created_at, first_approved_at`
 
 func scanDevice(row interface{ Scan(...any) error }) (Device, error) {
 	var dv Device
 	var name, ip []byte
 	var kind, state string
-	if err := row.Scan(&dv.Id, &dv.UserId, &name, &kind, &state, &dv.LastSeenAt, &ip, &dv.CreatedAt); err != nil {
+	if err := row.Scan(&dv.Id, &dv.UserId, &name, &kind, &state, &dv.LastSeenAt, &ip, &dv.CreatedAt, &dv.FirstApprovedAt); err != nil {
 		return Device{}, err
 	}
 	dv.Kind, dv.State, dv.LastSeenAt, dv.CreatedAt = Platform(kind), DeviceState(state), dv.LastSeenAt.UTC(), dv.CreatedAt.UTC()
+	if dv.FirstApprovedAt != nil {
+		t := dv.FirstApprovedAt.UTC()
+		dv.FirstApprovedAt = &t
+	}
 	var err error
 	if dv.Name, err = envelope.DecodeFenv(name); err != nil {
 		return Device{}, err
@@ -149,14 +155,15 @@ func (v *Devices) mine(ctx context.Context, q querier, userId, deviceId uuid.UUI
 
 // List は GET /me/devices（名前、種類、最終の利用、生の IP、承認、購読、この端末、鍵の登録 keys）。取り消し済みと期限切れは除く。
 // 購読は PushReader.SubscribedDevices、keys は DeviceKeyReader.KeysOf（登録の無い端末は欄を出さない）。
-// 指紋は求めない（端末が keys から第12章 5.3 の定義で求める）。
-func (v *Devices) List(ctx context.Context, userId, thisDevice uuid.UUID, page Page) ([]gen.Device, bool, error) {
+// 指紋は求めない（端末が keys から第12章 5.3 の定義で求める）。q は ctx のトランザクションか Pool（/sync の初回の一覧は
+// srv-store Pool.BeginSnapshot の中で読む）。
+func (v *Devices) List(ctx context.Context, q store.Querier, userId, thisDevice uuid.UUID, page Page) ([]gen.Device, bool, error) {
 	c, err := page.uuids()
 	if err != nil {
 		return nil, false, err
 	}
 	sql, args := whereUUID(c, `SELECT `+deviceCols+` FROM devices WHERE user_id = $1 AND state NOT IN ('revoked', 'expired')`, "id", []any{userId})
-	rows, err := v.d.Pool.Query(ctx, sql, args...)
+	rows, err := q.Query(ctx, sql, args...)
 	if err != nil {
 		return nil, false, wrap(err)
 	}
@@ -174,13 +181,13 @@ func (v *Devices) List(ctx context.Context, userId, thisDevice uuid.UUID, page P
 		return nil, false, wrap(err)
 	}
 	list, more := finish(list, c)
-	out, err := v.views(ctx, userId, thisDevice, list)
+	out, err := v.views(ctx, q, userId, thisDevice, list)
 	return out, more, err
 }
 
 // views は端末の行を応答の形にする（名前と IP を開き、購読と鍵を重ねる）。
-func (v *Devices) views(ctx context.Context, userId, thisDevice uuid.UUID, list []Device) ([]gen.Device, error) {
-	subs, err := v.d.Push.SubscribedDevices(ctx, userId)
+func (v *Devices) views(ctx context.Context, q store.Querier, userId, thisDevice uuid.UUID, list []Device) ([]gen.Device, error) {
+	subs, err := v.d.Push.SubscribedDevices(ctx, q, userId)
 	if err != nil {
 		return nil, wrap(err)
 	}
@@ -188,12 +195,12 @@ func (v *Devices) views(ctx context.Context, userId, thisDevice uuid.UUID, list 
 	for _, s := range subs {
 		subscribed[s] = true
 	}
-	keys, err := v.d.Keys.KeysOf(ctx, v.d.Pool, userId)
+	keys, err := v.d.Keys.KeysOf(ctx, q, userId)
 	if err != nil {
 		return nil, wrap(err)
 	}
 	out := make([]gen.Device, 0, len(list))
-	err = v.keys.with(ctx, v.d.Pool, userId, func(dek []byte, dekId uuid.UUID) error {
+	err = v.keys.with(ctx, q, userId, func(dek []byte, dekId uuid.UUID) error {
 		for _, dv := range list {
 			name, err := openWith(v.d, dek, dekId, dv.Name.Encode(), aad("devices", "name", dv.Id.String()))
 			if err != nil {
@@ -226,7 +233,7 @@ func (v *Devices) view(ctx context.Context, userId, deviceId, thisDevice uuid.UU
 	if err != nil {
 		return gen.Device{}, err
 	}
-	list, err := v.views(ctx, userId, thisDevice, []Device{dv})
+	list, err := v.views(ctx, v.d.Pool, userId, thisDevice, []Device{dv})
 	if err != nil {
 		return gen.Device{}, err
 	}
@@ -252,8 +259,9 @@ func (v *Devices) Rename(ctx context.Context, tx *store.Tx, userId, deviceId uui
 	return v.d.emitDeviceChanged(ctx, tx, userId, deviceId, changeRenamed, &by)
 }
 
-// Approve は未承認を承認済みにする（S-32）。srv-keys が fdev/1 の user_sig を置いた同じトランザクションで呼ぶ。
-// 承認済みと休眠は KEY-002（休眠は承認が要らず rejoin の経路）、取り消し済み・期限切れ・無しは KEY-001。device.changed。
+// Approve は未承認を承認済みにする。srv-keys が fdev/1 の user_sig を置いた同じトランザクションで呼ぶ。
+// 承認済みと休眠は KEY-002（休眠は承認が要らず rejoin の経路）、取り消し済み・期限切れ・無しは KEY-001。first_approved_at が
+// 無ければ今を置く（最初の承認の記録。停止で未承認に戻しても消さない。期限切れと休眠の対象の判定に使う）。device.changed。
 func (v *Devices) Approve(ctx context.Context, tx *store.Tx, deviceId, by uuid.UUID) error {
 	dv, err := v.get(ctx, tx, deviceId, true)
 	if err != nil {
@@ -266,7 +274,8 @@ func (v *Devices) Approve(ctx context.Context, tx *store.Tx, deviceId, by uuid.U
 	default:
 		return ev(cgen.KEY001)
 	}
-	if _, err := tx.Exec(ctx, `UPDATE devices SET state = 'approved' WHERE id = $1`, deviceId); err != nil {
+	if _, err := tx.Exec(ctx, `UPDATE devices SET state = 'approved', first_approved_at = coalesce(first_approved_at, $2) WHERE id = $1`,
+		deviceId, v.d.now()); err != nil {
 		return wrap(err)
 	}
 	return v.d.emitDeviceChanged(ctx, tx, dv.UserId, deviceId, changeApproved, &by)
@@ -326,14 +335,17 @@ func (v *Devices) Touch(ctx context.Context, tx *store.Tx, deviceId uuid.UUID, i
 	return v.ipLog.record(ctx, tx, userId, deviceId, ip, now)
 }
 
-// ExpireUnapproved は未承認のまま olderThan を過ぎた端末を期限切れにする（7 日。srv-worker）。そのセッションを失効（expired）させ、
+// ExpireUnapproved は承認されたことのない未承認の端末（first_approved_at が無い）のうち、作成が olderThan より古い物を期限切れに
+// する（7 日。srv-worker）。停止で未承認に戻った端末（first_approved_at あり）は対象にしない（再開の後の自己承認を待つ。第3章 5.1、
+// 8.1）。そのセッションを失効（expired）させ、
 // hook OnDeviceRevoked で他のブロックの記録（鍵の登録、メールボックス、購読）を消す。自分のトランザクションで 1,000 台ずつ。
 func (v *Devices) ExpireUnapproved(ctx context.Context, olderThan time.Time) (int64, error) {
 	var total int64
 	for {
 		n := 0
 		err := v.d.separateTx(ctx, func(tx *store.Tx) error {
-			list, err := uuids(ctx, tx, `SELECT id FROM devices WHERE state = 'unapproved' AND created_at < $1 ORDER BY id LIMIT $2 FOR UPDATE SKIP LOCKED`,
+			list, err := uuids(ctx, tx, `SELECT id FROM devices WHERE state = 'unapproved' AND first_approved_at IS NULL AND created_at < $1
+				ORDER BY id LIMIT $2 FOR UPDATE SKIP LOCKED`,
 				olderThan, expireBatch)
 			if err != nil {
 				return err
@@ -362,14 +374,28 @@ func (v *Devices) ExpireUnapproved(ctx context.Context, olderThan time.Time) (in
 	}
 }
 
-// MarkDormant は srv-keys Groups.RetireDormant から状態を休眠にする。承認済みで last_seen_at が olderThan より古い時だけ休眠にし、
-// 変えたかを返す（1 つの UPDATE。休眠の判定の後に使われた端末を休眠にしない。第12章 5.2）。
+// MarkDormant は srv-keys Groups.RetireDormant から。devices の行の錠を取り、休眠の扱い（leaf とコピー (a) を外す）をするかを返す。
+// last_seen_at が olderThan より古い時だけ真：承認済みなら休眠にする。承認されたことのある未承認の端末（停止で戻った端末）なら
+// 状態を変えない（休眠にすると再開の後に鍵の承認を経ずに承認済みと同じ扱いになる。第12章 5.2）。他の状態と、last_seen_at が
+// 新しい時（休眠の判定の後に使われた端末）は偽。
 func (v *Devices) MarkDormant(ctx context.Context, tx *store.Tx, deviceId uuid.UUID, olderThan time.Time) (bool, error) {
-	tag, err := tx.Exec(ctx, `UPDATE devices SET state = 'dormant' WHERE id = $1 AND state = 'approved' AND last_seen_at < $2`, deviceId, olderThan)
+	dv, err := v.get(ctx, tx, deviceId, true)
 	if err != nil {
-		return false, wrap(err)
+		return false, err
 	}
-	return tag.RowsAffected() == 1, nil
+	if !dv.LastSeenAt.Before(olderThan) {
+		return false, nil
+	}
+	switch {
+	case dv.State == DeviceApproved:
+		if _, err := tx.Exec(ctx, `UPDATE devices SET state = 'dormant' WHERE id = $1`, deviceId); err != nil {
+			return false, wrap(err)
+		}
+		return true, nil
+	case dv.State == DeviceUnapproved && dv.FirstApprovedAt != nil:
+		return true, nil
+	}
+	return false, nil
 }
 
 // MarkActive は srv-keys Groups.Commit から。休眠の端末が Add で leaf を得た時に承認済みへ戻す（休眠の時だけ。他の状態は何もしない。
@@ -416,9 +442,20 @@ func (v *Devices) NameOf(ctx context.Context, q store.Querier, deviceId uuid.UUI
 	return string(name), nil
 }
 
-// ApprovedSeenBefore は承認済みで last_seen_at が olderThan より古い端末（休眠の判定。識別子の順。srv-keys Groups.DormantLeafs）。
-func (v *Devices) ApprovedSeenBefore(ctx context.Context, olderThan time.Time) ([]Device, error) {
-	return v.scanAll(ctx, v.d.Pool, `SELECT `+deviceCols+` FROM devices WHERE state = 'approved' AND last_seen_at < $1 ORDER BY id`, olderThan)
+// IdleSeenBefore は last_seen_at が olderThan より古い端末のうち、承認済みの物と、承認されたことのある未承認の物（停止で戻った
+// 端末）。識別子の順（休眠の判定。srv-keys Groups.DormantLeafs。第12章 5.2）。
+func (v *Devices) IdleSeenBefore(ctx context.Context, olderThan time.Time) ([]Device, error) {
+	return v.scanAll(ctx, v.d.Pool, `SELECT `+deviceCols+` FROM devices
+		WHERE (state = 'approved' OR (state = 'unapproved' AND first_approved_at IS NOT NULL)) AND last_seen_at < $1 ORDER BY id`, olderThan)
+}
+
+// ApprovedAmong は deviceIds のうち状態が承認済みの端末（識別子の順）。srv-keys Groups.Epoch と Reinit の「Commit を作れる端末」の
+// 判定（第12章 5.2 の (d)）。q は ctx のトランザクションか Pool（Epoch は srv-store Pool.BeginSnapshot の中で読む）。
+func (v *Devices) ApprovedAmong(ctx context.Context, q store.Querier, deviceIds []uuid.UUID) ([]uuid.UUID, error) {
+	if len(deviceIds) == 0 {
+		return []uuid.UUID{}, nil
+	}
+	return uuids(ctx, q, `SELECT id FROM devices WHERE id = ANY($1) AND state = 'approved' ORDER BY id`, deviceIds)
 }
 
 // scanAll は端末の行の並びを読む。

@@ -114,7 +114,7 @@ classDiagram
   class Screens_Album_Map_Sticker {
     +Albums / Album / AlbumCreate / BulkSave
     +MapFull / MapPick
-    +StickerCreate（写真、切り抜き、文字と落書き、名前、パックの順）/ StickerPacks / RemoveRequest
+    +StickerCreate（写真、切り抜き、文字と落書き、名前、パックの順）/ StickerPacks / StickerRequests（受けた求め、出した求め）
   }
   class Screens_Settings {
     +SettingsHome
@@ -176,8 +176,9 @@ classDiagram
 |Screens_Auth|`+ApproveDevice`|既存の端末：QR を読むか 8 文字を入力し、ロックを解除する。GET /auth/qr/{user_code}（G-13）の sig_pub と kem_pub から DeviceKeys.fingerprintOf で指紋を求め、種類・名前・場所と共に示し「新しい端末の画面の 20 桁と同じか確かめてください」。承認の後、device.changed{added} で GET /me/devices の keys から指紋を求め直し、示した値と一致する時だけ web-crypto Recovery.approveDevice（署名と転送）。違えば「鍵が一致しません。端末の追加をやり直してください」（第3章 4.4、第12章 5.3）|
 |Screens_Auth|`+Recover`|4 段の案内（既存の端末、家族に頼む（求めの状態）、回復コード（検査文字の誤りの位置）、カード（語の候補、誤りの行））+ PRF|
 |Screens_Talk|`+RoomList`|行（写真 48、名前、冒頭、時刻、未読）、検索、＋、長押し、並べ替え、空の案内。TanStack Virtual|
-|Screens_Talk|`+Room`|上（名前と人数、通話、バナー：アナウンス／通話中／オフライン／鍵待ち）、本文（日付の見出し、吹き出し、既読、リアクション、束 10 件、各種類の描画、削除済みの印、システムの知らせ）、下（入力欄、＋、録音、送信。長押し：通知なし、予約）。新着のボタン。右スワイプで返信。メンションの候補|
+|Screens_Talk|`+Room`|上（名前と人数、通話、バナー：アナウンス／通話中／オフライン／鍵待ち）、本文（日付の見出し、吹き出し、既読、リアクション、束 10 件、各種類の描画、削除済みの印、システムの知らせ、予約送信の遅れの印「遅れて送られました」。印は `ft.room_event/1` の `scheduled_at` があり ts との差が 1 分を超える時。第4章 5.8）、下（入力欄、＋、録音、送信。長押し：通知なし、予約）。新着のボタン。右スワイプで返信。メンションの候補|
 |Screens_Talk|`+LongPressMenu`|上段リアクション 5 + ＋。下段は返信、転送、コピー、アナウンス、情報、編集、取消、削除の順|
+|Screens_Album_Map_Sticker|`+StickerRequests（受けた求め、出した求め）`|/stickers/requests（知らせ `sticker_remove_requested` のタップでも開く）。受けた求め（web-sync B-249 `received`）：求めた人、絵柄、求めた日（requested_at）。「絵柄を消す」の 1 つの操作で、作成者なら絵柄を除いた新しい版（同じ pack_id の `ft.content.sticker_pack/1`。絵柄が最後の 1 つなら新しい版は送らない）を web-sync SendQueue.enqueue で家族全員のトークへ送り、続けて絵柄を含む版のイベントのうち自分が取り消せる物（送信者として 7 日以内）を `POST /rooms/{id}/events/{eid}/redact`。管理者なら絵柄を含む版を全部 redact（理由を書く。第10章 12 の取り返しがつかない確認ダイアログ）。取り消せない版が残れば「管理者が取り消すまで求めは残ります」。出した求め（`sent`）：取り下げ（`withdraw`）。「削除を求める」はタグの通知と絵柄の長押しから `request`（自分が作成者のパックは求めを出さずにその場で同じ操作）。第4章 5.9|
 |Screens_Settings|`+SettingsHome`|写真と名前、10 の分類、このアプリについて、管理者の画面（管理者）、保護者（子ども）|
 |Screens_Settings|`+Account`|プロフィール、回復コード、パスキー、抹消の求め（POST /me/erase。再認証）と猶予の間の取り消し（DELETE /me/erase）|
 |Screens_Settings|`+Guardian（子の設定）`|保護者の端末：設定 > 子ども。子ごとに 4 つの制限（`PUT /me/guardian/children/{id}/controls`）と誕生日（`PUT /me/guardian/children/{id}/birthday`。年は必須。第3章 9.1）。どちらも再認証（B-343）|
@@ -197,7 +198,7 @@ classDiagram
 |Room と Compose|B-242、B-244、B-262、B-268、B-247、B-304|`room.event`、`room.receipt`、`room.typing`、`room.member`|Normal|
 |Search、MediaList|B-281|—|Normal|
 |Call の画面|B-300〜B-304|`call.ring`、`call.state`（web-calls 経由）|Normal（着信は Locked でも応答）|
-|Albums、Map、Sticker|B-242、B-262、B-264、B-269、B-270、B-226（削除の求め）|`room.event`|Normal|
+|Albums、Map、Sticker|B-242、B-249（削除の求め）、B-262、B-264、B-269、B-270、web-core Api（`/rooms/{id}/events/{eid}/redact`）|`room.event`、`notice`（`sticker_remove_requested`）|Normal|
 |Settings の各画面|B-203、B-210、B-221、B-222、B-229、B-242、B-265、B-322、B-325、B-342、B-343、B-344|`device.changed`、`keybundle.changed`、`notice`|Normal、Locked（AppLockScreen）|
 |GuardianApprovals、TransferAccept|Api（`/me/guardian/approvals/{id}`、`/me/transfer/{id}/accept`）、B-343（再認証）|`notice`|Normal|
 |バナーと知らせ|B-240 `Sync.state`、B-345、B-325、B-242 `Notices`|`notice`、`sync.gap`、`session.revoked`|全部|

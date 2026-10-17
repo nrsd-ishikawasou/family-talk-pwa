@@ -36,12 +36,14 @@ func (r *Reports) Create(ctx context.Context, tx *store.Tx, p boundary.Principal
 		return wrap(err)
 	}
 	params := map[string]any{"user_id": p.UserId.String(), "name": name}
+	code := ""
 	if req.Code != nil {
-		params["code"] = *req.Code
+		code = *req.Code
+		params["code"] = code
 	}
 	switch req.Kind {
 	case gen.UpdateFailed:
-		return r.hooks.notifyAdmins(ctx, tx, noticeUpdateFailed, params)
+		return r.hooks.notifyAdmins(ctx, tx, noticeUpdateFailed, noticeKey(p.UserId.String(), code), params)
 	}
 	return ev(cgen.NET001)
 }

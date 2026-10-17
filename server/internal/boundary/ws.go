@@ -83,7 +83,7 @@ func (h *WsHandler) Upgrade(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	conn.UserId, conn.DeviceId = *p.UserId, *p.DeviceId
-	lastPos, err := h.base.Feed.LastPos(ctx, conn.UserId)
+	lastPos, err := h.base.Feed.LastPos(ctx, h.base.Pool, conn.UserId)
 	if err != nil {
 		conn.closeWith(closeInternal, "internal")
 		return

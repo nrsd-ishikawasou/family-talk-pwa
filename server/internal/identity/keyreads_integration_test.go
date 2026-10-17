@@ -47,10 +47,12 @@ func (e *env) guardianCleared(device uuid.UUID) bool {
 }
 
 // R: R-3-4-1
-// srv-keys が読む口（srv-identity のページの FamilyIds、AdminIds、OfUser、NameOf、ApprovedSeenBefore、OwnerOf）と、
+// srv-keys が読む口（srv-identity のページの FamilyIds、AdminIds、OfUser、NameOf、IdleSeenBefore、ApprovedAmong、OwnerOf）と、
 // 休眠と戻り（MarkDormant、MarkActive。第3章 5.1、第12章 5.2）。FamilyIds は削除・抹消を除き停止を含む。AdminIds は通常の管理者だけ。
-// OfUser は全状態を識別子の順。NameOf は本人の DEK で開いた名前。ApprovedSeenBefore は承認済みで最終の利用が古い物だけ（休眠は外れる）。
-// MarkActive は休眠だけを承認済みに戻す（未承認と取り消し済みは変えない）。OwnerOf は持ち主と PRF の有無で、知らない資格情報は KEY-009。
+// OfUser は全状態を識別子の順。NameOf は本人の DEK で開いた名前。IdleSeenBefore は最終の利用が古い端末のうち承認済みと、停止で
+// 未承認に戻った端末（承認されたことのない端末と休眠は外れる）。MarkDormant は 3 通り：承認済みは休眠にして真、停止で戻った端末は
+// 状態を変えずに真、承認されたことのない端末と最近使った端末は偽。ApprovedAmong は承認済みだけ。MarkActive は休眠だけを承認済みに
+// 戻す（未承認と取り消し済みは変えない）。OwnerOf は持ち主と PRF の有無で、知らない資格情報は KEY-009。
 func TestReadsForKeysAndDormancy(t *testing.T) {
 	e := newEnv(t)
 	admin := e.setupAdmin("花子")
@@ -92,46 +94,74 @@ func TestReadsForKeysAndDormancy(t *testing.T) {
 	}
 	e.wantCode(func() error { _, err := e.id.Devices.NameOf(e.ctx, e.pool, uuid.Must(uuid.NewV7())); return err }(), cgen.KEY001)
 
-	// 休眠の判定：太郎の端末だけを 100 日前に最後に使ったことにする。
-	if _, err := e.pool.Exec(e.ctx, `UPDATE devices SET last_seen_at = $2 WHERE id = $1`, a.device, e.clk.Now().Add(-100*24*time.Hour)); err != nil {
-		t.Fatal(err)
+	// 休眠の判定：太郎の端末（承認済み）、停止した三郎の端末（承認の後に未承認へ戻った）、承認されたことのない四郎の端末を
+	// 100 日前に最後に使ったことにする。管理者の端末は最近使った。
+	c := e.join(admin, "三郎", nil)
+	e.must(e.tx(func(tx *store.Tx) error { return e.id.Users.Suspend(e.ctx, tx, c.id, admin.id, "") }))
+	d := e.accept(e.issueInvite(admin, InviteSpec{Role: boundary.RoleMember}), "四郎")
+	for _, dv := range []uuid.UUID{a.device, c.device, d.device} {
+		if _, err := e.pool.Exec(e.ctx, `UPDATE devices SET last_seen_at = $2 WHERE id = $1`, dv, e.clk.Now().Add(-100*24*time.Hour)); err != nil {
+			t.Fatal(err)
+		}
 	}
-	old, err := e.id.Devices.ApprovedSeenBefore(e.ctx, e.clk.Now().Add(-90*24*time.Hour))
+	idle := func() []uuid.UUID {
+		t.Helper()
+		list, err := e.id.Devices.IdleSeenBefore(e.ctx, e.clk.Now().Add(-90*24*time.Hour))
+		e.must(err)
+		out := make([]uuid.UUID, len(list))
+		for i, dv := range list {
+			out[i] = dv.Id
+		}
+		return out
+	}
+	if got, want := idle(), sorted(a.device, c.device); !slices.Equal(got, want) {
+		t.Fatalf("IdleSeenBefore = %v、期待 %v（承認済みと停止で戻った端末。承認されたことのない端末と最近の端末は外れる）", got, want)
+	}
+	approved, err := e.id.Devices.ApprovedAmong(e.ctx, e.pool, []uuid.UUID{a.device, c.device, d.device, admin.device})
 	e.must(err)
-	if len(old) != 1 || old[0].Id != a.device {
-		t.Fatalf("ApprovedSeenBefore が違う: %+v", old)
+	if !slices.Equal(approved, []uuid.UUID{a.device}) {
+		t.Fatalf("ApprovedAmong = %v、期待は太郎の端末だけ（停止で戻った端末と未承認は外れる）", approved)
+	}
+	if none, err := e.id.Devices.ApprovedAmong(e.ctx, e.pool, nil); err != nil || len(none) != 0 {
+		t.Fatalf("ApprovedAmong(空) = %v, %v", none, err)
+	}
+	cutoff := e.clk.Now().Add(-90 * 24 * time.Hour)
+	markDormant := func(device uuid.UUID) bool {
+		t.Helper()
+		var retire bool
+		e.must(e.tx(func(tx *store.Tx) error {
+			var err error
+			retire, err = e.id.Devices.MarkDormant(e.ctx, tx, device, cutoff)
+			return err
+		}))
+		return retire
+	}
+	stateOf := func(device uuid.UUID) string {
+		t.Helper()
+		var s string
+		e.scalar(&s, `SELECT state FROM devices WHERE id = $1`, device)
+		return s
 	}
 	// 判定の後に使われた端末（管理者の端末は最近使った）は休眠にしない。
-	cutoff := e.clk.Now().Add(-90 * 24 * time.Hour)
-	var changed bool
-	e.must(e.tx(func(tx *store.Tx) error {
-		var err error
-		changed, err = e.id.Devices.MarkDormant(e.ctx, tx, admin.device, cutoff)
-		return err
-	}))
-	if changed {
-		t.Fatal("最近使った端末を休眠にした")
+	if markDormant(admin.device) {
+		t.Fatal("最近使った端末を休眠の扱いにした")
 	}
-	e.must(e.tx(func(tx *store.Tx) error {
-		var err error
-		changed, err = e.id.Devices.MarkDormant(e.ctx, tx, a.device, cutoff)
-		return err
-	}))
-	if !changed {
+	// 承認されたことのない端末は古くても休眠の扱いをしない（7 日の期限切れの対象）。
+	if markDormant(d.device) || stateOf(d.device) != "unapproved" {
+		t.Fatal("承認されたことのない端末を休眠の扱いにした")
+	}
+	if !markDormant(a.device) || stateOf(a.device) != "dormant" {
 		t.Fatal("古い承認済みの端末を休眠にしなかった")
 	}
-	e.must(e.tx(func(tx *store.Tx) error {
-		var err error
-		changed, err = e.id.Devices.MarkDormant(e.ctx, tx, a.device, cutoff)
-		return err
-	}))
-	if changed {
-		t.Fatal("休眠の端末をもう一度休眠にした（変えたと返した）")
+	if markDormant(a.device) {
+		t.Fatal("休眠の端末をもう一度休眠の扱いにした")
 	}
-	old, err = e.id.Devices.ApprovedSeenBefore(e.ctx, e.clk.Now().Add(-90*24*time.Hour))
-	e.must(err)
-	if len(old) != 0 {
-		t.Fatalf("休眠の端末が ApprovedSeenBefore に残る: %+v", old)
+	// 停止で未承認に戻った端末は真を返し、状態は未承認のまま（休眠にすると鍵の承認を経ずに承認済みと同じ扱いになる）。
+	if !markDormant(c.device) || stateOf(c.device) != "unapproved" {
+		t.Fatalf("停止で戻った端末：真で未承認のままのはず（状態 %s）", stateOf(c.device))
+	}
+	if got, want := idle(), []uuid.UUID{c.device}; !slices.Equal(got, want) {
+		t.Fatalf("休眠の後の IdleSeenBefore = %v、期待 %v（休眠の端末は外れ、停止で戻った端末は残る）", got, want)
 	}
 	e.must(e.tx(func(tx *store.Tx) error { return e.id.Devices.MarkActive(e.ctx, tx, a.device) }))
 	e.must(e.tx(func(tx *store.Tx) error { return e.id.Devices.MarkActive(e.ctx, tx, admin.device) }))

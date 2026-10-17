@@ -231,9 +231,10 @@ func (f *Feed) MinPos(ctx context.Context, userId uuid.UUID) (int64, error) {
 
 // LastPos は利用者の最新の pos（WebSocket の ready。第2章 6.3）。まだ 1 行も無ければ 0。
 // feed_cursor の次の pos から求める（rollback した採番は戻るので、次の pos − 1 が最後に書いた pos）。
-func (f *Feed) LastPos(ctx context.Context, userId uuid.UUID) (int64, error) {
+// q は ctx のトランザクションか Pool（/sync の初回の一覧は Pool.BeginSnapshot の中で一覧と同じ見え方で読む）。
+func (f *Feed) LastPos(ctx context.Context, q Querier, userId uuid.UUID) (int64, error) {
 	var next int64
-	err := f.pool.QueryRow(ctx, `SELECT next_pos FROM feed_cursor WHERE user_id = $1`, userId).Scan(&next)
+	err := q.QueryRow(ctx, `SELECT next_pos FROM feed_cursor WHERE user_id = $1`, userId).Scan(&next)
 	if errors.Is(err, pgx.ErrNoRows) {
 		return 0, nil
 	}
@@ -241,6 +242,35 @@ func (f *Feed) LastPos(ctx context.Context, userId uuid.UUID) (int64, error) {
 		return 0, unavailable(err)
 	}
 	return next - 1, nil
+}
+
+// LastRoomEventPos は利用者の feed の、トークごとの最新の room.event の pos（srv-rooms Rooms.List の last_pos。第2章 5.5）。
+// トークごとに部分索引 feed_room_event を後ろから 1 行だけ読む（1 つの文で、読む行はトークの数）。保持の外に出たトークは地図に入らない。
+// q は ctx のトランザクションか Pool。
+func (f *Feed) LastRoomEventPos(ctx context.Context, q Querier, userId uuid.UUID, roomIds []uuid.UUID) (map[uuid.UUID]int64, error) {
+	out := make(map[uuid.UUID]int64, len(roomIds))
+	if len(roomIds) == 0 {
+		return out, nil
+	}
+	rows, err := q.Query(ctx, `SELECT r.id, l.pos FROM unnest($2::uuid[]) AS r(id)
+CROSS JOIN LATERAL (SELECT pos FROM feed WHERE user_id = $1 AND room_id = r.id AND kind = 'room.event' ORDER BY pos DESC LIMIT 1) AS l`,
+		userId, roomIds)
+	if err != nil {
+		return nil, unavailable(err)
+	}
+	defer rows.Close()
+	for rows.Next() {
+		var id uuid.UUID
+		var pos int64
+		if err := rows.Scan(&id, &pos); err != nil {
+			return nil, unavailable(err)
+		}
+		out[id] = pos
+	}
+	if err := rows.Err(); err != nil {
+		return nil, unavailable(err)
+	}
+	return out, nil
 }
 
 // Prune は olderThan より古い行を 10,000 行ずつ消す（持ち主の設定の値で srv-worker が呼ぶ）。

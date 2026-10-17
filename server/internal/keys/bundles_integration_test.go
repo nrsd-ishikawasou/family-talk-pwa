@@ -465,6 +465,59 @@ SELECT gen_random_uuid(), $1, $2, 'key_request', '\x00', decode(repeat('00', 64)
 	e.wantCode(err, cgen.KEY001)
 }
 
+// R: R-12-3-2, R-4-7-1
+// スタンプの削除の求め（第4章 5.9、第7章 9、第12章 5.2）：種類 sticker_remove_request を置くと、同じトランザクションで宛先の端末の持ち主へ
+// 知らせ sticker_remove_requested（宛先の種類は本人、params は求めた人の user_id と name）。同じ送り手から同じ宛先の人の 3 台へ置くと 3 件が
+// 同じ事象の鍵を持つ（日ごとの 1 件への抑えは srv-push）。宛先の人が違えば鍵が違う。取り下げ（sticker_remove_withdrawal）は置けて知らせは
+// 出ない。置けなかった求め（署名の誤り）では知らせが残らない。
+func TestInboxStickerRemoveNotice(t *testing.T) {
+	e := newEnv(t)
+	a := e.member("花子", boundary.RoleAdmin)
+	b := e.member("太郎", boundary.RoleMember)
+	c := e.member("次郎", boundary.RoleMember)
+	e.addDevice(a, "花子のタブレット", false)
+	e.addDevice(a, "花子のパソコン", false)
+	put := func(from, to *devKeys, kind InboxKind, sig []byte) error {
+		ct := []byte("sealed")
+		if sig == nil {
+			sig = signRS(t, from.sig, inboxMessage(kind, from.deviceId, to.deviceId, ct))
+		}
+		return e.tx(func(tx *store.Tx) error {
+			_, err := e.k.Inbox.Put(e.ctx, tx, from.deviceId, to.deviceId, kind, ct, sig)
+			return err
+		})
+	}
+	for _, to := range a.devs {
+		e.must(put(b.dev(), to, InboxStickerRemoveRequest, nil))
+	}
+	got := e.notices.of(noticeStickerRemove)
+	if len(got) != 3 {
+		t.Fatalf("知らせの数: %d", len(got))
+	}
+	for _, n := range got {
+		if n.audience != identity.AudienceSelf || n.user != a.id || n.key != b.id.String()+":"+a.id.String() ||
+			n.params["user_id"] != b.id.String() || n.params["name"] != "太郎" || len(n.params) != 2 {
+			t.Fatalf("知らせ: %+v", n)
+		}
+	}
+	e.must(put(b.dev(), c.dev(), InboxStickerRemoveRequest, nil))
+	if got = e.notices.of(noticeStickerRemove); len(got) != 4 || got[3].user != c.id || got[3].key != b.id.String()+":"+c.id.String() {
+		t.Fatalf("別の宛先の人: %+v", got)
+	}
+	for _, to := range a.devs {
+		e.must(put(b.dev(), to, InboxStickerRemoveWithdrawal, nil))
+	}
+	e.wantCode(put(b.dev(), a.dev(), InboxStickerRemoveRequest, signRS(t, c.dev().sig, []byte("x"))), cgen.KEY009)
+	if n := len(e.notices.of(noticeStickerRemove)); n != 4 {
+		t.Fatalf("取り下げか置けなかった求めで知らせが出た: %d", n)
+	}
+	items, _, err := e.k.Inbox.ListSince(e.ctx, a.dev().deviceId, 0, 50)
+	e.must(err)
+	if len(items) != 2 || items[0].Kind != InboxStickerRemoveRequest || items[1].Kind != InboxStickerRemoveWithdrawal {
+		t.Fatalf("一覧: %+v", items)
+	}
+}
+
 // R: R-12-3-2
 // 鍵のバックアップ（第12章 5.6）：グループの識別子は 20 バイト、経路と本文の食い違いは KEY-009、版は KEY-011、既にあれば上書きしない、
 // 置き換え（rewrap）は pos を新しく振る。一覧は pos の順と has_more。

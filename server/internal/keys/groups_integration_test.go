@@ -109,6 +109,12 @@ func TestCommitAcceptsAndNumbers(t *testing.T) {
 	if res.Epoch != 1 || len(res.Added) != 2 || len(res.Removed) != 0 {
 		t.Fatalf("CommitResult: %+v", res)
 	}
+	// 一覧の epoch（Rooms.List）：トークごとの今の値。グループの無いトークは地図に入らない。
+	other := e.room(b.dev(), b)
+	none := uuid.Must(uuid.NewV7())
+	if got, err := e.k.Groups.EpochsOf(e.ctx, e.pool, []uuid.UUID{room, other, none}); err != nil || len(got) != 2 || got[room] != 1 || got[other] != 0 {
+		t.Fatalf("EpochsOf: %v %v", got, err)
+	}
 	if l := e.leaves(room); l[0] != a.dev().deviceId || l[1] != b.dev().deviceId || l[2] != c.dev().deviceId {
 		t.Fatalf("leaf の番号: %v", l)
 	}
@@ -280,6 +286,23 @@ func TestCommitNineChecks(t *testing.T) {
 			return e.commitAs(room, a.dev(), commitSpec{epoch: 9, sender: 0, path: pathLeaf(t, a.dev(), gid, 0, nil)}, nil)
 		},
 	}
+	for what, b := range badHpkeKeys() {
+		cases["4 Add の init_key が"+what] = func() (CommitResult, error) {
+			k := e.kp(c.dev(), kpOpts{before: func(k *keyPackage) { k.initKey = b }})
+			return e.commitAs(room, a.dev(), commitSpec{sender: 0, adds: [][]byte{k}}, buildWelcome(mlsSuite, refOf(t, k)))
+		}
+		cases["4 Add の encryption_key が"+what] = func() (CommitResult, error) {
+			k := e.kp(c.dev(), kpOpts{before: func(k *keyPackage) { k.leaf.encryptionKey = b }})
+			return e.commitAs(room, a.dev(), commitSpec{sender: 0, adds: [][]byte{k}}, buildWelcome(mlsSuite, refOf(t, k)))
+		}
+		cases["8 path の encryption_key が"+what] = func() (CommitResult, error) {
+			return e.commitAs(room, a.dev(), commitSpec{sender: 0, path: pathLeaf(t, a.dev(), gid, 0, func(l *leafNode) { l.encryptionKey = b })}, nil)
+		}
+		cases["9 Welcome の kem_output が"+what] = func() (CommitResult, error) {
+			k := e.kp(c.dev(), kpOpts{})
+			return e.commitAs(room, a.dev(), commitSpec{sender: 0, adds: [][]byte{k}}, buildWelcomeKems(mlsSuite, [][]byte{b}, refOf(t, k)))
+		}
+	}
 	_, before := e.group(room)
 	for what, f := range cases {
 		_, err := f()
@@ -369,6 +392,74 @@ func TestRejectAndReadd(t *testing.T) {
 	e.must(err)
 	if slices.Contains(info.PendingReadd, b.dev().deviceId) || !slices.Contains(info.PendingReadd, c.dev().deviceId) {
 		t.Fatalf("再参加の後の待ち: %+v", info)
+	}
+}
+
+// R: R-12-3-2
+// 再参加待ちの端末を Remove だけする Commit（第12章 5.2 の復旧の 1。引き継ぐ端末がその端末の KeyPackage を取れない時）：行は追加待ち
+// （add、since は Commit の時刻）に替わり、room.member は removed の後に pending_add。その後の普通の Add で追加待ちが解ける。
+func TestReaddRemovedOnly(t *testing.T) {
+	e := newEnv(t)
+	a := e.member("花子", boundary.RoleAdmin)
+	b := e.member("太郎", boundary.RoleMember)
+	c := e.member("次郎", boundary.RoleMember)
+	room := e.room(a.dev(), a, b, c)
+	_, err := e.addAs(room, a.dev(), 0, b.dev(), c.dev())
+	e.must(err)
+	cd := c.dev().deviceId
+	e.must(e.tx(func(tx *store.Tx) error {
+		_, err := e.k.Groups.Reject(e.ctx, tx, room, cd, 0, nil, nil, "confirmation_tag")
+		return err
+	}))
+	e.clk.Advance(time.Minute)
+	at := e.clk.Now()
+	var leaf uint32
+	for i, d := range e.leaves(room) {
+		if d == cd {
+			leaf = uint32(i)
+		}
+	}
+	gid := groupIdOf(room, 0)
+	res, err := e.commitAs(room, a.dev(), commitSpec{sender: 0, removes: []uint32{leaf}, path: pathLeaf(t, a.dev(), gid, 0, nil)}, nil)
+	e.must(err)
+	if !slices.Equal(res.Removed, []uuid.UUID{cd}) || len(res.Added) != 0 {
+		t.Fatalf("Remove だけの Commit: %+v", res)
+	}
+	var kind string
+	var since time.Time
+	e.scalar(&kind, `SELECT kind FROM mls_pending WHERE room_id = $1 AND device_id = $2`, room, cd)
+	e.scalar(&since, `SELECT since FROM mls_pending WHERE room_id = $1 AND device_id = $2`, room, cd)
+	if kind != "add" || !since.Equal(at.Truncate(time.Microsecond)) {
+		t.Fatalf("追加待ちに替わらない: %s %v（%v）", kind, since, at)
+	}
+	info, err := e.k.Groups.Epoch(e.ctx, room)
+	e.must(err)
+	if !slices.Equal(info.PendingAddDevices, []uuid.UUID{cd}) || len(info.PendingReadd) != 0 {
+		t.Fatalf("Remove だけの後の待ち: %+v", info)
+	}
+	for _, m := range []*member{a, b, c} {
+		var changes []string
+		for _, p := range payloads[roomMember](t, e.feedOf(m.id, "room.member")) {
+			if p.DeviceId != nil && *p.DeviceId == cd {
+				changes = append(changes, p.Change)
+			}
+		}
+		if want := []string{memberAdded, memberPendingReadd, memberRemoved, memberPendingAdd}; !slices.Equal(changes, want) {
+			t.Fatalf("%s の room.member: %v", m.id, changes)
+		}
+	}
+	// 普通の Add で戻る。
+	_, err = e.addAs(room, a.dev(), 0, c.dev())
+	e.must(err)
+	if n := e.count(`SELECT count(*) FROM mls_pending WHERE room_id = $1`, room); n != 0 {
+		t.Fatalf("Add の後に待ちが残る: %d", n)
+	}
+	found := false
+	for _, d := range e.leaves(room) {
+		found = found || d == cd
+	}
+	if !found {
+		t.Fatal("Add の後に leaf が無い")
 	}
 }
 
@@ -511,7 +602,8 @@ func TestCheckSender(t *testing.T) {
 // 端末の取り消しと削除・抹消・停止・休眠の hook（第12章 5.2、9、I-8）：取り消しで鍵の登録、KeyPackage、コピー (a) と片、追加待ちが消え、leaf の
 // あるトークに削除待ち（再参加待ちも削除待ちに）。削除で全端末の削除待ちと、その端末へ包んだ他人の片が消え、本人のコピーは残る。抹消で本人の
 // コピーと照合の値と鍵のバックアップが消え、署名鍵が失効する。停止で追加待ちが消える。休眠は判定の後に使われた端末を変えず、コピー (a) だけ
-// を消して削除待ちを置き、Add で承認済みへ戻る。
+// を消して削除待ちを置き、Add で承認済みへ戻る。停止で未承認に戻った端末も休眠の対象で、削除待ちが立ちコピー (a) が消え、状態は未承認の
+// まま（第12章 5.2）。
 func TestLifecycleHooks(t *testing.T) {
 	e := newEnv(t)
 	a := e.member("花子", boundary.RoleAdmin)
@@ -623,6 +715,30 @@ func TestLifecycleHooks(t *testing.T) {
 	e.must(err)
 	if e.devState(f.dev().deviceId) != identity.DeviceApproved {
 		t.Fatal("休眠の端末の Add で承認済みへ戻らない")
+	}
+	// 停止で未承認に戻った端末の休眠。
+	g := e.member("五郎", boundary.RoleMember)
+	e.rooms.set(room, g.id, "active")
+	_, err = e.addAs(room, a.dev(), 0, g.dev())
+	e.must(err)
+	gd := g.dev().deviceId.String()
+	e.must(e.putCopy(g.id, g.dev(), BundleDevice, gd, copyOf(g.id, BundleDevice, gd, 1, 0)))
+	e.must(e.tx(func(tx *store.Tx) error { return e.id.Users.Suspend(e.ctx, tx, g.id, a.id, "") }))
+	if _, err := e.pool.Exec(e.ctx, `UPDATE devices SET last_seen_at = $2 WHERE id = $1`, g.dev().deviceId, e.clk.Now().Add(-100*24*time.Hour)); err != nil {
+		t.Fatal(err)
+	}
+	dl, err = e.k.Groups.DormantLeafs(e.ctx, cutoff)
+	e.must(err)
+	if !slices.Contains(dl, RoomDevice{RoomId: room, DeviceId: g.dev().deviceId}) {
+		t.Fatalf("停止で戻った端末の leaf が DormantLeafs に無い: %+v", dl)
+	}
+	if e.pendingOf(room, g.dev().deviceId) != "" {
+		t.Fatal("停止で leaf に待ちが立った")
+	}
+	e.must(e.tx(func(tx *store.Tx) error { return e.k.Groups.RetireDormant(e.ctx, tx, g.dev().deviceId, cutoff) }))
+	if e.devState(g.dev().deviceId) != identity.DeviceUnapproved || e.pendingOf(room, g.dev().deviceId) != "remove" ||
+		e.count(`SELECT count(*) FROM keybundles WHERE target_id = $1 AND kind = 'device'`, gd) != 0 {
+		t.Fatalf("停止で戻った端末の休眠：状態 %s、待ち %q", e.devState(g.dev().deviceId), e.pendingOf(room, g.dev().deviceId))
 	}
 }
 

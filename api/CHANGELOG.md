@@ -6,6 +6,21 @@
 
 ### 追加
 
+- 0.1.0：`ft.room_event/1` に `scheduled_at`（任意。予約送信から来たイベントだけが持つ予約の時刻。基本設計書 第4章 5.8、第2章 12）。
+  - `ts` は送った時刻。受け手の端末は差が 1 分を超えれば「遅れて送られました」を出す。元は予約の時刻が線の上に無く、印を判定できなかった
+- 0.1.0：`POST /rooms/{id}/scheduled` の x-errors に `MEDIA-002`、`MEDIA-005`（添付は予約の時に予約へ結び付ける。基本設計書 第4章 5.8、第2章 5.5）。
+- 0.1.0：設定 `room.scheduled_late_threshold`（固定 1 分。基本設計書 第4章 7）と `media.unbound_grace`（固定 8 日。完了して結び付かない添付を消すまで。第5章 9）。
+- 0.1.0：端末宛メールボックスの種類に `sticker_remove_withdrawal`（スタンプの削除の求めの取り下げ。基本設計書 第12章 5.2、第4章 5.9、第2章 5.4）。`InboxItem.kind` と `putDeviceInbox` の `kind` に加えた。
+  - 求めの中身をサーバーは読めないので、取り下げを同じ種類の中の旗にすると取り下げでも知らせ `sticker_remove_requested` が出る。種類で分けた
+- 0.1.0：`ft.content.sticker_remove_request/1` に `requested_at`（必須。最初に求めた時刻。7 日ごとの送り直しでも変えない。基本設計書 第4章 3.1、5.9）。
+  - 受けた端末が求めた日を出し、送り直しを 1 件にまとめる
+
+- 0.1.0：`DELETE /rooms/{id}`（グループの削除。基本設計書 第4章 4.1、第12章 9、第2章 5.5）。
+  - 作成者か管理者。規則 `room_delete`。番号は `ROOM-001`、`ROOM-003`、`ROOM-011`
+  - 構成員の残るグループを消す経路が無かった（`DELETE /admin/rooms/{id}` は空のグループだけ）
+- 0.1.0：`GET /rooms/{id}/mls/epoch` に `commit_possible`（必須。基本設計書 第12章 5.2 の (d)、第2章 5.5）。
+  - Commit を作れる端末が残っているか。偽なら構成員の端末が `POST /rooms/{id}/mls/reinit` で立て直せる
+- 0.1.0：`POST /rooms` の x-errors に `MEM-002`（停止中か削除済みの人を構成員に入れた。基本設計書 第2章 9.2）。`POST /rooms/{id}/members` と同じ扱いで、作成の時だけ番号が無かった。
 - 0.1.0：基本設計書 第12章 5.2「拒まれた Commit からの復旧」と第2章 5.5 の経路と欄。
   - `POST /rooms/{id}/mls/reject`（受け手の端末が処理できなかった Commit か Welcome の報告）。要求は `{generation, epoch?, commit_ref?, reason}`、応答は `{reinit_allowed_at}`。番号は `KEY-007`、`KEY-009`
   - `POST /rooms/{id}/mls/reinit`（グループの再初期化。応答 `{generation, group_id, epoch}`。`KEY-013`）
@@ -70,6 +85,10 @@
 
 ### 変更
 
+- 0.1.0：設定の鍵 `retention.redaction_grace` を `retention.deleted_room_grace` に改めた。
+  - `ft.settings.server/1` の欄。基本設計書 第12章 9、第11章 7.2
+  - 送信の取消の暗号文は取消の時点で消える（全体実装設計書 I-2）。暗号文の物理削除の猶予は無くなった。残る猶予はトークの削除から行の物理削除までの 7 日だけで、名前をそれに合わせた
+- 0.1.0：`ft.room_event/1` の `body` を必須から外した。削除済みの印（`redacted` がある）の時だけ無い（イベントの骨。基本設計書 第2章 12、第12章 3）。削除済みの印の暗号文は NULL で、`ft.event.mls/1` の `ciphertext`（必須）を満たす `body` を作れなかった。
 - 0.1.0：`GET /family/recovery-key/public` の x-errors に `KEY-005` を足した（家族回復鍵の公開部がまだ無い時。基本設計書 第12章 5.4 (d)）。
 - 0.1.0：`POST /me/devices/{id}/keypackages` の `key_packages` の `maxItems` を 21 から 20 に正した。基本設計書 第2章 5.4 は「最大 20 + 最後の手段 1」で、最後の手段は別の欄 `last_resort`。
 - 0.1.0：MLS の配送サービスの形を、サーバーが Commit を読む形にした（基本設計書 第12章 5.2、第2章 5.5）。

@@ -86,6 +86,14 @@ func TestJwkPointAndSignatures(t *testing.T) {
 		}
 	}
 	g, _, _ := jwkPoint(vecG)
+	if !hpkePubOk(g) || !hpkePubOk(hpkeKey(t)) {
+		t.Fatal("P-256 の点が HPKE の公開鍵の形として通らない")
+	}
+	for what, b := range badHpkeKeys() {
+		if hpkePubOk(b) {
+			t.Fatalf("HPKE の公開鍵の形で %s を拒まない", what)
+		}
+	}
 	if canonicalJwk(g) != vecG {
 		t.Fatalf("正規の形が違う: %+v", canonicalJwk(g))
 	}
@@ -169,6 +177,10 @@ func TestCheckKeyPackageNine(t *testing.T) {
 		"9 全長":             {before: func(k *keyPackage) { k.leaf.notAfter = k.leaf.notBefore + lifetimeMaxTotal + 1 }},
 		"9 not_after の残り":  {before: func(k *keyPackage) { k.leaf.notAfter = uint64(now.Unix()) + 6*day }},
 		"別の鍵で署名":           {signer: other.sig},
+	}
+	for what, b := range badHpkeKeys() {
+		broken["7 init_key が"+what] = kpOpts{before: func(k *keyPackage) { k.initKey = b }}
+		broken["7 encryption_key が"+what] = kpOpts{before: func(k *keyPackage) { k.leaf.encryptionKey = b }}
 	}
 	for what, o := range broken {
 		if check(buildKeyPackage(t, dk, now, o)) {

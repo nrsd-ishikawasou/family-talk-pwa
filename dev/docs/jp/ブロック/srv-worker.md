@@ -18,7 +18,7 @@
 - [第12章 5.2 群の暗号（MLS）](../../../../docs/jp/design/12_基本設計書_データと暗号化.md#52-群の暗号mls) の休眠の leaf の削除待ち（90 日）
 - [第4章 5.8 投票、ノート、予定、予約送信（DD-4-9）](../../../../docs/jp/design/04_基本設計書_トークとメッセージ.md#58-投票ノート予定予約送信dd-4-9) の予約送信（指定の時刻にイベントを送る）
 - [第4章 6 家族全員のトーク（DD-4-16）](../../../../docs/jp/design/04_基本設計書_トークとメッセージ.md#6-家族全員のトークdd-4-16) の誕生日
-- [第4章 8 失敗の扱い](../../../../docs/jp/design/04_基本設計書_トークとメッセージ.md#8-失敗の扱い) のサーバーが止まっていた予約送信・スタンプの削除の求めの再通知
+- [第4章 8 失敗の扱い](../../../../docs/jp/design/04_基本設計書_トークとメッセージ.md#8-失敗の扱い) のサーバーが止まっていた予約送信
 - [第5章 7 容量と消す規則（DD-5-9。O-07 の結論）](../../../../docs/jp/design/05_基本設計書_メディア.md#7-容量と消す規則dd-5-9o-07-の結論)（消す規則の実行と 30 日前の知らせ）
 - [第5章 8.1 データと配信](../../../../docs/jp/design/05_基本設計書_メディア.md#81-データと配信) の地図の更新
 - [第7章 9 システムの知らせ（DD-7-9）](../../../../docs/jp/design/07_基本設計書_通知.md#9-システムの知らせdd-7-9) の知らせの時期（紙の確認 年 1 回、地図 年 1 回、16/18 歳）
@@ -35,12 +35,13 @@
   - [srv-identity](srv-identity.md)
     - `Users.Erase`／`BirthdayToday`／`ChildTransitions`、`Guardians.AskAgeEveryTwoYears`
     - `Devices.ExpireUnapproved`、`Invites.Prune`、`IpLog.Prune`、`Sessions.ExpireDue`
+    - `Devices.Get`、`Users.Get`（待ちの知らせの params。第7章 9）
   - [srv-keys](srv-keys.md)
     - `Groups` の `DormantLeafs`、`RetireDormant`、`PendingDevices`
     - `KeyPackages.PruneExpired`、`Inbox.Prune`、`Shares.Expire`
   - [srv-rooms](srv-rooms.md)
-    - `Scheduled.Due`、`Timeline.PostScheduled`、`Gc`
-    - `FamilyRoom.Flow`、`Members.PendingAdds`、`StickerRemoveRequest.Renotify`
+    - `Timeline.PostScheduled`、`Timeline.FanoutRedactions`、`Gc`
+    - `FamilyRoom.Flow`、`Members.PendingAdds`
   - [srv-media](srv-media.md)（`Slots.SweepExpired`、`Gc`、`Quota`、`Preview.SweepStaged`、`Maps.Install`）
   - [srv-push](srv-push.md)（`Notices.Emit`、`Notices.Prune`、`Sender.RetryJob`、`UpBox.Expire`）
   - [srv-admin](srv-admin.md)（`Updater`、`HostRequests`、`KeyRotation.Due`、`CertWatch`、`NetDetect`）
@@ -71,6 +72,9 @@ classDiagram
     +Run()
   }
   class ScheduledSendHandler {
+    +Run(job)
+  }
+  class RedactionFanoutHandler {
     +Run(job)
   }
   class PushRetryHandler {
@@ -134,12 +138,10 @@ classDiagram
   class AgeAskHandler {
     +Run()
   }
-  class StickerRenotifyHandler {
-    +Run()
-  }
   Runner --> Cron
   Runner ..> GcHandler
   Runner ..> ScheduledSendHandler
+  Runner ..> RedactionFanoutHandler
   Runner ..> PushRetryHandler
   Runner ..> BackupHandler
   Runner ..> BackupVerifyHandler
@@ -160,7 +162,6 @@ classDiagram
   Runner ..> SessionExpireHandler
   Runner ..> PaperReminderHandler
   Runner ..> AgeAskHandler
-  Runner ..> StickerRenotifyHandler
 ```
 
 </details>
@@ -175,14 +176,15 @@ classDiagram
 |Runner|`+LastJobAt() Time`|/health|
 |Cron|`+EnsureAll(ctx)`|周期の仕事が queued に無ければ積む（dedupe_key = kind）|
 |Cron|`+Next(kind, now) Time`|表：backup 日次 3:00（設定）、backup_verify 日次、restore_test 月 1、monitor 5 分、ddns 5 分、cert_watch 1 時間、session_expire 1 時間、update_check 日次、gc 1 時間、retention 日次、maps 手動（勧めは年 1 の知らせ）、kek_rewrap 年 1、key_rotation_check 日次、birthday 日次 0:00（家族の tz）、dormant_leaf 日次、prune 日次、paper_reminder 日次（参加の日の年ごと）、age_ask 日次|
-|GcHandler|`+Run()`|srv-media Slots.SweepExpired、Gc.PurgeOrphans(7 日)、srv-rooms Gc.PurgeRedacted(7 日)、DeleteEmptyGroups(30 日)、PurgeDeletedRooms、FileStore.SweepParts、Preview.SweepStaged|
-|ScheduledSendHandler|`+Run(job)`|payload: scheduled_id。Scheduled.Due で取り、Timeline.PostScheduled で送る。サーバーが止まっていた分は起動後に順に（元の時刻）|
+|GcHandler|`+Run()`|srv-media Slots.SweepExpired（期限を過ぎて結び付かない媒体。未完了は 24 時間、完了は 8 日）、Gc.PurgeOrphans(7 日)、srv-rooms Gc.DeleteEmptyGroups(30 日)、Gc.PurgeDeletedRooms(7 日。config `retention.deleted_room_grace`)、FileStore.SweepParts、Preview.SweepStaged。取消の暗号文は取消の時に消えるので gc の対象にない（第12章 9）|
+|ScheduledSendHandler|`+Run(job)`|payload: scheduled_id。1 つのトランザクションで srv-rooms Timeline.PostScheduled(scheduled_id)（予約の行を錠で読み直し、pending の時だけ送る。同じ仕事の 2 度目は何もしない。I-10）。仕事は Scheduled.Create が重複の鍵 `scheduled_send:<予約の識別子>` で積み、取り消しは同じ鍵で消す。サーバーが止まっていた分は起動後に run_at の順に|
+|RedactionFanoutHandler|`+Run(job)`|payload: user_id。srv-rooms Timeline.FanoutRedactions(user_id, 1000) を、戻りが 0 になるまで繰り返す（1 回が 1 つのトランザクション。各回の間に Jobs.Heartbeat）。削除で消す・抹消の hook が積む（重複の鍵 `redaction_fanout:<構成員の識別子>`）。途中で止まっても再開で続きから（消えた送り残しは出さない。I-10、I-16）|
 |PushRetryHandler|`+Run(job)`|srv-push Sender.RetryJob|
 |BackupHandler|`+Run()`|置き場が未設定なら unset_since を進め 7 日で知らせ。次の順に置き場ごと（local、S3 互換）に restic backup する：DB（Dump.DumpCommands の globals と dump を、それぞれ restic --stdin-from-command で 1 回ずつ）、続いて media、config、secrets（/data の中）、caddy を道のりで 1 回。一時の名前はない（restic が原子）。forget（日次 7、週次 4、月次 6。OR）。週 1 で prune。結果を backup_state。失敗は notice（admins）|
 |BackupHandler|`+RunBefore(ctx) Result`|更新の前（同期で呼ばれる）|
 |BackupVerifyHandler|`+Run()`|restic check --read-data-subset=10%（10 日で全量）。失敗は notice|
 |RestoreTestHandler|`+Run()`|月 1：一時の領域に最新を restore し、一時の postgres（Docker.Exec で同じイメージ）に pg_restore する。表の数と最新のイベントの pos を本番と照合し、結果を backup_state と notice に出す。一時の領域を消す|
-|MonitorHandler|`+Run()`|容量（Quota.Thresholds の 80/90/100 で notice all と FamilyRoom。100% で Startup.SetReadOnly）、ディスクの空き（置き場 10%）、media の実体の照合（完了の行と実体。欠けは notice）、PendingAdds 7 日（srv-keys PendingDevices の add も同じ）、カードの配布（srv-identity Families.Cards で 2・3 の持ち主が無ければ管理者に週 1 回の notice。第7章 9）、時刻のずれ（DNS の提供者の応答の Date との差。下のアルゴリズムの表）、SMART（読めれば）、回線の形の変化（NetDetect）、sfu の疎通、Jobs の failed の件数。srv-admin HostRequests.Sweep（ホストの要求の結果の反映と、2 時間結果が無い時の知らせ）|
+|MonitorHandler|`+Run()`|知らせの事象の鍵は第7章 9 の表の欄のとおりに組む（繰り返しの判定で見つける知らせは段の値。抑えられた知らせは何も出ない）。容量（Quota.Thresholds の 80/90/100 で notice all と FamilyRoom。100% で Startup.SetReadOnly）、ディスクの空き（置き場 10%）、media の実体の照合（完了の行と実体。欠けは notice）、待ちが 7 日残った時の知らせ（第7章 9。srv-rooms Members.PendingAdds の行は `member_add_stalled`、srv-keys Groups.PendingDevices の add と readd は `device_add_stalled`、remove は `device_remove_stalled`。since が 7 日より古い行ごとに、端末の持ち主は Devices.Get、表示名は Users.Get で引き、Notices.Emit を audience room（そのトークの構成員）で呼ぶ。事象の鍵はトーク、構成員か端末、経過した週の数 `floor((now − since) / 7 日)`。解けるまで 7 日ごとに 1 回になる）、カードの配布（srv-identity Families.Cards で 2・3 の持ち主が無ければ管理者に週 1 回の notice。第7章 9）、時刻のずれ（DNS の提供者の応答の Date との差。下のアルゴリズムの表）、SMART（読めれば）、回線の形の変化（NetDetect）、sfu の疎通、Jobs の failed の件数。srv-admin HostRequests.Sweep（ホストの要求の結果の反映と、2 時間結果が無い時の知らせ）|
 |DdnsHandler|`+Run()`|5 分：自分の外部アドレス（NetDetect）を DnsProvider.SetA/SetAAAA。失敗 1 時間で notice。ddns_last_ok_at|
 |CertWatchHandler|`+Run()`|1 時間：CertWatch.Days が 14/7/1 日と失効の時に notice。DNS-01 の失敗 1 時間で notice。sfu は証明書を持たないので、証明書の更新で何もしない（第6章 3.1）|
 |UpdateCheckHandler|`+Run()`|日次：Updater.Check で新しい版があれば notice（内容の要約）。revoked_digests に該当なら notice（赤）。AutoDue なら update_apply を積む|
@@ -193,12 +195,11 @@ classDiagram
 |KeyRotationCheckHandler|`+Run()`|日次：KeyRotation.Due で期日のものを回す。RotateSession（90 日）、RotateSfu（1 年）。KEK は回さず、Due が「KEK の交代の勧め」を返せば Notices.Emit（管理者。`keys.kek_rotation_reminder_repeat` の 30 日ごと。第7章 9）|
 |ErasureHandler|`+Run(job)`|payload: user_id。猶予 24 時間の後に Users.Erase（取り消し済みなら何もしない）|
 |BirthdayHandler|`+Run()`|家族の tz の 0:00：Users.BirthdayToday の各人に FamilyRoom.Flow(birthday)。ChildTransitions は notice（本人と保護者）|
-|DormantLeafHandler|`+Run()`|日次：Groups.DormantLeafs(90 日) の端末ごとに自分のトランザクションで Groups.RetireDormant(端末, 90 日前)（Devices.MarkDormant が承認済みで最終の利用が古い時だけ休眠にし、その時だけコピー (a) を消して各グループに削除待ちを立てる。第12章 5.2）。Remove の Commit は他の端末が行う。サーバーは提案を作らない|
+|DormantLeafHandler|`+Run()`|日次：Groups.DormantLeafs(90 日) の端末（承認済みと、停止で未承認に戻った承認されたことのある端末）ごとに自分のトランザクションで Groups.RetireDormant(端末, 90 日前)（Devices.MarkDormant が最終の利用が古い時だけ真を返し、承認済みなら休眠にし、停止で戻った端末は状態を変えない。真の時だけコピー (a) を消して各グループに削除待ちを立てる。第12章 5.2、第3章 8.1）。Remove の Commit は他の端末が行う。サーバーは提案を作らない|
 |SessionExpireHandler|`+Run()`|1 時間：srv-identity Sessions.ExpireDue。絶対か無操作の期限を過ぎた有効なセッションを expired にし、その端末宛てに session.revoked{expired} を書く（接続したままで要求を出さない端末に期限を届ける。第2章 4.1、6.2）|
-|PruneHandler|`+Run()`|日次：Retention.DeleteOlder（sessions 90 日、invites 1 年、push_log 30 日、ip_log 28 日、idempotency 30 日、short_tokens、device_codes、login_challenges）、Devices.ExpireUnapproved(7 日)、Guardians.ExpireDue、Users.ExpireTransfers（求めの期限切れ。第3章 8.3、8.4）、Inbox.Prune（端末宛メールボックスの 30 日。表の持ち主の srv-keys の操作で消す）、KeyPackages.PruneExpired、UpBox.Expire、Notices.Prune（30 日）、Feed.Prune(90 日)、Jobs.Prune（done と failed、30 日）、Shares.Expire、sfu_webhook_seen、log_counts（28 日）。admin_transfers と guardian_approvals の期限切れを expired にする。erase の承認の求めの失効では抹消の求めを取り消し、子と保護者に知らせる（第3章 8.3）|
+|PruneHandler|`+Run()`|日次：Retention.DeleteOlder（sessions 90 日、invites 1 年、push_log 30 日、ip_log 28 日、idempotency 30 日、short_tokens、device_codes、login_challenges）、Devices.ExpireUnapproved(7 日。承認されたことのない未承認の端末だけ。第3章 5.1)、Guardians.ExpireDue、Users.ExpireTransfers（求めの期限切れ。第3章 8.3、8.4）、Inbox.Prune（端末宛メールボックスの 30 日。表の持ち主の srv-keys の操作で消す）、KeyPackages.PruneExpired、UpBox.Expire、Notices.Prune（30 日）、Feed.Prune(90 日)、Jobs.Prune（done と failed、30 日）、Shares.Expire、sfu_webhook_seen、log_counts（28 日）。admin_transfers と guardian_approvals の期限切れを expired にする。erase の承認の求めの失効では抹消の求めを取り消し、子と保護者に知らせる（第3章 8.3）|
 |PaperReminderHandler|`+Run()`|参加の日の年ごと：notice（各自）「紙の確認」。管理者には引き継ぎの一覧の所在の共有|
 |AgeAskHandler|`+Run()`|Guardians.AskAgeEveryTwoYears の各子について Notices.Emit（age_ask。保護者。第7章 9）|
-|StickerRenotifyHandler|`+Run()`|7 日ごと：StickerRemoveRequest.Renotify|
 
 ## 公開操作（このブロックが所有する操作。番号は B-195〜199。B-200 からはウェブのブロックの範囲）
 
@@ -224,7 +225,7 @@ classDiagram
 
 |記録|形|欄|由来|
 |---|---|---|---|
-|`jobs` の `kind` と `payload`|列挙と JSON|`gc {}`、`scheduled_send {scheduled_id}`、`push_retry {item}`、`backup {reason}`（reason は daily、manual、before_update のいずれか）、`backup_verify {}`、`restore_test {}`、`monitor {}`、`ddns {}`、`cert_watch {}`、`update_check {}`、`update_apply {version}`、`update_rollback {}`、`retention {}`、`maps_update {region}`、`kek_rewrap {new_kek_id}`、`key_rotation_check {}`、`erasure {user_id}`、`birthday {}`、`dormant_leaf {}`、`prune {}`、`paper_reminder {}`、`age_ask {}`、`sticker_renotify {}`、`preview_cleanup {}`|全体実装設計書 2.3|
+|`jobs` の `kind` と `payload`|列挙と JSON|`gc {}`、`scheduled_send {scheduled_id}`、`redaction_fanout {user_id}`、`push_retry {item}`、`backup {reason}`（reason は daily、manual、before_update のいずれか）、`backup_verify {}`、`restore_test {}`、`monitor {}`、`ddns {}`、`cert_watch {}`、`update_check {}`、`update_apply {version}`、`update_rollback {}`、`retention {}`、`maps_update {region}`、`kek_rewrap {new_kek_id}`、`key_rotation_check {}`、`erasure {user_id}`、`birthday {}`、`dormant_leaf {}`、`prune {}`、`paper_reminder {}`、`age_ask {}`、`preview_cleanup {}`|全体実装設計書 2.3|
 |restic のリポジトリ|restic v2（圧縮 auto）|スナップショットのタグ：`pg`、`media`、`config`、`secrets`、`caddy`。パスワードは `/data/secrets/backup`|[第11章 9.1 取る](../../../../docs/jp/design/11_基本設計書_運用.md#91-取る)|
 |`/data/backups/`（勧めない置き場）|ディレクトリ|restic のリポジトリ|[第11章 3.3 /data と /etc](../../../../docs/jp/design/11_基本設計書_運用.md#33-data-と-etc)|
 |復元の試験の一時の領域|`/data/restore-test/<日付>/`|試験の後に消す|[第11章 9.1 取る](../../../../docs/jp/design/11_基本設計書_運用.md#91-取る)|

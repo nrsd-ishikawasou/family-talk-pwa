@@ -19,17 +19,18 @@ import (
 // InboxKind は端末宛メールボックスの種類（第12章 5.2 の表）。
 type InboxKind string
 
-// 種類の 8 つ。welcome は Commit の受け付けでサーバーだけが置く（PutWelcome。端末からの要求の kind の列挙に無く、境界の形の検査で
+// 種類の 9 つ。welcome は Commit の受け付けでサーバーだけが置く（PutWelcome。端末からの要求の kind の列挙に無く、境界の形の検査で
 // NET-001）。
 const (
-	InboxWelcome              InboxKind = "welcome"
-	InboxKeybundle            InboxKind = "keybundle"
-	InboxKeyBackup            InboxKind = "key_backup"
-	InboxKeyRequest           InboxKind = "key_request"
-	InboxShare                InboxKind = "share"
-	InboxCallKeyRequest       InboxKind = "call_key_request"
-	InboxCallKey              InboxKind = "call_key"
-	InboxStickerRemoveRequest InboxKind = "sticker_remove_request"
+	InboxWelcome                 InboxKind = "welcome"
+	InboxKeybundle               InboxKind = "keybundle"
+	InboxKeyBackup               InboxKind = "key_backup"
+	InboxKeyRequest              InboxKind = "key_request"
+	InboxShare                   InboxKind = "share"
+	InboxCallKeyRequest          InboxKind = "call_key_request"
+	InboxCallKey                 InboxKind = "call_key"
+	InboxStickerRemoveRequest    InboxKind = "sticker_remove_request"
+	InboxStickerRemoveWithdrawal InboxKind = "sticker_remove_withdrawal"
 )
 
 // InboxItem は端末宛メールボックスの 1 件（GET /me/inbox の要素）。
@@ -56,7 +57,9 @@ type Inbox struct {
 // PutWelcome、share は Shares.Approve だけが置く。どちらも要求の kind の列挙に無い）。sig を fromDevice の登録した署名鍵で第12章 5.2 の
 // 対象に対して確かめ、通らなければ KEY-009。暗号文が 64 KiB を超えれば KEY-009、宛先の端末の期限の内の件数が 1,000 件で KEY-010。
 // kind keybundle の宛先は送り手と同じ構成員の端末だけ（KEY-009）。宛先の端末に鍵の登録が無いか、取り消し済み・期限切れなら KEY-001。
-// device.inbox{count} を toDevice の持ち主の feed に、宛先の端末 = toDevice で書く。期限 30 日。
+// device.inbox{count} を toDevice の持ち主の feed に、宛先の端末 = toDevice で書く。期限 30 日。kind sticker_remove_request の時は、同じ
+// トランザクションで知らせ sticker_remove_requested を toDevice の持ち主へ（閉じている端末を通知で起こす。第7章 9）。取り下げ
+// （sticker_remove_withdrawal）では出さない。中身は読まない。
 func (i *Inbox) Put(ctx context.Context, tx *store.Tx, fromDevice, toDevice uuid.UUID, kind InboxKind, ciphertext, sig []byte) (uuid.UUID, error) {
 	if kind == InboxWelcome || kind == InboxShare {
 		return uuid.Nil, fault.Wrap(errors.New("keys: 端末からは置けない種類: " + string(kind)))
@@ -96,7 +99,23 @@ func (i *Inbox) put(ctx context.Context, tx *store.Tx, from, to uuid.UUID, kind 
 			return uuid.Nil, ev(cgen.KEY010)
 		}
 	}
-	return i.insert(ctx, tx, from, to, toReg.userId, kind, ciphertext, sig, now)
+	id, err := i.insert(ctx, tx, from, to, toReg.userId, kind, ciphertext, sig, now)
+	if err != nil || kind != InboxStickerRemoveRequest {
+		return id, err
+	}
+	return id, i.notifyStickerRemove(ctx, tx, fromReg.userId, toReg.userId)
+}
+
+// notifyStickerRemove は知らせ sticker_remove_requested を宛先の人へ（宛先の種類は本人）。事象の鍵は求めた人と宛先の人の識別子で、同じ日の
+// 同じ組は宛先の端末が何台でも 1 件になる（srv-push の (kind, key, 日)）。
+func (i *Inbox) notifyStickerRemove(ctx context.Context, tx *store.Tx, from, to uuid.UUID) error {
+	usr, err := i.d.Identity.Users.Get(ctx, tx, from)
+	if err != nil {
+		return err
+	}
+	return i.d.Identity.Hooks.Notify(ctx, tx, identity.Notice{Kind: noticeStickerRemove, Key: from.String() + ":" + to.String(),
+		Audience: identity.Audience{Kind: identity.AudienceSelf, UserId: &to},
+		Params:   map[string]any{"user_id": from.String(), "name": usr.DisplayName}})
 }
 
 // reachable は宛先の端末の鍵の登録と状態を確かめる（無いか取り消し済み・期限切れなら KEY-001）。

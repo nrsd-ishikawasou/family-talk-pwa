@@ -33,6 +33,7 @@ classDiagram
     +Open(info ConnInfo) Result~Pool, Event~
     +DefaultConnInfo(password) ConnInfo
     +Begin(ctx) Tx
+    +BeginSnapshot(ctx) Result~Tx, Event~
     +InTx(ctx, fn) Result
     +WithTx(ctx, tx) ctx
     +TxFrom(ctx) Option~Tx~
@@ -72,7 +73,8 @@ classDiagram
     +Flush(ctx, tx)
     +ReadSince(ctx, userId, deviceId, since, limit) [FeedRow]
     +MinPos(ctx, userId) int64
-    +LastPos(ctx, userId) int64
+    +LastPos(ctx, q, userId) int64
+    +LastRoomEventPos(ctx, q, userId, roomIds) map
     +Prune(ctx, olderThan)
   }
   class FeedRef {
@@ -190,6 +192,7 @@ classDiagram
 |Pool|`+Ping(ctx) Result`|/health|
 |Pool|`+InTx(ctx, fn) Result`|業務の操作の書き込みはこれで行う。ctx に外側のトランザクション（WithTx）があればそれを使い、コミットと rollback は外側に任せる（srv-boundary の冪等の middleware が冪等の記録と操作を 1 つのトランザクションにする。第2章 11）。無ければ自分で開き、fn が誤りなら rollback|
 |Pool|`+WithTx(ctx, tx) ctx`、`+TxFrom(ctx) Option~Tx~`|外側のトランザクションを ctx で渡す口|
+|Pool|`+BeginSnapshot(ctx) Result~Tx, Event~`|`REPEATABLE READ READ ONLY` のトランザクション（PostgreSQL 18 の 13.2.2：最初の文の時点の 1 つの見え方を全部の文が見る）。複数の表を読んで 1 つの時点の一覧を返す操作が使う（srv-rooms `Timeline.Snapshot`：トーク、構成員、端末、`Feed.LastPos`。srv-keys `Groups.Epoch`：世代・待ち・leaf と、srv-identity の端末の承認の状態）。書けない（書けば DB が拒む。プログラムの誤り）。呼んだ側は Rollback で閉じる|
 |Querier|`+QueryRow(ctx, sql, args) Row`|Pool と Tx の共通の口。他のブロックの読みの操作が「ctx のトランザクションか Pool」を受ける時の引数の型（srv-identity の `Users.FamilyIds(ctx, q)`、srv-keys の `UserSigningKeys.Version(ctx, q, userId)` など）|
 |Tx|`+Commit() Result~Event~`|溜めた feed の行があれば `Feed.Flush` と同じ処理を先に行ってから COMMIT（全体実装設計書 2.4）。`Rollback` は溜めた行を捨てる|
 |Tx|`+AfterCommit(fn)`|コミットの後に走る付け足し（プロセスの中の channel への投入。例：通知の送信）。rollback なら捨てる。NOTIFY には使わない（Notifier）|
@@ -201,7 +204,8 @@ classDiagram
 |FeedPending|`+UserId Uuid`、`+Ref FeedRef`、`+Pos int64`|溜めた 1 行。`Pos` は `Flush` が入れる（それまで 0）|
 |Feed|`+ReadSince(ctx, userId, deviceId, since, limit) [FeedRow]`|/sync と hub。`device_id` が空か deviceId と同じ行だけ（宛先が端末の行は、その端末にだけ届く。全体実装設計書 2.4）|
 |Feed|`+MinPos(ctx, userId) int64`|保持の外の判定（410）|
-|Feed|`+LastPos(ctx, userId) int64`|利用者の最新の pos（WebSocket の ready。第2章 6.3）。feed_cursor の次の pos − 1。行が無ければ 0|
+|Feed|`+LastPos(ctx, q, userId) int64`|利用者の最新の pos（WebSocket の ready。第2章 6.3）。feed_cursor の次の pos − 1。行が無ければ 0。q は ctx のトランザクションか Pool（srv-rooms `Timeline.Snapshot` は `BeginSnapshot` の中で一覧と同じ見え方で読む。全体実装設計書 2.4）|
+|Feed|`+LastRoomEventPos(ctx, q, userId, roomIds) map`|利用者の feed の、トークごとの最新の room.event の pos（srv-rooms `Rooms.List` の `last_pos`。第2章 5.5）。部分索引 `feed_room_event` で読む。保持（90 日）の外に出たトークは地図に入らない。q は ctx のトランザクションか Pool|
 |Feed|`+Prune(ctx, olderThan)`|90 日（持ち主の設定の値で srv-worker が呼ぶ）|
 |FeedRef|`+Kind string`|第2章 6.2 の type のうち pos を持つ 18 のいずれか：room.event、room.receipt、room.member、room.settings、room.me、room.mls、room.scheduled、device.inbox、device.changed、user.changed、keybundle.changed、recovery.request、recovery.used、call.ring、call.state、session.revoked、notice、sync.gap|
 |FeedRef|`+Id Uuid`|フレームの id（第2章 6.1。必須）。room.event はイベントの識別子、他は本体の行の識別子か、積む側が作る UUIDv7|
@@ -242,9 +246,9 @@ classDiagram
 
 |番号|操作（上の図）|使う側|由来|
 |---|---|---|---|
-|B-020|`Pool`（`Open`、`DefaultConnInfo`、`InTx`、`WithTx`、`TxFrom`）、`Tx`（`AfterCommit` を含む）、`Querier`|全ブロック（記録の読み書きは必ず本ブロックの接続で）|[第1章 10.2 保存](../../../../docs/jp/design/01_基本設計書_全体構成.md#102-保存)|
+|B-020|`Pool`（`Open`、`DefaultConnInfo`、`BeginSnapshot`、`InTx`、`WithTx`、`TxFrom`）、`Tx`（`AfterCommit` を含む）、`Querier`|全ブロック（記録の読み書きは必ず本ブロックの接続で）|[第1章 10.2 保存](../../../../docs/jp/design/01_基本設計書_全体構成.md#102-保存)|
 |B-021|`Migrator`|srv-admin `Startup`（第1章 7.1 の 3）、cmd/ft `migrate`|[第1章 8.3 形式と版](../../../../docs/jp/design/01_基本設計書_全体構成.md#83-形式と版)、[第11章 10 更新（DD-11-9）](../../../../docs/jp/design/11_基本設計書_運用.md#10-更新dd-11-9)|
-|B-022|`Feed`（`Append`、`Flush`、`ReadSince`、`MinPos`、`LastPos`、`Prune`）、`FeedRef`、`FeedPending`|srv-rooms（イベントの記録と `/sync` の読み出し）、srv-identity・srv-keys・srv-calls・srv-push・srv-admin（自分の種類のイベントを feed に積む）、srv-boundary（hub のキャッチアップ）|[第2章 6.1 共通の形](../../../../docs/jp/design/02_基本設計書_境界.md#61-共通の形)、全体実装設計書 2.4|
+|B-022|`Feed`（`Append`、`Flush`、`ReadSince`、`MinPos`、`LastPos`、`LastRoomEventPos`、`Prune`）、`FeedRef`、`FeedPending`|srv-rooms（イベントの記録と `/sync` の読み出し）、srv-identity・srv-keys・srv-calls・srv-push・srv-admin（自分の種類のイベントを feed に積む）、srv-boundary（hub のキャッチアップ）|[第2章 6.1 共通の形](../../../../docs/jp/design/02_基本設計書_境界.md#61-共通の形)、全体実装設計書 2.4|
 |B-023|`Notifier`（`Notify`、`Listen`）|`Feed.Flush`（`Notify`。書き込み担当は `Feed.Append` を経る）、srv-boundary の hub（`Listen`）|全体実装設計書 2.4|
 |B-024|`Jobs`（`Enqueue`、`Claim`、`Complete`、`Fail`、`Heartbeat`、`Recover`、`Stats`）と `JobHandler`（定義）|積む側：srv-rooms（予約送信）、srv-identity（抹消の猶予）、srv-media（GC の候補）、srv-admin（バックアップ、更新、地図）。回す側：srv-worker|全体実装設計書 2.3|
 |B-025|`FileStore`（`OpenPart`、`Finalize`、`Open`、`Remove`、`SweepParts`、`Usage`）|srv-media、srv-worker（GC、容量）|[第1章 9.1 家族のサーバー](../../../../docs/jp/design/01_基本設計書_全体構成.md#91-家族のサーバー)、[第1章 10.2 保存](../../../../docs/jp/design/01_基本設計書_全体構成.md#102-保存)、[第5章 5.1 アップロード（DD-5-6）](../../../../docs/jp/design/05_基本設計書_メディア.md#51-アップロードdd-5-6)|
@@ -266,7 +270,7 @@ classDiagram
 |記録|形|欄|由来|
 |---|---|---|---|
 |`schema_migrations`|tern の表|`version`|[第1章 8.3 形式と版](../../../../docs/jp/design/01_基本設計書_全体構成.md#83-形式と版)|
-|`feed`|表|`user_id uuid`、`pos bigint`（PK は (user_id, pos)）、`kind text`、`ref_id uuid`、`room_id uuid?`（room.* だけ。CHECK）、`device_id uuid?`（宛先の端末。session.revoked と device.inbox は必須、sync.gap は任意、他は空。CHECK）、`payload jsonb?`（room.event だけ空。CHECK）、`ts timestamptz`。索引 (user_id, pos) と (ts)（Prune）。保持は `Prune`|[第2章 6.1 共通の形](../../../../docs/jp/design/02_基本設計書_境界.md#61-共通の形)、[第2章 6.2 イベントの一覧（asyncapi.yaml の `channels`）](../../../../docs/jp/design/02_基本設計書_境界.md#62-イベントの一覧asyncapiyaml-の-channels)|
+|`feed`|表|`user_id uuid`、`pos bigint`（PK は (user_id, pos)）、`kind text`、`ref_id uuid`、`room_id uuid?`（room.* だけ。CHECK）、`device_id uuid?`（宛先の端末。session.revoked と device.inbox は必須、sync.gap は任意、他は空。CHECK）、`payload jsonb?`（room.event だけ空。CHECK）、`ts timestamptz`。索引 (user_id, pos) と (ts)（Prune）と部分索引 `feed_room_event` (user_id, room_id, pos) WHERE kind = 'room.event'（LastRoomEventPos）。保持は `Prune`|[第2章 6.1 共通の形](../../../../docs/jp/design/02_基本設計書_境界.md#61-共通の形)、[第2章 6.2 イベントの一覧（asyncapi.yaml の `channels`）](../../../../docs/jp/design/02_基本設計書_境界.md#62-イベントの一覧asyncapiyaml-の-channels)|
 |`feed_cursor`|表|`user_id uuid PK`、`next_pos bigint`|全体実装設計書 2.4|
 |`jobs`|表|`id uuid PK`、`kind text`、`payload jsonb`、`run_at timestamptz`、`attempts int`、`locked_until timestamptz?`、`claim_id uuid?`（取り出しの印）、`finished_at timestamptz?`、`state text`、`dedupe_key text?`（部分一意索引：state = queued）、`last_error text?`、`created_at`。索引 (state, run_at) と (state, finished_at)|全体実装設計書 2.3|
 |`idempotency`|表|`user_id`、`key text`、`request_sha256 bytea`、`status int`、`body bytea`、`created_at`。PK (user_id, key)。索引 (created_at)（Prune）|[第2章 11 競合の規則（R-2-2-5）](../../../../docs/jp/design/02_基本設計書_境界.md#11-競合の規則r-2-2-5)|

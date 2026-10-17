@@ -39,7 +39,7 @@
 - 依存の逆転：
   - srv-rooms の `Notifier` を実装する。
   - srv-identity の `OnDeviceRevoked`（購読とメールボックスの削除）と `OnNotice`（`Notices.Emit`）に登録する。
-  - srv-identity の `PushReader` を `Subscriptions.OfUser` で実装して渡す（端末の一覧の購読の有無）。
+  - srv-identity の `PushReader` を `Subscriptions.OfUser` で実装して渡す（端末の一覧の購読の有無）。q は srv-identity `Devices.List` の q。
   - srv-boundary の `Hub.Connected` を読む（開いている端末）。`UpWsHandler`（srv-boundary）が `UpBox` を `UpMailbox`（srv-boundary の interface）として呼ぶ。`UpBox.Receive` は `UpWsHandler.Deliver` を呼ぶ。
 
 ## クラス図
@@ -66,7 +66,7 @@ classDiagram
     +Put(tx, principal, deviceId, sub) Result~Event~
     +Delete(tx, deviceId)
     +Get(ctx, deviceId) Option~Subscription~
-    +OfUser(ctx, userId) [Subscription]
+    +OfUser(ctx, q, userId) [Subscription]
     +Invalidate(tx, deviceId, status)
     +Vapid(ctx) VapidPublic
     +Test(ctx, principal, deviceId)
@@ -128,7 +128,7 @@ classDiagram
     +Get(ctx, userId) Option~Time~
   }
   class Notices {
-    +Emit(tx, kind, level, textKey, params, audience)
+    +Emit(tx, kind, key, level, textKey, params, audience)
     +Kinds() [NoticeKind]
     +ListMine(ctx, userId, cursor) Page~NoticeView~
     +Get(ctx, userId, id) Result~NoticeView, Event~
@@ -159,6 +159,7 @@ classDiagram
 |Subscription|`+Kind string`|webpush か unifiedpush|
 |Subscriptions|`+Put(tx, principal, deviceId, sub) Result~Event~`|PUSH-001。UnifiedPush は endpoint と VAPID の公開鍵の確認|
 |Subscriptions|`+Invalidate(tx, deviceId, status)`|404 か 410 なら購読を消し、device.changed を送る（本人の端末）|
+|Subscriptions|`+OfUser(ctx, q, userId) [Subscription]`|構成員の端末の購読（端末の識別子の順）。srv-identity `PushReader.SubscribedDevices` の実装。q は ctx のトランザクションか Pool（`/sync` の初回の一覧は srv-store `Pool.BeginSnapshot` の中で読む。全体実装設計書 2.4）|
 |Subscriptions|`+Vapid(ctx) VapidPublic`|/me/push/vapid：公開鍵と版|
 |Subscriptions|`+Test(ctx, principal, deviceId)`|/me/devices/{id}/push/test|
 |Rules|`+Decide(ctx, event, recipientUserId, recipientDevices) Decision`|第7章 6 の決定表：着信を受けない（送信者に CALL-005 は srv-calls が先に判定）、人のミュート、トークのミュート（メンションは mention_overrides_mute）、一時停止（着信は送る）、子どもの時間帯（着信とメンションは送る）、silent（バッジだけ）、開いている端末（着信を除く）。エンベロープの設定は Users.Settings で復号|
@@ -183,7 +184,7 @@ classDiagram
 |UpBox|`+Deliver(deviceId, item)`|srv-boundary `UpWsHandler.Deliver` を呼ぶ（接続の表は srv-boundary が持つ）。false ならメールボックスに残る|
 |UpItem|`+Body []byte`|RFC 8291 の暗号文のまま|
 |Pause|`+Set(tx, userId, until)`|1 時間、翌朝 8 時まで（端末の tz）、指定|
-|Notices|`+Emit(tx, kind, level, textKey, params, audience)`|audience（self、all、admins、guardians のいずれか。self と guardians は構成員の識別子を伴う）を発行の時に構成員へ解く：self は本人、all は状態が停止・削除・抹消でない全員、admins は管理者、guardians は子の保護者（srv-identity Users.List、Guardians.Of）。notices 表に 1 行、notice_recipients に宛先ごとに 1 行、各宛先の feed に `notice` のイベントを積み、宛先の構成員の端末のうち開いていない端末へ通知（`ft.push/1` の kind notice、event_id は知らせの id。第7章 9、第2章 7）。srv-identity の hook OnNotice の実装は、kind から Kinds の表で level と text_key（`notice.<kind>`）を引いて Emit を呼ぶ。トークに残るものは FamilyRoom.Flow（srv-rooms）。重複は notices 表の (kind, key, day) で抑える|
+|Notices|`+Emit(tx, kind, key, level, textKey, params, audience)`|audience（self、all、admins、guardians、room のいずれか。self と guardians は構成員の識別子を、room はトークの識別子を伴う）を発行の時に構成員へ解く：self は本人、all は状態が停止・削除・抹消でない全員、admins は管理者、guardians は子の保護者（srv-identity Users.List、Guardians.Of）、room はそのトークの active の構成員のうち状態が停止・削除・抹消でない人（srv-rooms Members.Of。第7章 9 の `member_add_stalled`、`device_add_stalled`、`device_remove_stalled`）。notices 表に 1 行、notice_recipients に宛先ごとに 1 行、各宛先の feed に `notice` のイベントを積み、宛先の構成員の端末のうち開いていない端末へ通知（`ft.push/1` の kind notice、event_id は知らせの id。第7章 9、第2章 7）。srv-identity の hook OnNotice の実装は、kind から Kinds の表で level と text_key（`notice.<kind>`）を引いて Emit を呼ぶ。トークに残るものは FamilyRoom.Flow（srv-rooms）。key は事象の鍵（第7章 9 の表の「事象の鍵」の欄。呼ぶ側が欄の値を `:` で連ねて組む。hook OnNotice の実装は notice の key を渡す）。重複は notices 表の (kind, key, day) で抑える。day はサーバーの時刻帯（config `server.tz`）の暦日。`INSERT ... ON CONFLICT (kind, key, day) DO NOTHING` で行が入らなければ、宛先の記録、feed、通知、FamilyRoom.Flow のどれも行わずに戻る（第7章 9）|
 |Notices|`+Kinds() [NoticeKind]`|第7章 9 の表の全行（識別子、level、params の欄の名）。表に無い kind の Emit はプログラムの誤り|
 |Notices|`+Get(ctx, userId, id) Result~NoticeView, Event~`|`GET /me/notices/{id}`（第2章 5.3）。notice_recipients に本人の行が無ければ MEM-001|
 |Notices|`+ListMine(ctx, userId, cursor) Page~NoticeView~`|`GET /me/notices`（第2章 5.3）：notice_recipients を本人で引き notices を結合。要素は id、kind、level、text_key、params、ts（`notice` のイベントの payload と同じ欄に id と ts）。並びは id（UUIDv7）の降順。before、after、limit は第2章 3 の一覧の規則|
@@ -195,7 +196,7 @@ classDiagram
 |番号|操作（上の図）|使う側|由来|
 |---|---|---|---|
 |B-140|`Subscriptions`（`Put`、`Delete`、`Get`、`OfUser`、`Invalidate`、`Vapid`、`Test`）|operation（`/me/devices/{id}/push*`、`/me/push/vapid`）、srv-identity（`PushReader` の実装で端末の一覧の「購読の有無」、hook）、srv-admin（VAPID の交代の版）|[第7章 4 購読](../../../../docs/jp/design/07_基本設計書_通知.md#4-購読)、[第2章 5.8 通知（第7章）](../../../../docs/jp/design/02_基本設計書_境界.md#58-通知第7章)|
-|B-141|`NotifierImpl`（srv-rooms の `Notifier` の実装）|srv-rooms（`Timeline.Post`、`SystemEvent`）|[第1章 7.4 メッセージの送信と配信](../../../../docs/jp/design/01_基本設計書_全体構成.md#74-メッセージの送信と配信)、[第7章 3.2 送信（api）](../../../../docs/jp/design/07_基本設計書_通知.md#32-送信api)|
+|B-141|`NotifierImpl`（srv-rooms の `Notifier` の実装）|srv-rooms（`Timeline.Post`、`PostScheduled`、`SystemEvent`。Flush の前に同じトランザクションで呼ばれる。送信は AfterCommit）|[第1章 7.4 メッセージの送信と配信](../../../../docs/jp/design/01_基本設計書_全体構成.md#74-メッセージの送信と配信)、[第7章 3.2 送信（api）](../../../../docs/jp/design/07_基本設計書_通知.md#32-送信api)|
 |B-142|`Rules::Decide`|本ブロック、srv-calls（`CALL-005` の判定は srv-calls が `Users.Settings` を直接読む。本ブロックは通知の可否だけ）|[第7章 6 規則（DD-7-5、DD-7-6）](../../../../docs/jp/design/07_基本設計書_通知.md#6-規則dd-7-5dd-7-6)|
 |B-143|`CallRinger`（`Ring`、`Stop`）|srv-calls|[第7章 7 着信の通知（DD-7-7）](../../../../docs/jp/design/07_基本設計書_通知.md#7-着信の通知dd-7-7)、[第6章 4.1 1 対 1](../../../../docs/jp/design/06_基本設計書_通話.md#41-1-対-1)|
 |B-144|`UpBox`（`Register`、`Receive`、`Pending`、`Ack`、`Expire`、`DeleteOfDevice`、`Deliver`）|operation（`/up/register`、`/up/{token}`）、srv-boundary `UpWsHandler`、srv-worker（`Expire`）、srv-identity（hook）|[第7章 3.1 家族のサーバーの受け口（(i)）](../../../../docs/jp/design/07_基本設計書_通知.md#31-家族のサーバーの受け口i)、[第2章 5.8 通知（第7章）](../../../../docs/jp/design/02_基本設計書_境界.md#58-通知第7章)|

@@ -83,9 +83,10 @@ type Links struct {
 	Probe    HealthProbe
 }
 
-// Snapshotter は /sync の初回の一覧（srv-rooms Timeline.Snapshot）。snapshot と pos は 1 つの読みで取る。
+// Snapshotter は /sync の初回の一覧（srv-rooms Timeline.Snapshot）。snapshot と pos は 1 つの読みで取る。主体は構成員の一覧の
+// 見え方（子ども区分）と端末の一覧の this_device に要る。予期した失敗は *fault.Event、他は *fault.Fault を error で返す。
 type Snapshotter interface {
-	Snapshot(ctx context.Context, userId uuid.UUID) (gen.SyncSnapshot, int64, *fault.Event)
+	Snapshot(ctx context.Context, p Principal) (gen.SyncSnapshot, int64, error)
 }
 
 // EventSource は feed の room.event の行の payload（ft.room_event/1）を引く（srv-rooms Timeline.ForFeed）。

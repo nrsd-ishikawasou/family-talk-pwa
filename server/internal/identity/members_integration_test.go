@@ -45,14 +45,19 @@ func (e *env) stateOf(id uuid.UUID) string {
 // R: R-3-5-1
 // 停止・再開・削除（第3章 8.1、8.2。T-L1-08）：最後の管理者は MEM-003。停止はセッションを失効（その端末へ session.revoked{suspended}）、
 // 端末を未承認に、本人の未使用の招待を取り消し、OnUserSuspended、家族へ user.changed、カードの持ち主なら管理者へ card_holder_changed。
-// 本人への知らせは出さない。再開は状態だけを戻す（端末は未承認のまま）。削除は session.revoked{deleted}、OnUserDeleted、2 回目は MEM-002。
+// 本人への知らせは出さない。停止で未承認に戻った端末は 7 日の期限切れの対象にならない（承認されたことのない端末だけが期限切れ。
+// 第3章 5.1、8.1）。再開は状態だけを戻す（端末は未承認のまま）。自己承認で承認済みに戻っても最初の承認の時刻は変わらない。
+// 削除は session.revoked{deleted}、OnUserDeleted、2 回目は MEM-002。
 // 既に停止中の人の削除はカードの知らせを繰り返さない。役割の解除は最後の管理者なら MEM-003。
 func TestSuspendUnsuspendDeleteAndLastAdmin(t *testing.T) {
 	e := newEnv(t)
 	admin := e.setupAdmin("花子")
 	e.wantCode(e.tx(func(tx *store.Tx) error { return e.id.Users.Suspend(e.ctx, tx, admin.id, admin.id, "") }), cgen.MEM003)
+	e.approve(admin.device, admin.id)
 	e.setConfig(map[string]any{cgen.KeyAuthMembersCanInvite: true})
 	m := e.join(admin, "太郎", nil)
+	var firstApproved time.Time
+	e.scalar(&firstApproved, `SELECT first_approved_at FROM devices WHERE id = $1`, m.device)
 	e.issueInvite(m, InviteSpec{Role: boundary.RoleMember})
 	e.must(e.tx(func(tx *store.Tx) error { return e.id.Families.MarkCardHeld(e.ctx, tx, m.id, 2) }))
 	before := len(e.notices.rows)
@@ -65,8 +70,8 @@ func TestSuspendUnsuspendDeleteAndLastAdmin(t *testing.T) {
 	if dev != "unapproved" || e.count(`SELECT count(*) FROM invites WHERE issuer = $1 AND revoked_at IS NULL`, m.id) != 0 {
 		t.Fatalf("停止が端末を未承認にしない、または招待を取り消さない: %s", dev)
 	}
-	if e.hooks.count("suspended:"+m.id.String()) != 1 {
-		t.Fatal("OnUserSuspended が呼ばれない")
+	if e.hooks.count("suspended:"+m.id.String()+":suspended") != 1 {
+		t.Fatal("OnUserSuspended が理由 suspended で呼ばれない")
 	}
 	if got := e.notices.of(noticeCardHolderChanged); len(got) != 1 || got[0].audience != AudienceAdmins || !slices.Equal(got[0].params["cards"].([]int), []int{2}) {
 		t.Fatalf("カードの持ち主の停止の知らせが違う: %+v", got)
@@ -80,17 +85,37 @@ func TestSuspendUnsuspendDeleteAndLastAdmin(t *testing.T) {
 		t.Fatalf("停止の後のセッションが AUTH-002 suspended でない: %v", ev)
 	}
 	e.wantCode(e.tx(func(tx *store.Tx) error { return e.id.Users.Suspend(e.ctx, tx, m.id, admin.id, "") }), cgen.MEM002)
+	// 停止から 8 日の後の掃除：承認されたことのない端末（次郎）だけが期限切れになり、停止で戻った太郎の端末は未承認のまま残る。
+	fresh := e.accept(e.issueInvite(admin, InviteSpec{Role: boundary.RoleMember}), "次郎")
+	e.clk.Advance(8 * 24 * time.Hour)
+	n, err := e.id.Devices.ExpireUnapproved(e.ctx, e.clk.Now().Add(-7*24*time.Hour))
+	e.must(err)
+	e.scalar(&dev, `SELECT state FROM devices WHERE id = $1`, m.device)
+	var freshState string
+	e.scalar(&freshState, `SELECT state FROM devices WHERE id = $1`, fresh.device)
+	if n != 1 || freshState != "expired" || dev != "unapproved" || e.hooks.count("device_revoked:"+m.device.String()) != 0 {
+		t.Fatalf("7 日の掃除が停止で戻った端末に掛かった、または承認されたことのない端末に掛からない: n=%d 次郎=%s 太郎=%s", n, freshState, dev)
+	}
 	e.must(e.tx(func(tx *store.Tx) error { return e.id.Users.Unsuspend(e.ctx, tx, m.id, admin.id) }))
 	e.scalar(&dev, `SELECT state FROM devices WHERE id = $1`, m.device)
-	if e.stateOf(m.id) != "normal" || dev != "unapproved" {
-		t.Fatalf("再開の後の状態が違う: %s %s", e.stateOf(m.id), dev)
+	if e.stateOf(m.id) != "normal" || dev != "unapproved" || e.hooks.count("unsuspended:"+m.id.String()) != 1 {
+		t.Fatalf("再開の後の状態か OnUserUnsuspended が違う: %s %s", e.stateOf(m.id), dev)
+	}
+	// 再開の後の自己承認（srv-keys DeviceKeys.Approve が呼ぶ）。最初の承認の時刻は停止の前の値のまま。
+	e.approve(m.device, m.id)
+	var again time.Time
+	e.scalar(&again, `SELECT first_approved_at FROM devices WHERE id = $1`, m.device)
+	e.scalar(&dev, `SELECT state FROM devices WHERE id = $1`, m.device)
+	if dev != "approved" || !again.Equal(firstApproved) {
+		t.Fatalf("自己承認の後の状態か最初の承認の時刻が違う: %s %v %v", dev, again, firstApproved)
 	}
 	is, err := e.login(m, true, nil)
 	e.must(err)
 	m.cookie = is.Cookie
 	e.must(e.tx(func(tx *store.Tx) error { return e.id.Users.Delete(e.ctx, tx, m.id, admin.id, true) }))
-	if e.stateOf(m.id) != "deleted" || !strings.Contains(e.lastRevoked(m), `"deleted"`) || e.hooks.count("deleted:"+m.id.String()+":true") != 1 {
-		t.Fatalf("削除の状態、session.revoked、hook が違う: %s %s", e.stateOf(m.id), e.lastRevoked(m))
+	if e.stateOf(m.id) != "deleted" || !strings.Contains(e.lastRevoked(m), `"deleted"`) || e.hooks.count("deleted:"+m.id.String()+":true") != 1 ||
+		e.hooks.count("suspended:"+m.id.String()+":deleted") != 1 {
+		t.Fatalf("削除の状態、session.revoked、hook（停止の理由 deleted を含む）が違う: %s %s", e.stateOf(m.id), e.lastRevoked(m))
 	}
 	if len(e.notices.of(noticeCardHolderChanged)) != 2 {
 		t.Fatal("状態が通常の持ち主の削除でカードの知らせを出さない")
@@ -219,6 +244,10 @@ func TestSetChildAndClearExpiresOpenApprovals(t *testing.T) {
 	e.must(e.tx(func(tx *store.Tx) error { return e.id.Users.SetChild(e.ctx, tx, x.id, true, admin.id) }))
 	if !e.isChild(x.id) || !slices.Equal(e.notices.to(noticeChildFlagSet), []string{"self:" + x.id.String(), "guardians:" + x.id.String()}) {
 		t.Fatalf("区分を付けた知らせが違う: %v", e.notices.to(noticeChildFlagSet))
+	}
+	// 本人宛てと保護者宛ては同じ事象で、鍵は同じ（構成員の識別子。第7章 9）。
+	if k := e.notices.keys(noticeChildFlagSet); !slices.Equal(k, []string{x.id.String(), x.id.String()}) {
+		t.Fatalf("child_flag_set の鍵: %v", k)
 	}
 	e.must(e.tx(func(tx *store.Tx) error { return e.id.Guardians.Set(e.ctx, tx, x.id, []uuid.UUID{admin.id}, admin.id) }))
 	e.wantCode(e.tx(func(tx *store.Tx) error { _, err := e.id.Users.RequestErase(e.ctx, tx, x.id); return err }), cgen.MEM006)
@@ -584,7 +613,7 @@ func TestProfileAliasesSettingsListAndReports(t *testing.T) {
 		t.Fatalf("設定の muted_users が戻らない: %+v %v", s.MutedUsers, err)
 	}
 	listed := func(viewer *member) map[uuid.UUID]*bool {
-		items, _, err := e.id.Users.List(e.ctx, e.principal(viewer), Page{})
+		items, _, err := e.id.Users.List(e.ctx, e.pool, e.principal(viewer), Page{})
 		e.must(err)
 		out := map[uuid.UUID]*bool{}
 		for _, u := range items {
@@ -616,7 +645,7 @@ func TestHookErrorRollsBackOperation(t *testing.T) {
 	fail := errors.New("上のブロックの誤り")
 	var armed bool
 	e := newEnv(t, func(h *Hooks) {
-		h.RegisterOnUserSuspended(func(context.Context, *store.Tx, uuid.UUID) error {
+		h.RegisterOnUserSuspended(func(context.Context, *store.Tx, uuid.UUID, RevokeReason) error {
 			if armed {
 				return fail
 			}

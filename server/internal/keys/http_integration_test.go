@@ -55,7 +55,7 @@ func (noRooms) RoomRole(context.Context, uuid.UUID, uuid.UUID) (boundary.RoomRol
 
 type noLinks struct{}
 
-func (noLinks) Snapshot(context.Context, uuid.UUID) (gen.SyncSnapshot, int64, *fault.Event) {
+func (noLinks) Snapshot(context.Context, boundary.Principal) (gen.SyncSnapshot, int64, error) {
 	return gen.SyncSnapshot{Rooms: []gen.RoomSummary{}, Users: []gen.User{}, Devices: []gen.Device{}}, 0, nil
 }
 func (noLinks) ForFeed(context.Context, uuid.UUID, uuid.UUID, []uuid.UUID) (map[uuid.UUID]json.RawMessage, error) {
@@ -215,8 +215,11 @@ func TestHttpKeyTransport(t *testing.T) {
 	w.ok(200, "POST", "/api/v1/devices/"+b.dev().deviceId.String()+"/inbox", ca, in, idemKey())
 	resp, body = w.do("POST", "/api/v1/devices/"+b.dev().deviceId.String()+"/inbox", ca, map[string]any{"kind": "share", "ciphertext": "AA", "sig": "AA"}, idemKey())
 	w.problem(resp, body, 400, cgen.NET001)
+	wd := map[string]any{"kind": "sticker_remove_withdrawal", "ciphertext": b64.EncodeToString(ct),
+		"sig": b64.EncodeToString(signRS(t, a.dev().sig, inboxMessage(InboxStickerRemoveWithdrawal, a.dev().deviceId, b.dev().deviceId, ct)))}
+	w.ok(200, "POST", "/api/v1/devices/"+b.dev().deviceId.String()+"/inbox", ca, wd, idemKey())
 	ib := w.ok(200, "GET", "/api/v1/me/inbox", cb, nil, nil)
-	if items, _ := ib["items"].([]any); len(items) != 1 {
+	if items, _ := ib["items"].([]any); len(items) != 2 || items[1].(map[string]any)["kind"] != "sticker_remove_withdrawal" {
 		t.Fatalf("inbox: %v", ib)
 	}
 	gid := groupIdOf(uuid.Must(uuid.NewV7()), 0)

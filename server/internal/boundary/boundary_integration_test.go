@@ -125,7 +125,7 @@ func (m *mutableState) set(s ServerState, reason string) {
 // 偽の Links。
 type fakeSnapshot struct{}
 
-func (fakeSnapshot) Snapshot(context.Context, uuid.UUID) (gen.SyncSnapshot, int64, *fault.Event) {
+func (fakeSnapshot) Snapshot(context.Context, Principal) (gen.SyncSnapshot, int64, error) {
 	return gen.SyncSnapshot{Rooms: []gen.RoomSummary{}, Users: []gen.User{}, Devices: []gen.Device{}}, 0, nil
 }
 

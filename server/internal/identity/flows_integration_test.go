@@ -143,6 +143,10 @@ func TestInviteIssuePeekAcceptAndRevoke(t *testing.T) {
 	if got := e.notices.to(noticeNewDevice); len(got) != 2 || got[1] != "self:"+m.id.String() {
 		t.Fatalf("参加の new_device が本人へ 1 回でない: %v", got)
 	}
+	// 同じ日の 2 人の new_device は別の事象の鍵（端末の識別子。第7章 9）。同じ鍵なら srv-push の (kind, key, 日) で 2 人目が落ちる。
+	if k := e.notices.keys(noticeNewDevice); len(k) != 2 || k[0] == k[1] || k[1] != e.notices.of(noticeNewDevice)[1].params["device_id"] {
+		t.Fatalf("2 人の new_device の鍵が端末ごとでない: %v", k)
+	}
 	if e.hooks.count("created:"+m.id.String()+":"+m.device.String()) != 1 {
 		t.Fatal("参加で OnUserCreated が呼ばれない")
 	}
@@ -599,7 +603,7 @@ func TestDevicesApproveRenameRevokeAndList(t *testing.T) {
 		t.Fatalf("家族の他の構成員に device.changed（revoked）が 1 回でない: %d", changed)
 	}
 	e.wantCode(e.tx(func(tx *store.Tx) error { return e.id.Devices.Approve(e.ctx, tx, secondDevice, admin.id) }), cgen.KEY001)
-	list, _, err := e.id.Devices.List(e.ctx, m.id, m.device, Page{})
+	list, _, err := e.id.Devices.List(e.ctx, e.pool, m.id, m.device, Page{})
 	if err != nil || len(list) != 1 || list[0].Name != "台所のタブレット" || !list[0].ThisDevice {
 		t.Fatalf("端末の一覧が違う: %+v %v", list, err)
 	}
@@ -612,7 +616,7 @@ func TestDevicesApproveRenameRevokeAndList(t *testing.T) {
 	if bytes.Contains(lastIp, []byte("203.0.113.7")) || bytes.Contains(logged, []byte("203.0.113.7")) {
 		t.Fatal("IP が平文で DB にある")
 	}
-	list, _, _ = e.id.Devices.List(e.ctx, m.id, m.device, Page{})
+	list, _, _ = e.id.Devices.List(e.ctx, e.pool, m.id, m.device, Page{})
 	if list[0].LastIp == nil || *list[0].LastIp != "203.0.113.7" {
 		t.Fatalf("一覧が最後の IP を開かない: %+v", list[0])
 	}

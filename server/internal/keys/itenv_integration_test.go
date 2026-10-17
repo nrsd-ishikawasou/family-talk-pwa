@@ -16,6 +16,7 @@ import (
 	"path/filepath"
 	"slices"
 	"strconv"
+	"strings"
 	"sync"
 	"sync/atomic"
 	"testing"
@@ -37,8 +38,8 @@ import (
 	"github.com/nrsd-ishikawasou/family-talk-pwa/server/internal/store"
 )
 
-// 試験の DB：移行を済ませた雛形から試験ごとに新しい DB を作る。トークの表 rooms は srv-rooms の移行が作る物で、まだ無いので、
-// RoomLock が錠を取る識別子の列だけの表を雛形に置く（試験の土台。srv-rooms の移行が入ったら、その表を使う）。
+// 試験の DB：移行を済ませた雛形から試験ごとに新しい DB を作る。トークの行は srv-rooms の移行の表 rooms に置く（RoomLock が錠を
+// 取る行。構成員は偽の RoomReader が持つ）。
 const itTemplate = "ft_keys_tpl"
 
 var (
@@ -76,10 +77,6 @@ func TestMain(m *testing.M) {
 	}
 	if _, err := store.NewMigrator(tpl).Apply(ctx); err != nil {
 		fmt.Fprintln(os.Stderr, "移行できない:", err)
-		os.Exit(1)
-	}
-	if _, err := tpl.Exec(ctx, `CREATE TABLE IF NOT EXISTS rooms (id uuid PRIMARY KEY)`); err != nil {
-		fmt.Fprintln(os.Stderr, err)
 		os.Exit(1)
 	}
 	tpl.Close()
@@ -133,7 +130,9 @@ func testSecrets(t *testing.T, now time.Time) *secret.Store {
 
 type fakePush struct{}
 
-func (fakePush) SubscribedDevices(context.Context, uuid.UUID) ([]uuid.UUID, error) { return nil, nil }
+func (fakePush) SubscribedDevices(context.Context, store.Querier, uuid.UUID) ([]uuid.UUID, error) {
+	return nil, nil
+}
 
 type fakeAudit struct{}
 
@@ -193,6 +192,7 @@ func (f *fakeRooms) IsMemberOrPending(_ context.Context, _ *store.Tx, room, user
 // noticeRec はコミットされた知らせの 1 件。
 type noticeRec struct {
 	kind     string
+	key      string
 	audience identity.AudienceKind
 	user     uuid.UUID
 	params   map[string]any
@@ -204,8 +204,45 @@ type noticeLog struct {
 	rows []noticeRec
 }
 
+// checkNoticeKey は第7章 9 の表の「事象の鍵」の欄で、本ブロックの 6 つの kind の鍵を確かめる（他の kind は空でないこと）。params に無い欄（端末）は
+// 識別子の形であることを見る（recovery_used は端末の無い回復で空を許す）。
+func checkNoticeKey(n identity.Notice) error {
+	p := func(k string) string {
+		v, _ := n.Params[k].(string)
+		return v
+	}
+	isId := func(s string) bool { _, err := uuid.FromString(s); return err == nil }
+	f := strings.Split(n.Key, ":")
+	ok := false
+	switch n.Kind {
+	case noticeRecoveryUsed:
+		ok = len(f) == 4 && f[0] == p("user_id") && (f[1] == "" || isId(f[1])) && f[2] == p("method") && f[3] == p("result")
+	case noticeFamilyKeyUsed:
+		ok = len(f) == 2 && f[0] == p("user_id") && isId(f[1])
+	case noticeRecoveryRequested:
+		ok = n.Key == p("request_id") && p("request_id") != ""
+	case noticeMlsReinit:
+		g, _ := n.Params["generation"].(int)
+		ok = len(f) == 2 && f[0] == p("room_id") && f[1] == strconv.Itoa(g)
+	case noticeMlsReinitLimit:
+		ok = len(f) == 2 && f[0] == p("room_id") && isId(f[1])
+	case noticeStickerRemove:
+		ok = len(f) == 2 && f[0] == p("user_id") && isId(f[1]) && n.Audience.UserId != nil && f[1] == n.Audience.UserId.String()
+	default:
+		// srv-identity の kind（new_device など）。形は srv-identity の試験が確かめ、ここでは空でないことだけを見る。
+		ok = n.Key != ""
+	}
+	if !ok {
+		return fmt.Errorf("知らせ %s の事象の鍵 %q が表の欄と違う", n.Kind, n.Key)
+	}
+	return nil
+}
+
 func (l *noticeLog) hook(_ context.Context, tx *store.Tx, n identity.Notice) error {
-	r := noticeRec{kind: n.Kind, audience: n.Audience.Kind, params: n.Params}
+	if err := checkNoticeKey(n); err != nil {
+		return err
+	}
+	r := noticeRec{kind: n.Kind, key: n.Key, audience: n.Audience.Kind, params: n.Params}
 	if n.Audience.UserId != nil {
 		r.user = *n.Audience.UserId
 	}
@@ -393,7 +430,7 @@ func (e *env) addDevice(m *member, name string, approved bool) *devKeys {
 func (e *env) room(creator *devKeys, members ...*member) uuid.UUID {
 	e.t.Helper()
 	r := uuid.Must(uuid.NewV7())
-	if _, err := e.pool.Exec(e.ctx, `INSERT INTO rooms (id) VALUES ($1)`, r); err != nil {
+	if _, err := e.pool.Exec(e.ctx, `INSERT INTO rooms (id, kind, state, last_event_at, created_at) VALUES ($1, 'group', 'normal', now(), now())`, r); err != nil {
 		e.t.Fatal(err)
 	}
 	for _, m := range members {

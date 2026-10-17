@@ -237,6 +237,17 @@ func capabilitiesOk(l ParsedLeafNode) bool {
 	return true
 }
 
+// hpkePubOk は HPKE の公開鍵の形（第12章 5.2「KeyPackage の保管」の 7）：SEC 1 の非圧縮の 65 バイトで、P-256 の曲線の上の点で、
+// 無限遠点でない（RFC 9180 7.1.1、7.1.4）。KeyPackage の init_key と encryption_key、path の leaf の encryption_key、Welcome の
+// kem_output が使う。
+func hpkePubOk(b []byte) bool {
+	if len(b) != 65 {
+		return false
+	}
+	_, err := ecdsa.ParseUncompressedPublicKey(elliptic.P256(), b)
+	return err == nil
+}
+
 // registration は端末の鍵の登録（device_keys の 1 行の、確かめに使う欄）。
 type registration struct {
 	userId     uuid.UUID
@@ -255,7 +266,7 @@ func checkKeyPackage(kp ParsedKeyPackage, reg registration, now time.Time, forPu
 		l.Source == leafSourceKeyPackage && // 4
 		kp.VerifySignature(reg.sigPub) && // 5
 		l.VerifySignature(reg.sigPub, nil, 0) && // 6
-		!bytes.Equal(l.EncryptionKey, kp.InitKey) && // 7
+		hpkePubOk(l.EncryptionKey) && hpkePubOk(kp.InitKey) && !bytes.Equal(l.EncryptionKey, kp.InitKey) && // 7
 		capabilitiesOk(l) && // 8
 		lifetimeOk(l, now, forPush) // 9
 }

@@ -515,7 +515,7 @@ ON CONFLICT (user_id) WHERE state = 'open' DO NOTHING`, id, userId, requesterDev
 	}
 	for _, h := range holders {
 		hid := h
-		n := identity.Notice{Kind: noticeRecoveryRequested, Audience: identity.Audience{Kind: identity.AudienceSelf, UserId: &hid},
+		n := identity.Notice{Kind: noticeRecoveryRequested, Key: id.String(), Audience: identity.Audience{Kind: identity.AudienceSelf, UserId: &hid},
 			Params: map[string]any{"request_id": id.String(), "user_id": userId.String(), "name": usr.DisplayName, "device_name": name,
 				"expires_at": expires.Format(time.RFC3339)}}
 		if err := s.d.Identity.Hooks.Notify(ctx, tx, n); err != nil {

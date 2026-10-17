@@ -2,7 +2,7 @@
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "https://family-talk.invalid/schemas/ft.room_event/1",
   "title": "ft.room_event/1",
-  "description": "第2章 12。トークのイベント 1 件の外側",
+  "description": "第2章 12。トークのイベント 1 件の外側。body は削除済みの印（redacted がある）の時だけ無い（イベントの骨）",
   "type": "object",
   "properties": {
     "id": {
@@ -69,14 +69,16 @@
     },
     "silent": {
       "type": "boolean"
+    },
+    "scheduled_at": {
+      "$ref": "../common/rfc3339/1.json"
     }
   },
   "required": [
     "id",
     "room_id",
     "ts",
-    "schema",
-    "body"
+    "schema"
   ],
   "additionalProperties": false
 }

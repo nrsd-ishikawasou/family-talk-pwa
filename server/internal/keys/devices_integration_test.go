@@ -329,6 +329,19 @@ func TestKeyPackages(t *testing.T) {
 	other := e.member("太郎", boundary.RoleMember)
 	_, err = push([][]byte{buildKeyPackage(t, other.dev(), now, kpOpts{})}, nil)
 	e.wantCode(err, cgen.KEY009)
+	// init_key と encryption_key の形（第12章 5.2「KeyPackage の保管」の 7）。最後の手段も同じ確かめ。
+	for what, b := range badHpkeKeys() {
+		_, err = push([][]byte{good(), buildKeyPackage(t, dk, now, kpOpts{before: func(k *keyPackage) { k.initKey = b }})}, nil)
+		e.wantCode(err, cgen.KEY009)
+		_, err = push([][]byte{good()}, buildKeyPackage(t, dk, now, kpOpts{before: func(k *keyPackage) { k.leaf.encryptionKey = b }}))
+		if err == nil {
+			t.Fatalf("encryption_key が%sの最後の手段が通る", what)
+		}
+		e.wantCode(err, cgen.KEY009)
+	}
+	if n := e.count(`SELECT count(*) FROM keypackages`); n != 0 {
+		t.Fatalf("鍵の形で拒まれた Push で置かれた: %d", n)
+	}
 	var first [][]byte
 	for range 15 {
 		first = append(first, good())

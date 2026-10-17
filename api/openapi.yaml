@@ -2265,6 +2265,7 @@ paths:
       x-idempotency: key
       x-errors:
       - MEM-001
+      - MEM-002
       - ROOM-004
       - AUTH-001
       - AUTH-002
@@ -2316,6 +2317,32 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/RoomSummary'
+        default:
+          $ref: '#/components/responses/Problem'
+    delete:
+      operationId: deleteRoom
+      tags:
+      - rooms
+      description: 第2章 5.5
+      x-authz:
+      - room_member
+      x-authz-rule: room_delete
+      x-idempotency: none
+      x-errors:
+      - ROOM-001
+      - ROOM-003
+      - ROOM-011
+      - AUTH-001
+      - AUTH-002
+      - KEY-004
+      - ROOM-002
+      responses:
+        '200':
+          description: 成功
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/DeleteRoomResponse'
         default:
           $ref: '#/components/responses/Problem'
   /rooms/{id}/members:
@@ -2831,6 +2858,8 @@ paths:
       - ROOM-001
       - ROOM-005
       - ROOM-010
+      - MEDIA-002
+      - MEDIA-005
       - AUTH-001
       - AUTH-002
       - KEY-004
@@ -5648,6 +5677,7 @@ components:
           - call_key_request
           - call_key
           - sticker_remove_request
+          - sticker_remove_withdrawal
         from_device: *id002
         ciphertext: *id007
         sig: *id007
@@ -6708,6 +6738,7 @@ components:
           - call_key_request
           - call_key
           - sticker_remove_request
+          - sticker_remove_withdrawal
         ciphertext: *id007
         sig: *id007
       required:
@@ -6763,6 +6794,7 @@ components:
       - kind
       - members
       additionalProperties: false
+    DeleteRoomResponse: *id010
     ListRoomMembersResponse:
       type: object
       properties:
@@ -6865,6 +6897,7 @@ components:
         pending_readd:
           type: array
           items: *id002
+        commit_possible: *id004
       required:
       - generation
       - group_id
@@ -6873,6 +6906,7 @@ components:
       - pending_add_devices
       - pending_remove
       - pending_readd
+      - commit_possible
       additionalProperties: false
     ListRoomMlsCommitsResponse:
       type: object
