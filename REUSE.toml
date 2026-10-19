@@ -4,7 +4,7 @@
 version = 1
 
 [[annotations]]
-path = ["README.md", "CHANGELOG.md", "SECURITY.md", "NOTICE", "docs/**", "dev/**", "api/**", "tools/requirements.txt", "tools/node/package.json", "tools/node/package-lock.json", "tools/node/.textlintrc.json", "server/go.mod", "server/go.sum", "server/internal/boundary/gen/**", "server/internal/keys/testdata/**", "web/src/ui/i18n/errors.json", "web/src/ui/i18n/notices.json"]
+path = ["README.md", "CHANGELOG.md", "SECURITY.md", "NOTICE", "docs/**", "dev/**", "api/**", "tools/requirements.txt", "tools/node/package.json", "tools/node/package-lock.json", "tools/node/.textlintrc.json", "server/go.mod", "server/go.sum", "server/internal/boundary/gen/**", "server/internal/keys/testdata/**", "web/src/ui/i18n/errors.json", "web/src/ui/i18n/notices.json", "web/probe/README.md", "web/probe/manifest.webmanifest", "web/probe/icon.svg", "web/probe/icon-180.png", "web/probe/icon-512.png"]
 precedence = "aggregate"
 SPDX-FileCopyrightText = "2026 株式会社流山ソフトウェア開発 (Nagareyama Software Development Co., Ltd.)"
 SPDX-License-Identifier = "Apache-2.0"

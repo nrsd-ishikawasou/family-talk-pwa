@@ -1,24 +1,30 @@
 # SPDX-FileCopyrightText: 2026 株式会社流山ソフトウェア開発 (Nagareyama Software Development Co., Ltd.)
 # SPDX-License-Identifier: Apache-2.0
-# 変更ごとの CI（基本設計書 第14章 11.1、11.4。全体実装設計書 6.1）。
+# 変更ごとの CI（基本設計書 第14章 11.1、11.4。全体実装設計書 6.1）と、iPhone の Safari の確かめの日ごとの実行（第14章 11.3、11.6）。
 # アクションは全てコミットの SHA で固定する（版は注記）。web、android の job は、そのディレクトリを作る WP で足す。
+# schedule と workflow_dispatch では job ios の最低要件 18.0 だけを走らせ、他の job は変更ごと（pull_request と push）だけ。
 name: ci
 
 on:
   pull_request:
   push:
     branches: [main]
+  schedule:
+    - cron: "17 18 * * *"
+  workflow_dispatch:
 
 permissions:
   contents: read
 
 concurrency:
-  group: ci-${{ github.ref }}
+  # 日ごとの run が同じ main の変更ごとの run を取り消さないよう、イベントの種類で分ける
+  group: ci-${{ github.event_name }}-${{ github.ref }}
   cancel-in-progress: true
 
 jobs:
   boundary:
     name: 境界（L2）
+    if: github.event_name == 'pull_request' || github.event_name == 'push'
     # L2 境界：api/ の検証と基本設計書との照合（T-L2-01、T-L2-07、T-L2-08）
     runs-on: ubuntu-24.04
     timeout-minutes: 20
@@ -58,6 +64,7 @@ jobs:
 
   server:
     name: サーバー（L0）
+    if: github.event_name == 'pull_request' || github.event_name == 'push'
     # サーバー側の検査と単体の試験（第14章 11.1 の server/ の列、9.2、9.3）
     runs-on: ubuntu-24.04
     timeout-minutes: 30
@@ -122,6 +129,7 @@ jobs:
 
   docs:
     name: 文書
+    if: github.event_name == 'pull_request' || github.event_name == 'push'
     # 文書の検査（第14章 11.1 の api/ と docs/ の列、第14章 14）
     runs-on: ubuntu-24.04
     timeout-minutes: 20
@@ -146,7 +154,7 @@ jobs:
         run: tools/node/node_modules/.bin/markdownlint-cli2
       - name: textlint（日本語の技術文書の規則）
         working-directory: tools/node
-        run: ./node_modules/.bin/textlint "../../README.md" "../../CHANGELOG.md" "../../SECURITY.md" "../../docs/**/*.md" "../../dev/docs/**/*.md" "../../api/**/*.md"
+        run: ./node_modules/.bin/textlint "../../README.md" "../../CHANGELOG.md" "../../SECURITY.md" "../../docs/**/*.md" "../../dev/docs/**/*.md" "../../api/**/*.md" "../../web/probe/*.md"
       - name: リンクと見出しの位置（リポジトリの中だけ）
         uses: lycheeverse/lychee-action@e7477775783ea5526144ba13e8db5eec57747ce8 # v2.9.0
         with:
@@ -156,6 +164,7 @@ jobs:
 
   forbidden_words:
     name: 禁止語
+    if: github.event_name == 'pull_request' || github.event_name == 'push'
     # 他社の名称と痕跡（第14章 14 の 1）。一覧は environment の secret。fork の PR では secret が無いので飛ばし、main への merge の前の run で必ず走る
     runs-on: ubuntu-24.04
     timeout-minutes: 10
@@ -180,6 +189,7 @@ jobs:
 
   workflows:
     name: ワークフロー
+    if: github.event_name == 'pull_request' || github.event_name == 'push'
     # ワークフローの検査（第14章 11.1、11.4）
     runs-on: ubuntu-24.04
     timeout-minutes: 10
@@ -202,3 +212,41 @@ jobs:
         run: |
           go install github.com/rhysd/actionlint/cmd/actionlint@v1.7.12
           "$(go env GOPATH)/bin/actionlint"
+
+  ios:
+    name: iPhone の Safari（L3。${{ matrix.name }}）
+    # 試験設計書 T-L3-12、基本設計書 第14章 11.6。macOS の実行環境の iOS の Simulator で確かめのページ（web/probe/）を開く。
+    # 変更ごとは iOS 18 系の最新（macos-15 の Xcode 16.4）と現行（macos-26 の既定の Xcode）。
+    # 日ごとと手での実行は最低要件 18.0 を xcodebuild -downloadPlatform で取得して行う（3 回まで再試行）
+    runs-on: ${{ matrix.image }}
+    timeout-minutes: 90
+    strategy:
+      fail-fast: false
+      matrix:
+        include: ${{ fromJSON((github.event_name == 'schedule' || github.event_name == 'workflow_dispatch') && '[{"name":"最低要件 18.0","key":"18.0","image":"macos-15","xcode":"/Applications/Xcode_16.4.app","runtime":"18.0","download":"18.0"}]' || '[{"name":"18 系の最新","key":"18-latest","image":"macos-15","xcode":"/Applications/Xcode_16.4.app","runtime":"18-latest","download":""},{"name":"現行","key":"latest","image":"macos-26","xcode":"","runtime":"latest","download":""}]') }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
+        with:
+          python-version: "3.12"
+      - name: 確かめのページの名前を実行環境の hosts に書く（Simulator が読むかは未確認。読まなければ道具が localhost に替える）
+        run: echo "127.0.0.1 probe.family-talk.test" | sudo tee -a /etc/hosts
+      - name: Simulator で確かめる（標準ライブラリだけの道具。依存を入れない）
+        env:
+          RUNTIME: ${{ matrix.runtime }}
+          DOWNLOAD: ${{ matrix.download }}
+          XCODE: ${{ matrix.xcode }}
+        run: |
+          args=(--runtime "$RUNTIME" --out "$RUNNER_TEMP/ios.json")
+          if [ -n "$XCODE" ]; then args+=(--xcode "$XCODE"); fi
+          if [ -n "$DOWNLOAD" ]; then args+=(--download "$DOWNLOAD"); fi
+          python -m tools.ios_probe sim "${args[@]}"
+      - name: 結果の JSON を残す
+        if: always()
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: ios-${{ matrix.key }}
+          path: ${{ runner.temp }}/ios.json
+          if-no-files-found: warn

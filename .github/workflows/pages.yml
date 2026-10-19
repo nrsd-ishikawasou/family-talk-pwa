@@ -1,0 +1,49 @@
+# SPDX-FileCopyrightText: 2026 株式会社流山ソフトウェア開発 (Nagareyama Software Development Co., Ltd.)
+# SPDX-License-Identifier: Apache-2.0
+# iPhone の確かめのページ（web/probe/）を公開リポジトリの運営者の静的な配信で配る（基本設計書 第14章 11.6「実機への配り方」、試験設計書 T-L6-09）。
+# 配るのは web/probe/ だけ。書き込みの権限は deploy の job だけに置く。
+name: pages
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - "web/probe/**"
+      - ".github/workflows/pages.yml"
+  workflow_dispatch:
+
+permissions: {}
+
+concurrency:
+  group: pages
+  cancel-in-progress: false
+
+jobs:
+  build:
+    name: 確かめのページを束ねる
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/upload-pages-artifact@fc324d3547104276b827a68afc52ff2a11cc49c9 # v5.0.0
+        with:
+          path: web/probe
+
+  deploy:
+    name: 配る
+    needs: build
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    permissions:
+      pages: write # 配信先へ置く（deploy-pages）
+      id-token: write # 配信先がこの run を確かめる OIDC のトークン（deploy-pages）
+    environment:
+      name: github-pages
+      url: ${{ steps.deploy.outputs.page_url }}
+    steps:
+      - id: deploy
+        uses: actions/deploy-pages@368f82528645a54fb793d4d04e342629a3f51346 # v5.0.1

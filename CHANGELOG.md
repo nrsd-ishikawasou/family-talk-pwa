@@ -9,3 +9,4 @@
 - 設計の文書：設計計画書、調査資料、法務調査、概要設計書、基本設計書 第1〜16 章、試験設計書 第1〜5 章、全体実装設計書、ブロックのページ、シーケンス。
 - 境界の正本 api/（API とイベント、データの形、エラーコード表、レート制限、設定の一覧）。
 - 基本設計書との照合の試験 tools/tests/test_api.py と、CI の道具。
+- iPhone の Safari の確かめ：確かめのページ web/probe/ と道具 tools/ios_probe。CI の job ios（macOS の iOS の Simulator）と、ページを配る workflow pages.yml。試験の記録の手順書 dev/docs/jp/手順/試験の記録.md。

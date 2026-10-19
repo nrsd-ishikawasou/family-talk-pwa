@@ -1,0 +1,105 @@
+<!doctype html>
+<!-- SPDX-FileCopyrightText: 2026 株式会社流山ソフトウェア開発 (Nagareyama Software Development Co., Ltd.) -->
+<!-- SPDX-License-Identifier: Apache-2.0 -->
+<!-- iPhone の Safari の確かめのページ（基本設計書 第14章 11.6、試験設計書 T-L3-12、T-L6-09）。ビルドしない静的なページ。手順は README.md -->
+<html lang="ja">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-title" content="確かめ">
+<meta name="color-scheme" content="light dark">
+<link rel="manifest" href="manifest.webmanifest">
+<link rel="icon" href="icon.svg" type="image/svg+xml">
+<link rel="apple-touch-icon" href="icon-180.png">
+<title>iPhone の確かめ</title>
+<style>
+  :root { font-family: -apple-system, system-ui, sans-serif; line-height: 1.5; }
+  body { margin: 0; padding: 12px 16px calc(24px + env(safe-area-inset-bottom)); max-width: 760px; }
+  h1 { font-size: 1.25rem; margin: 8px 0; }
+  h2 { font-size: 1.05rem; margin: 24px 0 6px; border-bottom: 1px solid #8886; padding-bottom: 4px; }
+  h3 { font-size: 0.95rem; margin: 14px 0 4px; }
+  button { font: inherit; padding: 8px 14px; margin: 4px 4px 4px 0; border-radius: 8px; border: 1px solid #8888; background: #2f5aa8; color: #fff; }
+  button.sub { background: transparent; color: inherit; }
+  button:disabled { opacity: 0.5; }
+  input, textarea { font: inherit; width: 100%; box-sizing: border-box; padding: 6px; border-radius: 6px; border: 1px solid #8888; background: transparent; color: inherit; }
+  table { border-collapse: collapse; width: 100%; font-size: 0.85rem; }
+  td { border-bottom: 1px solid #8884; padding: 4px 6px; vertical-align: top; word-break: break-all; }
+  .ok { color: #1a7f37; font-weight: 600; }
+  .ng { color: #c62828; font-weight: 600; }
+  .not_run { color: #888; }
+  .note { font-size: 0.85rem; opacity: 0.8; }
+  #log { font-family: ui-monospace, monospace; font-size: 0.8rem; white-space: pre-wrap; background: #8882; padding: 8px; border-radius: 6px; }
+</style>
+</head>
+<body>
+<h1>iPhone の確かめ</h1>
+<p class="note">このページは家族のサーバーにつながりません。名前や写真などの個人の情報は扱いません。実機の手順は同じ場所の README.md にあります。結果は最後の「結果をコピー」で写して送ってください。</p>
+
+<h2>0. 環境</h2>
+<table id="t-env"></table>
+
+<h2>1. WebCrypto（開くと自動で走る）</h2>
+<table id="t-L3-1"></table>
+
+<h2>2. IndexedDB に置いた取り出せない鍵（開くと自動で走る。開き直すと前の鍵を読む）</h2>
+<table id="t-L3-2"></table>
+
+<h2>3. パスキー</h2>
+<p class="note">「パスキーを作る」の後に「パスキーで入る」を押します。顔か指紋の確かめが出ます。</p>
+<button id="b-pk-create">パスキーを作る</button>
+<button id="b-pk-get">パスキーで入る</button>
+<table id="t-L3-3"></table>
+
+<h2>4. 表示の形</h2>
+<table id="t-L3-4"></table>
+<table id="t-other"></table>
+
+<h2>実機の測り（ホーム画面に追加して、アイコンから開く）</h2>
+
+<h3>(a) 端末の鍵の読み出し（復元の前と後）</h3>
+<p class="note">復元の前に「端末の鍵を作る」を押します。復元の後に開くと、下の表に開いた時の状態（none、ok、unreadable）が出ます。unreadable なら「消して作り直す」を押します。</p>
+<button id="b-a-create">端末の鍵を作る</button>
+<button id="b-a-reset" class="sub">消して作り直す</button>
+<table id="t-a"></table>
+<textarea data-note="a" rows="2" placeholder="気づいたこと（例：暗号化しないバックアップから復元。開くと unreadable）"></textarea>
+
+<h3>(b) 画面のロック中の通知（送る側は開発機）</h3>
+<p class="note">先に (a) の「端末の鍵を作る」と、下の「通知を許可して購読」を済ませます。通知の本文に「本文を復号できた」と出れば、ロック中に鍵を読めています。</p>
+<textarea data-note="b" rows="2" placeholder="気づいたこと（例：ロックの直後 10 通のうち本文が出たのは 10）"></textarea>
+
+<h3>(c) パスキーの PRF</h3>
+<p class="note">3 で「パスキーを作る」を済ませてから、「PRF を取る」を 3 回押します。3 回とも同じ値なら可です。</p>
+<button id="b-c-prf">PRF を取る</button>
+<table id="t-c"></table>
+
+<h3>(d) 通知の形とバッジ、(e) 着信の通知</h3>
+<p class="note">送信の道具が出した VAPID の公開鍵を入れて「通知を許可して購読」を押し、出てきた購読の JSON を「購読をコピー」で開発機へ送ります。</p>
+<input type="text" id="vapid" placeholder="VAPID の公開鍵（base64url、87 文字）">
+<button id="b-sub">通知を許可して購読</button>
+<button id="b-sub-copy" class="sub">購読をコピー</button>
+<textarea id="sub-json" rows="3" readonly placeholder="購読の JSON"></textarea>
+<textarea data-note="d" rows="2" placeholder="気づいたこと（例：1 通ごとに通知は 1 つ。バッジは 3 になった）"></textarea>
+<textarea data-note="e" rows="2" placeholder="気づいたこと（例：音は 3 回。不在着信が出て着信の通知は消えた）"></textarea>
+<button id="b-swlog" class="sub">受けた記録を読み直す</button>
+<button id="b-swlog-clear" class="sub">記録を消す</button>
+<table id="t-swlog"></table>
+
+<h3>(f) カメラとマイク</h3>
+<button id="b-f">カメラとマイクを確かめる</button>
+<table id="t-f"></table>
+<textarea data-note="f" rows="2" placeholder="気づいたこと（例：許可の確かめが出て、許可した）"></textarea>
+
+<h3>(g) サイトのデータを消した後</h3>
+<p class="note">開くたびに 1 行が増えます。設定でサイトのデータを消した後に開くと fresh が true になります。</p>
+<table id="t-g"></table>
+<textarea data-note="g" rows="2" placeholder="気づいたこと"></textarea>
+
+<h2>結果</h2>
+<button id="b-copy">結果をコピー</button>
+<button id="b-save" class="sub">結果をファイルに保存</button>
+<textarea id="result" rows="6" readonly placeholder="結果の JSON（コピーできない時はここを長押しで選ぶ）"></textarea>
+<div id="log"></div>
+<script src="probe.js"></script>
+</body>
+</html>

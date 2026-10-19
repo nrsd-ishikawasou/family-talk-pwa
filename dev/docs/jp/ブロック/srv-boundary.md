@@ -302,7 +302,7 @@ classDiagram
 |Base|（作り方）|下のブロックの部品（srv-common の Config、Deps、Logger、RateLimiter、Ids。srv-store の Pool、Feed、Notifier、Idempotency、Jobs）。cmd/ft が作って渡す|
 |Base|`+ValidateResponses bool`|応答を spec で検証する（試験と開発だけ真。運用の設定ではない）|
 |Base|`+WwwDir string`|SpaIndex が読む index.html の置き場（イメージの中の /srv/www）。version.json（AppVersion、VersionHandler）も同じ置き場の dl/ から読む|
-|Links|（作り方）|上のブロックの実装を cmd/ft が入れる。WP-1 の試験は偽物を入れる|
+|Links|（作り方）|上のブロックの実装を cmd/ft が入れる。本ブロックの試験は偽物を入れる|
 |Snapshotter|`+Snapshot(ctx, principal) Result~SyncSnapshot, pos, Event~`|srv-rooms `Timeline.Snapshot`。`SyncSnapshot` は生成の型。snapshot と pos は 1 つの読みで取る。主体は構成員の一覧の見え方（子ども区分）と端末の一覧の `this_device` に要る。予期しない失敗は Fault を返す（EventSource と同じ）（srv-rooms の SyncInitial）|
 |EventSource|`+ForFeed(ctx, userId, deviceId, eventIds) Result~map~`|srv-rooms `Timeline.ForFeed`。feed の room.event の行の payload（ft.room_event/1）を、その利用者と端末に見える形で返す（取り消しの反映、transaction_id は送った端末にだけ）。見えない物（退出、削除）は返さず、本ブロックはその行のフレームを送らない|
 |TypingSink|`+Set(userId, roomId, typing, timeout)`|srv-rooms `Typing.Set`。WebSocket の `typing` は timeout を持たないので 0（既定の 10 秒）。構成員の確かめは本ブロックが RoomMembership で先に行う|
