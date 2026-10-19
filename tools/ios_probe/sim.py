@@ -112,6 +112,12 @@ def create_and_boot(runtime_spec, env, log):
     return {'version': version, 'runtime': runtime_id, 'device_type': dtype['name'], 'udid': udid}
 
 
+def launch_safari(udid, env):
+    """セッションの前に Simulator の Safari を起こしておく（起こした直後の Simulator では、safaridriver が Safari を見つけるまでに時間切れになることがある）。"""
+    xcrun('simctl', 'launch', udid, 'com.apple.mobilesafari', env=env, check=False)
+    time.sleep(15)
+
+
 def enroll_biometrics(udid, env):
     """生体認証を登録済みにする。Apple の公開の文書に無い通知の名前で、効くかは未確認（全体実装設計書 16）。失敗しても続ける。"""
     r = xcrun('simctl', 'spawn', udid, 'notifyutil', '-s', 'com.apple.BiometricKit.enrollmentChanged', '1',
@@ -184,6 +190,10 @@ def wait_for(fn, timeout, every=1.0):
         time.sleep(every)
 
 
+def _detail(wd, item):
+    return ((read_probe(wd) or {}).get('items', {}).get(item) or {}).get('detail')
+
+
 def read_probe(wd):
     return wd.script('return window.__ft_probe ? JSON.parse(JSON.stringify(window.__ft_probe)) : null')
 
@@ -222,13 +232,14 @@ def run_page(wd, url, udid, env, pk_timeout_ms, log):
     if not wait_for(lambda: (read_probe(wd) or {}).get('done'), 120):
         raise WebDriverError('2 回目のページの確かめが 120 秒で終わらない')
     for button, item in (('#b-pk-create', 'L3-3-create'), ('#b-pk-get', 'L3-3-get')):
-        before = json.dumps((read_probe(wd)['items'].get(item)))
         wd.click(button)
         if udid:
             time.sleep(3)
             biometric_match(udid, env)
-        changed = wait_for(lambda: json.dumps((read_probe(wd) or {}).get('items', {}).get(item)) != before, pk_timeout_ms / 1000 + 30)
-        log(f'{item}：{(read_probe(wd) or {}).get("items", {}).get(item) if changed else "変わらない"}')
+        # 押した印（core.PRESSED）が付いたか、その後に結果が来たかを分けて記録する
+        pressed = wait_for(lambda: _detail(wd, item) != 'ボタンを押していない', 15)
+        done = pressed and wait_for(lambda: _detail(wd, item) not in ('ボタンを押していない', core.PRESSED), pk_timeout_ms / 1000 + 30)
+        log(f'{item}：' + ('押せなかった（印が付かない）' if not pressed else f'{(read_probe(wd) or {}).get("items", {}).get(item)}' if done else '押したが応答が来ない'))
     return read_probe(wd)
 
 
@@ -256,6 +267,7 @@ def sim(args, log):
             def attempt():
                 wd.quit()
                 rec['session_tries'] += 1
+                launch_safari(device['udid'], env)
                 wd.new_session(device['udid'])
                 last = None
                 for host in core.hosts_to_try(socket.gethostbyname):

@@ -37,7 +37,7 @@ def probe(**over):
     items['L3-4-display-mode']['detail'] = 'browser'
     for k, v in over.items():
         items[k.replace('_', '-')] = v
-    return {'format': core.FORMAT, 'done': True, 'env': {'ios_version': '18.6', 'origin': 'https://localhost:1'}, 'items': items}
+    return {'format': core.FORMAT, 'done': True, 'env': {'ua_os_version': '18.6', 'origin': 'https://localhost:1'}, 'items': items}
 
 
 class TestJudge(unittest.TestCase):
@@ -110,6 +110,7 @@ class TestPageAndTool(unittest.TestCase):
             for i in set(ids) - generated:
                 self.assertIn(f"'{i}'", self.js, i)
         self.assertIn(f"format: '{core.FORMAT}'", self.js)
+        self.assertIn(f"const PRESSED = '{core.PRESSED}'", self.js)
 
     def test_page_elements_exist(self):
         ids = set(re.findall(r'id="([^"]+)"', self.html))
@@ -195,7 +196,7 @@ class TestRetries(unittest.TestCase):
         calls.clear()
         with self.assertRaises(RuntimeError):
             core.with_retries(always, core.SESSION_RETRIES, sleep=lambda s: None)
-        self.assertEqual(len(calls), 2)  # セッションの張り直しは 1 回まで
+        self.assertEqual(len(calls), 3)  # セッションの張り直しは 2 回まで
 
 
 class TestPushPayloads(unittest.TestCase):

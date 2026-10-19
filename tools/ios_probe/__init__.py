@@ -32,8 +32,11 @@ NAMES = {'1': 'WebCrypto', '2': 'IndexedDB の鍵', '3': 'パスキー', '4': '�
 
 # 取得の再試行（第14章 11.6「3 回まで再試行」。最初の 1 回と再試行の 3 回で、試すのは最大 4 回）
 DOWNLOAD_RETRIES = 3
-# safaridriver のセッションの張り直し（1 回まで）。実行環境でセッションが途中で切れる報告がある（調査資料 準拠の調査 4）
-SESSION_RETRIES = 1
+# safaridriver のセッションの張り直し（2 回まで）。実行環境でセッションが途中で切れる報告がある（調査資料 準拠の調査 4）。
+# 2026-10-19 の CI で、起こした直後の Simulator の最初のセッションが 2 つの版とも時間切れになり、18.6 は 2 回目も時間切れだった
+SESSION_RETRIES = 2
+# パスキーのボタンを押した後にページが置く文（ページの probe.js と同じ）
+PRESSED = '押した。応答を待っている'
 
 # Simulator の Safari が実行環境の hosts を読むかは未確認（全体実装設計書 16）。読まなければ localhost に替える
 PROBE_HOST = 'probe.family-talk.test'
@@ -80,11 +83,11 @@ def judge(probe):
     return {'pass': passed, 'groups': groups}
 
 
-def summary(probe, verdict):
-    """job の記録に残す 1 行ずつの文。"""
+def summary(probe, verdict, os_version=None):
+    """job の記録に残す 1 行ずつの文。os_version は Simulator の版（UA の版は iOS 26 以降で 18 系に止まるので使わない）。"""
     lines = []
     env = probe.get('env') or {} if isinstance(probe, dict) else {}
-    lines.append(f'iOS {env.get("ios_version")}  {env.get("origin")}  判定 {"可" if verdict["pass"] else "不可"}')
+    lines.append(f'iOS {os_version or "（版は記録の外）"}  {env.get("origin")}  判定 {"可" if verdict["pass"] else "不可"}')
     if verdict.get('error'):
         lines.append(f'  {verdict["error"]}')
     for g, v in verdict['groups'].items():

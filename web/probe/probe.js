@@ -77,7 +77,8 @@
     const m = navigator.userAgent.match(/OS (\d+)_(\d+)(?:_(\d+))?/);
     Object.assign(P.env, {
       user_agent: navigator.userAgent,
-      ios_version: m ? `${m[1]}.${m[2]}${m[3] ? '.' + m[3] : ''}` : null,
+      // UA の OS の版。iOS 26 以降の Safari は UA の版を 18 系に止めるので、本当の版は設定の「情報」（実機）か Simulator の版で読む
+      ua_os_version: m ? `${m[1]}.${m[2]}${m[3] ? '.' + m[3] : ''}` : null,
       display_mode: displayMode(),
       navigator_standalone: navigator.standalone === true,
       secure_context: isSecureContext,
@@ -303,9 +304,12 @@
   }
 
   // ---------- T-L3-12 (3) パスキー、T-L6-09 (c) PRF ----------
+  const PRESSED = '押した。応答を待っている';
   const PRF_SALT = enc.encode('ft.probe/prf-salt/0000000000000000').slice(0, 32);
   async function passkeyCreate() {
     const t0 = performance.now();
+    // 押されたことを先に残す（応答が来ないまま終わった時に、押せなかったのか応答が無かったのかを分ける）
+    record('L3-3-create', 'not_run', PRESSED);
     try {
       const cred = await navigator.credentials.create({ publicKey: {
         rp: { id: location.hostname, name: 'ft.probe' },
@@ -327,6 +331,7 @@
   }
   async function passkeyGet(target) {
     const t0 = performance.now();
+    if (target === 'L3') record('L3-3-get', 'not_run', PRESSED);
     try {
       const a = await navigator.credentials.get({ publicKey: {
         rpId: location.hostname,
@@ -521,7 +526,7 @@
   bind('b-save', async () => {
     const a = document.createElement('a');
     a.href = URL.createObjectURL(new Blob([result()], { type: 'application/json' }));
-    a.download = `ft-probe-${P.env.ios_version || 'x'}-${Date.now()}.json`;
+    a.download = `ft-probe-${P.env.ua_os_version || 'x'}-${Date.now()}.json`;
     a.click();
   });
 

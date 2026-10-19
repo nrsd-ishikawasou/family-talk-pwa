@@ -69,7 +69,8 @@ def main(argv=None):
         d = json.loads(pathlib.Path(args.file).read_text(encoding='utf-8'))
         probe = d.get('probe', d) if isinstance(d, dict) else d
         verdict = core.judge(probe)
-        for line in core.summary(probe if isinstance(probe, dict) else {}, verdict):
+        os_version = ((d.get('simulator') or {}).get('version') if isinstance(d, dict) else None)
+        for line in core.summary(probe if isinstance(probe, dict) else {}, verdict, os_version):
             print(line)
         return 0 if verdict['pass'] else 1
     if args.cmd == 'sim':
@@ -82,7 +83,7 @@ def main(argv=None):
             log(f'失敗：{rec["error"]}')
             return 1
         write(args.out, rec)
-        for line in core.summary(rec['probe'] or {}, rec['verdict']):
+        for line in core.summary(rec['probe'] or {}, rec['verdict'], rec['simulator']['version']):
             print(line)
         print(f'  名前 {rec["host"]}（試した順 {rec["hosts_tried"]}）、セッション {rec["session_tries"]} 回、取得 {rec["download"]}')
         return 0 if rec['verdict']['pass'] else 1
