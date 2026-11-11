@@ -5,7 +5,7 @@
   "license": "Apache-2.0",
   "devDependencies": {
     "@asyncapi/cli": "6.2.1",
-    "@stoplight/spectral-cli": "6.17.0",
+    "@stoplight/spectral-cli": "6.17.1",
     "markdownlint-cli2": "0.23.3",
     "textlint": "15.8.0",
     "textlint-filter-rule-allowlist": "4.0.0",
